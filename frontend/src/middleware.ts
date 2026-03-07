@@ -17,7 +17,16 @@ const SEARCH_ENGINE_BOTS = [
   'twitterbot',
   'linkedinbot',
   'whatsapp',
-  'telegrambot'
+  'telegrambot',
+  // AI search engine bots
+  'gptbot',
+  'chatgpt-user',
+  'perplexitybot',
+  'claudebot',
+  'anthropic-ai',
+  'google-extended',
+  'applebot',
+  'cohere-ai',
 ];
 
 function isSearchEngineCrawler(userAgent: string): boolean {

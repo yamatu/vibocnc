@@ -5,11 +5,14 @@ import { getSiteUrl } from '@/lib/url';
 
 export const metadata: Metadata = {
   title: 'FAQ - Frequently Asked Questions | Vcocnc FANUC Parts',
-  description: 'Find answers to common questions about FANUC parts, shipping, warranty, technical support, and more. Professional industrial automation support.',
-  keywords: 'FANUC parts FAQ, industrial automation support, CNC parts questions, technical support, warranty information',
+  description: 'Find answers to common questions about FANUC parts, shipping, warranty, technical support, and more. Professional industrial automation support from Vcocnc.',
+  keywords: 'FANUC parts FAQ, industrial automation support, CNC parts questions, technical support, warranty information, FANUC shipping, FANUC compatibility',
   robots: {
     index: true,
     follow: true,
+  },
+  alternates: {
+    canonical: `${getSiteUrl()}/faq`,
   },
 };
 

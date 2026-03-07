@@ -74,15 +74,20 @@ export async function generateMetadata(): Promise<Metadata> {
     verification: {
       google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
     },
+    alternates: {
+      languages: {
+        'x-default': siteUrl,
+        'en': siteUrl,
+      },
+    },
   };
 }
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const SITE_URL = await getRequestBaseUrl();
   return (
     <html lang="en" className="scroll-smooth">
       <head>
@@ -92,42 +97,6 @@ export default async function RootLayout({
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="manifest" href="/site.webmanifest" />
         <meta name="theme-color" content="#f59e0b" />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            "name": "Vcocnc",
-            "description": "Professional FANUC CNC parts supplier since 2005",
-              "url": SITE_URL,
-              "logo": {
-                "@type": "ImageObject",
-                "url": `${SITE_URL}/android-chrome-512x512.png`
-              },
-              "foundingDate": "2005",
-              "address": {
-                "@type": "PostalAddress",
-                "streetAddress": process.env.NEXT_PUBLIC_COMPANY_STREET || undefined,
-                "postalCode": process.env.NEXT_PUBLIC_COMPANY_POSTAL_CODE || undefined,
-                "addressLocality": process.env.NEXT_PUBLIC_COMPANY_CITY || "Kunshan",
-                "addressRegion": process.env.NEXT_PUBLIC_COMPANY_REGION || "Jiangsu",
-                "addressCountry": process.env.NEXT_PUBLIC_COMPANY_COUNTRY_CODE || "CN"
-              },
-              "contactPoint": {
-                "@type": "ContactPoint",
-              "contactType": "sales",
-              "email": "sales@vcocncspare.com",
-              "telephone": "+86-13348028050"
-
-              },
-              "sameAs": [
-                "https://www.linkedin.com/company/vcocnc",
-                "https://twitter.com/vcocnc"
-              ]
-            })
-          }}
-        />
       </head>
       <body className={`${inter.className} antialiased`}>
         <ReactQueryProvider>

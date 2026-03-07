@@ -6,6 +6,7 @@ export function generateOrganizationSchema() {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${baseUrl}/#organization`,
     "name": "Vcocnc",
     "alternateName": "VCOCNC Industrial Automation",
     "description": "Professional FANUC CNC parts supplier since 2005. Leading provider of industrial automation components with over 100,000 items in stock.",
@@ -63,9 +64,7 @@ export function generateOrganizationSchema() {
     ],
     "sameAs": [
       "https://www.linkedin.com/company/vcocnc",
-      "https://twitter.com/vcocnc",
-      "https://www.youtube.com/channel/UC...",
-      "https://www.facebook.com/vcocnc"
+      "https://twitter.com/vcocnc"
     ],
     "slogan": "Your Trusted FANUC Parts Partner Since 2005",
     "knowsAbout": [
@@ -111,12 +110,14 @@ export function generateWebsiteSchema() {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": `${baseUrl}/#website`,
     "name": "Vcocnc FANUC Parts",
     "alternateName": "FANUC Parts & Industrial Automation Components",
     "url": baseUrl,
     "description": "Professional FANUC CNC parts supplier since 2005. 100,000+ items in stock, worldwide shipping. Servo motors, PCB boards, I/O modules, control units.",
     "publisher": {
       "@type": "Organization",
+      "@id": `${baseUrl}/#organization`,
       "name": "Vcocnc",
       "url": baseUrl
     },
@@ -203,7 +204,7 @@ export function generateFAQSchema() {
         "name": "What FANUC parts do you stock?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "We stock over 100,000 FANUC parts including PCB boards, I/O modules, servo motors, control units, power supplies, and other automation components. All parts are genuine FANUC or compatible alternatives."
+          "text": "We stock over 100,000 FANUC parts including PCB boards, I/O modules, servo motors, control units, power supplies, and other automation components. All parts are genuine FANUC or compatible alternatives clearly marked for your convenience."
         }
       },
       {
@@ -211,7 +212,7 @@ export function generateFAQSchema() {
         "name": "Do you ship worldwide?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes, we ship FANUC parts worldwide. We offer express shipping options and can deliver to most countries within 3-10 business days."
+          "text": "Yes, we ship FANUC parts worldwide. We offer express shipping options via DHL, FedEx, and UPS, and can deliver to most countries within 3-10 business days."
         }
       },
       {
@@ -219,7 +220,7 @@ export function generateFAQSchema() {
         "name": "Are your FANUC parts genuine?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "We supply both genuine FANUC parts and high-quality compatible alternatives. All parts are clearly marked and come with our quality guarantee."
+          "text": "We supply both genuine FANUC parts and high-quality compatible alternatives. All parts are clearly marked and come with our quality guarantee. Genuine parts include manufacturer documentation and certificates."
         }
       },
       {
@@ -227,7 +228,7 @@ export function generateFAQSchema() {
         "name": "What is your warranty policy?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "We offer a comprehensive warranty on all FANUC parts. Genuine parts come with manufacturer warranty, while compatible parts include our 12-month guarantee."
+          "text": "We offer a comprehensive warranty on all FANUC parts. Genuine parts come with manufacturer warranty (typically 12-24 months), while compatible parts include our 12-month guarantee covering defects and performance issues."
         }
       },
       {
@@ -235,8 +236,47 @@ export function generateFAQSchema() {
         "name": "How can I get technical support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Our technical support team is available via email at sales@vcocncspare.com or phone. We provide installation guidance, troubleshooting, and compatibility assistance."
-
+          "text": "Our technical support team is available via email at sales@vcocncspare.com or phone at +86-13348028050. We provide installation guidance, troubleshooting, compatibility assistance, and replacement recommendations."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I place an order?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "You can place orders directly on our website, via email, or by phone. We accept PayPal, bank transfers, and major credit cards. For large orders, we offer flexible payment terms for established customers."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do you offer quantity discounts?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, we offer competitive quantity discounts for bulk orders. Contact our sales team for custom pricing on large quantities or long-term supply agreements."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I know if a part is compatible with my system?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Our technical team can help verify compatibility. Provide your system model, current part number, and application details. We maintain extensive compatibility databases and can suggest alternatives if needed."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What payment methods do you accept?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "We accept PayPal, wire transfers, major credit cards (Visa, MasterCard, American Express), and for established customers, we offer terms payments and purchase orders."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I track my order?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Once your order ships, you'll receive tracking information via email. You can also log into your account on our website to view order status and tracking details in real-time."
         }
       }
     ]

@@ -14,6 +14,49 @@ import {
   GlobeAltIcon
 } from '@heroicons/react/24/outline';
 
+const contactPageSchema = {
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  "name": "Contact Vcocnc",
+  "description": "Get in touch with Vcocnc for FANUC parts inquiries, technical support, and quotes.",
+  "url": "https://www.vcocncspare.com/contact",
+  "mainEntity": {
+    "@type": "Organization",
+    "name": "Vcocnc",
+    "telephone": "+86-13348028050",
+    "email": "sales@vcocncspare.com",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Kunshan",
+      "addressRegion": "Jiangsu",
+      "addressCountry": "CN"
+    },
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "opens": "08:00",
+        "closes": "18:00"
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Saturday"],
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    ]
+  }
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.vcocncspare.com" },
+    { "@type": "ListItem", "position": 2, "name": "Contact", "item": "https://www.vcocncspare.com/contact" }
+  ]
+};
+
 function ContactContent() {
   const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
@@ -70,6 +113,11 @@ function ContactContent() {
 
   return (
     <PublicLayout>
+      {/* Contact Page Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@graph": [contactPageSchema, breadcrumbSchema] }) }}
+      />
       {/* Hero Section */}
       <section className="relative bg-gradient-to-r from-yellow-500 to-yellow-600 text-black py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

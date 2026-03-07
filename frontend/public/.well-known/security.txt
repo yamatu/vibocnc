@@ -1,0 +1,3 @@
+Contact: mailto:sales@vcocncspare.com
+Preferred-Languages: en, zh
+Canonical: https://www.vcocncspare.com/.well-known/security.txt

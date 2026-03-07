@@ -1,16 +1,16 @@
 'use client';
 
 import { Product, Category } from '@/types';
-import Head from 'next/head';
 import { toProductPathId } from '@/lib/utils';
 
 interface ProductSEOProps {
   product: Product;
   category?: Category;
   categoryBreadcrumb?: Category[];
+  baseUrl?: string;
 }
 
-export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEOProps) {
+export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'https://www.vcocncspare.com' }: ProductSEOProps) {
   // Generate rich structured data for the product
   const structuredData = {
     "@context": "https://schema.org",
@@ -20,53 +20,54 @@ export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEO
     "description": product.meta_description || product.description || product.short_description,
     "brand": {
       "@type": "Brand",
-      "name": product.brand || "Vcocnc"
+      "name": product.brand || "FANUC"
     },
     "manufacturer": {
       "@type": "Organization",
-      "name": product.brand || "Vcocnc",
-      "url": "https://www.vcocncspare.com"
+      "name": product.brand || "FANUC"
     },
     "category": category?.name || "Industrial Automation",
-    "image": product.images?.map(img => typeof img === 'string' ? img : img.url) || 
-             product.image_urls || 
-             ["/images/default-product.jpg"],
+    "image": product.images?.map(img => typeof img === 'string' ? img : img.url) ||
+             product.image_urls ||
+             [`${baseUrl}/images/default-product.jpg`],
+    "url": `${baseUrl}/products/${toProductPathId(product.sku)}`,
     "offers": {
       "@type": "Offer",
       "price": product.price,
       "priceCurrency": "USD",
-      "availability": product.stock_quantity > 0 ? 
-        "https://schema.org/InStock" : 
+      "availability": product.stock_quantity > 0 ?
+        "https://schema.org/InStock" :
         "https://schema.org/OutOfStock",
       "seller": {
         "@type": "Organization",
         "name": "Vcocnc",
-        "url": "https://www.vcocncspare.com"
+        "url": baseUrl
       },
-      "priceValidUntil": new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 30 days from now
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.8",
-      "reviewCount": "24",
-      "bestRating": "5",
-      "worstRating": "1"
-    },
-    "review": [
-      {
-        "@type": "Review",
-        "reviewRating": {
-          "@type": "Rating",
-          "ratingValue": "5",
-          "bestRating": "5"
+      "priceValidUntil": new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      "itemCondition": "https://schema.org/NewCondition",
+      "shippingDetails": {
+        "@type": "OfferShippingDetails",
+        "shippingDestination": {
+          "@type": "DefinedRegion",
+          "name": "Worldwide"
         },
-        "author": {
-          "@type": "Person",
-          "name": "Industrial Engineer"
-        },
-        "reviewBody": `High quality ${product.brand || ''} part. Excellent performance and reliability for industrial automation applications.`
+        "deliveryTime": {
+          "@type": "ShippingDeliveryTime",
+          "handlingTime": {
+            "@type": "QuantitativeValue",
+            "minValue": 1,
+            "maxValue": 3,
+            "unitCode": "d"
+          },
+          "transitTime": {
+            "@type": "QuantitativeValue",
+            "minValue": 3,
+            "maxValue": 10,
+            "unitCode": "d"
+          }
+        }
       }
-    ]
+    }
   };
 
   // Generate breadcrumb structured data
@@ -78,25 +79,25 @@ export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEO
         "@type": "ListItem",
         "position": 1,
         "name": "Home",
-        "item": "https://www.vcocncspare.com"
+        "item": baseUrl
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": "Products",
-        "item": "https://www.vcocncspare.com/products"
+        "item": `${baseUrl}/products`
       },
       ...(categoryBreadcrumb?.map((cat, index) => ({
         "@type": "ListItem",
         "position": index + 3,
         "name": cat.name,
-         "item": `https://www.vcocncspare.com/${(cat as any).path || cat.slug}`
+         "item": `${baseUrl}/${(cat as any).path || cat.slug}`
       })) || []),
       {
         "@type": "ListItem",
         "position": (categoryBreadcrumb?.length || 0) + 3,
         "name": product.name,
-        "item": `https://www.vcocncspare.com/products/${toProductPathId(product.sku)}`
+        "item": `${baseUrl}/products/${toProductPathId(product.sku)}`
       }
     ]
   };
@@ -111,7 +112,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEO
         "name": `What is the ${product.sku} used for?`,
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": `The ${product.name} (${product.sku}) is a ${product.brand || ''} industrial automation component used in CNC machines and robotic systems for precise control and operation.`
+          "text": `The ${product.name} (${product.sku}) is a ${product.brand || 'FANUC'} industrial automation component used in CNC machines and robotic systems for precise control and operation.`
         }
       },
       {
@@ -119,7 +120,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEO
         "name": `Is the ${product.sku} compatible with my CNC system?`,
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": `Yes, the ${product.name} is designed to be compatible with major CNC systems and industrial automation equipment.`
+          "text": `The ${product.name} is designed to be compatible with major ${product.brand || 'FANUC'} CNC systems and industrial automation equipment. Contact our technical team at sales@vcocncspare.com for compatibility verification.`
         }
       },
       {
@@ -127,7 +128,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEO
         "name": `What is the warranty for ${product.sku}?`,
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": `We provide a 1-year warranty for the ${product.name}. All products are quality tested before shipment.`
+          "text": `We provide a 12-month warranty for the ${product.name}. All products are quality tested before shipment. Genuine parts include manufacturer warranty.`
         }
       },
       {
@@ -135,7 +136,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEO
         "name": `How long does shipping take for ${product.sku}?`,
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": `We offer worldwide shipping for the ${product.name}. Delivery times vary by location, typically 3-7 business days for express shipping.`
+          "text": `We offer worldwide shipping for the ${product.name} via DHL, FedEx, and UPS. Delivery typically takes 3-7 business days for express shipping. ${product.stock_quantity > 0 ? 'This item is currently in stock and ready to ship.' : 'Contact us for availability and estimated delivery time.'}`
         }
       }
     ]
@@ -164,37 +165,6 @@ export function ProductSEO({ product, category, categoryBreadcrumb }: ProductSEO
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(faqData)
-        }}
-      />
-
-      {/* Organization Structured Data */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            "name": "Vcocnc",
-            "url": "https://www.vcocncspare.com",
-            "logo": "https://www.vcocncspare.com/images/logo.png",
-            "description": "Leading supplier of CNC parts and industrial automation components since 2005.",
-            "address": {
-              "@type": "PostalAddress",
-              "addressCountry": "CN",
-              "addressRegion": "Jiangsu",
-              "addressLocality": "Kunshan"
-            },
-             "contactPoint": {
-               "@type": "ContactPoint",
-               "telephone": "+86-13348028050",
-               "contactType": "sales",
-               "email": "sales@vcocncspare.com"
-             },
-
-            "sameAs": [
-              "https://www.vcocnc.com"
-            ]
-          })
         }}
       />
     </>
