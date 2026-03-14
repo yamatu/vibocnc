@@ -10,13 +10,60 @@ interface ProductSEOProps {
   baseUrl?: string;
 }
 
+function mapConditionType(condition?: string): string {
+  switch (condition) {
+    case 'refurbished':
+      return 'https://schema.org/RefurbishedCondition';
+    case 'used':
+      return 'https://schema.org/UsedCondition';
+    default:
+      return 'https://schema.org/NewCondition';
+  }
+}
+
+function parseSpecs(raw?: string): Record<string, string> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'https://www.vcocncspare.com' }: ProductSEOProps) {
+  const productUrl = `${baseUrl}/products/${toProductPathId(product.sku)}`;
+
+  // Build image array
+  const imageUrls = product.images?.map(img => typeof img === 'string' ? img : img.url) ||
+    product.image_urls ||
+    [`${baseUrl}/images/default-product.jpg`];
+
+  // Reviews & aggregate rating
+  const approvedReviews = product.reviews?.filter(r => r.is_approved) || [];
+  const hasReviews = approvedReviews.length > 0;
+  const avgRating = hasReviews
+    ? approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length
+    : undefined;
+
+  // Technical specs as additionalProperty
+  const specs = parseSpecs(product.technical_specs);
+  const additionalProperties = specs
+    ? Object.entries(specs).map(([name, value]) => ({
+        "@type": "PropertyValue",
+        "name": name,
+        "value": String(value),
+      }))
+    : undefined;
+
   // Generate rich structured data for the product
-  const structuredData = {
+  const structuredData: Record<string, any> = {
     "@context": "https://schema.org",
     "@type": "Product",
     "name": product.name,
     "sku": product.sku,
+    "mpn": product.part_number || product.sku,
     "description": product.meta_description || product.description || product.short_description,
     "brand": {
       "@type": "Brand",
@@ -24,27 +71,33 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     },
     "manufacturer": {
       "@type": "Organization",
-      "name": product.brand || "FANUC"
+      "name": product.manufacturer || product.brand || "FANUC"
     },
     "category": category?.name || "Industrial Automation",
-    "image": product.images?.map(img => typeof img === 'string' ? img : img.url) ||
-             product.image_urls ||
-             [`${baseUrl}/images/default-product.jpg`],
-    "url": `${baseUrl}/products/${toProductPathId(product.sku)}`,
+    "image": imageUrls,
+    "url": productUrl,
     "offers": {
       "@type": "Offer",
       "price": product.price,
       "priceCurrency": "USD",
-      "availability": product.stock_quantity > 0 ?
-        "https://schema.org/InStock" :
-        "https://schema.org/OutOfStock",
+      "availability": product.stock_quantity > 0
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
       "seller": {
         "@type": "Organization",
         "name": "Vcocnc",
         "url": baseUrl
       },
       "priceValidUntil": new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      "itemCondition": "https://schema.org/NewCondition",
+      "itemCondition": mapConditionType(product.condition_type),
+      "hasMerchantReturnPolicy": {
+        "@type": "MerchantReturnPolicy",
+        "applicableCountry": "US",
+        "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+        "merchantReturnDays": 30,
+        "returnMethod": "https://schema.org/ReturnByMail",
+        "returnFees": "https://schema.org/FreeReturn"
+      },
       "shippingDetails": {
         "@type": "OfferShippingDetails",
         "shippingDestination": {
@@ -68,6 +121,44 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
         }
       }
     }
+  };
+
+  // Add aggregate rating if reviews exist
+  if (hasReviews && avgRating !== undefined) {
+    structuredData.aggregateRating = {
+      "@type": "AggregateRating",
+      "ratingValue": Math.round(avgRating * 10) / 10,
+      "bestRating": 5,
+      "worstRating": 1,
+      "reviewCount": approvedReviews.length
+    };
+
+    structuredData.review = approvedReviews.slice(0, 5).map(r => ({
+      "@type": "Review",
+      "author": {
+        "@type": "Person",
+        "name": r.customer_name
+      },
+      "datePublished": r.created_at?.split('T')[0],
+      "reviewRating": {
+        "@type": "Rating",
+        "ratingValue": r.rating,
+        "bestRating": 5
+      },
+      "name": r.review_title || `Review of ${product.sku}`,
+      "reviewBody": r.review_content
+    }));
+  }
+
+  // Add technical specs as additional properties
+  if (additionalProperties && additionalProperties.length > 0) {
+    structuredData.additionalProperty = additionalProperties;
+  }
+
+  // Speakable for AI search engines
+  structuredData.speakable = {
+    "@type": "SpeakableSpecification",
+    "cssSelector": ["h1", ".product-description", ".product-specs"]
   };
 
   // Generate breadcrumb structured data
@@ -97,49 +188,63 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
         "@type": "ListItem",
         "position": (categoryBreadcrumb?.length || 0) + 3,
         "name": product.name,
-        "item": `${baseUrl}/products/${toProductPathId(product.sku)}`
+        "item": productUrl
       }
     ]
   };
 
-  // Generate FAQ structured data for common product questions
+  // Generate FAQ structured data - prefer database FAQs, fall back to generic
+  const dbFaqs = product.faqs?.filter(f => f.is_active) || [];
+  const faqEntities = dbFaqs.length > 0
+    ? dbFaqs.map(f => ({
+        "@type": "Question",
+        "name": f.question,
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": f.answer
+        }
+      }))
+    : [
+        {
+          "@type": "Question",
+          "name": `What is the ${product.sku} used for?`,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": `The ${product.name} (${product.sku}) is a ${product.brand || 'FANUC'} industrial automation component used in CNC machines and robotic systems for precise control and operation.`
+          }
+        },
+        {
+          "@type": "Question",
+          "name": `Is the ${product.sku} compatible with my CNC system?`,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": product.compatibility_info
+              ? `${product.compatibility_info} Contact our technical team at sales@vcocncspare.com for further compatibility verification.`
+              : `The ${product.name} is designed to be compatible with major ${product.brand || 'FANUC'} CNC systems and industrial automation equipment. Contact our technical team at sales@vcocncspare.com for compatibility verification.`
+          }
+        },
+        {
+          "@type": "Question",
+          "name": `What is the warranty for ${product.sku}?`,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": `We provide a ${product.warranty_period || '12-month'} warranty for the ${product.name}. All products are quality tested before shipment.`
+          }
+        },
+        {
+          "@type": "Question",
+          "name": `How long does shipping take for ${product.sku}?`,
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": `We offer worldwide shipping for the ${product.name} via DHL, FedEx, and UPS. Delivery typically takes 3-7 business days for express shipping. ${product.stock_quantity > 0 ? 'This item is currently in stock and ready to ship.' : 'Contact us for availability and estimated delivery time.'}`
+          }
+        }
+      ];
+
   const faqData = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": `What is the ${product.sku} used for?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `The ${product.name} (${product.sku}) is a ${product.brand || 'FANUC'} industrial automation component used in CNC machines and robotic systems for precise control and operation.`
-        }
-      },
-      {
-        "@type": "Question",
-        "name": `Is the ${product.sku} compatible with my CNC system?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `The ${product.name} is designed to be compatible with major ${product.brand || 'FANUC'} CNC systems and industrial automation equipment. Contact our technical team at sales@vcocncspare.com for compatibility verification.`
-        }
-      },
-      {
-        "@type": "Question",
-        "name": `What is the warranty for ${product.sku}?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `We provide a 12-month warranty for the ${product.name}. All products are quality tested before shipment. Genuine parts include manufacturer warranty.`
-        }
-      },
-      {
-        "@type": "Question",
-        "name": `How long does shipping take for ${product.sku}?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `We offer worldwide shipping for the ${product.name} via DHL, FedEx, and UPS. Delivery typically takes 3-7 business days for express shipping. ${product.stock_quantity > 0 ? 'This item is currently in stock and ready to ship.' : 'Contact us for availability and estimated delivery time.'}`
-        }
-      }
-    ]
+    "mainEntity": faqEntities
   };
 
   return (

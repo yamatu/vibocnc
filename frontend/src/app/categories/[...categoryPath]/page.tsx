@@ -13,6 +13,34 @@ interface CategoryPathPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
+// Category-specific meta description templates
+function getCategoryMetaDescription(categoryName: string, baseDescription?: string): string {
+  const name = categoryName.toLowerCase();
+  const templates: Record<string, string> = {
+    'servo': `Shop FANUC ${categoryName} for precise CNC motion control. Tested, 12-month warranty, fast worldwide shipping. In-stock parts ready to ship from Vcocnc.`,
+    'motor': `Buy FANUC ${categoryName} for high-torque CNC performance. Quality tested with 12-month warranty. Fast DHL/FedEx shipping worldwide from Vcocnc.`,
+    'pcb': `Find FANUC ${categoryName} for reliable CNC signal processing. All boards tested before shipping. 12-month warranty, worldwide delivery from Vcocnc.`,
+    'board': `Browse FANUC ${categoryName} for CNC control systems. Quality-tested circuit boards with 12-month warranty. Fast global shipping from Vcocnc.`,
+    'power': `Shop FANUC ${categoryName} for stable CNC power delivery. Industrial-grade units tested and ready to ship. 12-month warranty at Vcocnc.`,
+    'i/o': `Buy FANUC ${categoryName} for robust automation I/O control. Tested modules with 12-month warranty. Worldwide express shipping from Vcocnc.`,
+    'interface': `Find FANUC ${categoryName} for reliable CNC communication. All parts quality tested. 12-month warranty, DHL/FedEx shipping from Vcocnc.`,
+    'encoder': `Shop FANUC ${categoryName} for accurate CNC position feedback. Tested encoders with 12-month warranty. Fast worldwide delivery from Vcocnc.`,
+    'cable': `Buy FANUC ${categoryName} for reliable industrial connections. Quality cables with 12-month warranty. Fast express shipping worldwide at Vcocnc.`,
+    'display': `Find FANUC ${categoryName} for clear CNC operator interfaces. Tested displays with 12-month warranty. Worldwide shipping from Vcocnc.`,
+    'spindle': `Shop FANUC ${categoryName} for high-speed CNC spindle control. Tested drives with 12-month warranty. Express global shipping from Vcocnc.`,
+    'controller': `Buy FANUC ${categoryName} for advanced CNC machine control. All controllers tested. 12-month warranty, fast worldwide delivery at Vcocnc.`,
+    'robot': `Find FANUC ${categoryName} for industrial robot automation. Tested parts with 12-month warranty. Fast DHL/FedEx shipping worldwide from Vcocnc.`,
+  };
+
+  for (const [key, template] of Object.entries(templates)) {
+    if (name.includes(key)) return template;
+  }
+
+  if (baseDescription && baseDescription.length > 50) return baseDescription;
+
+  return `Browse ${categoryName} from Vcocnc. Quality FANUC CNC spare parts, tested with 12-month warranty. Fast worldwide shipping via DHL & FedEx.`;
+}
+
 export async function generateMetadata({ params }: CategoryPathPageProps): Promise<Metadata> {
   try {
     const { categoryPath } = await params;
@@ -20,14 +48,13 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
     const { category } = await CategoryService.getCategoryByPath(path);
     const baseUrl = getSiteUrl();
     const urlPath = category.path ? `/categories/${category.path}` : `/categories/${path}`;
+    const metaDescription = getCategoryMetaDescription(category.name, category.description);
     return {
-      title: `${category.name} - FANUC Parts | Vcocnc`,
-      description:
-        category.description ||
-        `Browse ${category.name} products from Vcocnc. High-quality FANUC automation parts with fast shipping.`,
+      title: `${category.name} - FANUC CNC Parts | Buy Online | Vcocnc`,
+      description: metaDescription,
       openGraph: {
-        title: `${category.name} - FANUC Parts | Vcocnc`,
-        description: category.description || `Browse ${category.name} products from Vcocnc`,
+        title: `${category.name} - FANUC CNC Parts | Vcocnc`,
+        description: metaDescription,
         type: 'website',
         url: `${baseUrl}${urlPath}`,
       },
@@ -41,6 +68,87 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
       description: 'Browse FANUC automation parts by category.',
     };
   }
+}
+
+// CollectionPage + FAQ JSON-LD for category pages
+function CategoryStructuredData({ category, breadcrumb, baseUrl }: { category: any; breadcrumb: any[]; baseUrl: string }) {
+  const urlPath = category.path ? `/categories/${category.path}` : `/categories/${category.slug}`;
+  const categoryUrl = `${baseUrl}${urlPath}`;
+
+  const collectionData = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": category.name,
+    "description": getCategoryMetaDescription(category.name, category.description),
+    "url": categoryUrl,
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Vcocnc",
+      "url": baseUrl
+    },
+    "breadcrumb": {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": baseUrl
+        },
+        ...breadcrumb.map((bc: any, idx: number) => ({
+          "@type": "ListItem",
+          "position": idx + 2,
+          "name": bc.name,
+          "item": `${baseUrl}/categories/${bc.path || bc.slug}`
+        }))
+      ]
+    }
+  };
+
+  const catName = category.name;
+  const faqData = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": `Where can I buy FANUC ${catName} online?`,
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": `You can buy genuine FANUC ${catName} online at Vcocnc (vcocncspare.com). We offer quality-tested parts with 12-month warranty and worldwide express shipping via DHL and FedEx.`
+        }
+      },
+      {
+        "@type": "Question",
+        "name": `Do you offer warranty on FANUC ${catName}?`,
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": `Yes, all FANUC ${catName} from Vcocnc come with a 12-month warranty. Every part is quality tested before shipment to ensure reliability.`
+        }
+      },
+      {
+        "@type": "Question",
+        "name": `How fast is shipping for FANUC ${catName}?`,
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": `We offer worldwide express shipping via DHL, FedEx, and UPS. Most in-stock ${catName} ship within 1-3 business days with delivery in 3-7 business days.`
+        }
+      }
+    ]
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionData) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqData) }}
+      />
+    </>
+  );
 }
 
 export default async function CategoryPathPage({ params, searchParams }: CategoryPathPageProps) {
@@ -68,9 +176,15 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
   const breadcrumbIds = (resolved.breadcrumb || [])
     .map((c: any) => Number(c.id))
     .filter((n: number) => Number.isFinite(n) && n > 0);
+  const baseUrl = getSiteUrl();
 
   return (
     <PublicLayout>
+      <CategoryStructuredData
+        category={resolved.category}
+        breadcrumb={resolved.breadcrumb || []}
+        baseUrl={baseUrl}
+      />
       <ScrollRestorer storageKey="category-scroll-y" />
       <div className="min-h-screen bg-gray-50">
         {/* Hero */}

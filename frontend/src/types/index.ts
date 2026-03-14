@@ -84,12 +84,33 @@ export interface Product {
   meta_description: string;
   meta_keywords: string;
   image_urls: string[];
+  // Enhanced fields
+  warranty_period?: string;
+  condition_type?: 'new' | 'refurbished' | 'used';
+  origin_country?: string;
+  manufacturer?: string;
+  lead_time?: string;
+  minimum_order_quantity?: number;
+  packaging_info?: string;
+  certifications?: string;
+  technical_specs?: string;
+  compatibility_info?: string;
+  installation_guide?: string;
+  maintenance_tips?: string;
+  datasheet_url?: string;
+  manual_url?: string;
+  video_urls?: string;
+  view_count?: number;
+  seo_score?: number;
   created_at: string;
   updated_at: string;
   images?: ProductImage[];
   attributes?: ProductAttribute[];
   translations?: ProductTranslation[];
   purchase_links?: PurchaseLink[];
+  reviews?: ProductReview[];
+  faqs?: ProductFAQ[];
+  tags?: ProductTag[];
 }
 
 export interface ProductImage {
@@ -137,6 +158,44 @@ export interface PurchaseLink {
   is_active: boolean;
   sort_order: number;
   description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductReview {
+  id: number;
+  product_id: number;
+  customer_name: string;
+  customer_email?: string;
+  rating: number;
+  review_title: string;
+  review_content: string;
+  is_verified: boolean;
+  is_approved: boolean;
+  helpful_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductFAQ {
+  id: number;
+  product_id: number;
+  question: string;
+  answer: string;
+  is_active: boolean;
+  sort_order: number;
+  view_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductTag {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  color?: string;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

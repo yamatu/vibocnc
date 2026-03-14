@@ -48,7 +48,9 @@ func withProductPreloads(db *gorm.DB) *gorm.DB {
 // lighter preloads for public product endpoints (reduce extra queries)
 func withPublicProductPreloads(db *gorm.DB) *gorm.DB {
 	q := db.Preload("Category").
-		Preload("PurchaseLinks", "is_active = ?", true)
+		Preload("PurchaseLinks", "is_active = ?", true).
+		Preload("Reviews", "is_approved = ?", true).
+		Preload("FAQs", "is_active = ?", true)
 	if hasImagesTable() {
 		q = q.Preload("Images")
 	}

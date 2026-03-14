@@ -20,6 +20,7 @@ import {
   GlobeAltIcon,
   ClockIcon,
   MagnifyingGlassIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid, StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import Layout from '@/components/layout/Layout';
@@ -27,6 +28,7 @@ import ProductImageViewer from '@/components/product/ProductImageViewer';
 import ProductSEO from '@/components/seo/ProductSEO';
 import { ProductService, CategoryService, ShippingRateService } from '@/services';
 import type { ShippingRatePublic, ShippingQuote } from '@/services/shipping-rate.service';
+import type { ProductFAQ, ProductReview } from '@/types';
 import { queryKeys } from '@/lib/react-query';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, getProductImageUrlByIndex, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
@@ -35,6 +37,40 @@ import { useRouter } from 'next/navigation';
 interface ProductDetailClientProps {
   productSku: string;
   initialProduct?: any;
+}
+
+function parseTechnicalSpecs(raw?: string): Record<string, string> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+      return parsed as Record<string, string>;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function FAQAccordionItem({ question, answer }: { question: string; answer: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between px-6 py-4 text-left text-sm font-medium text-gray-900 hover:bg-gray-50"
+      >
+        <span>{question}</span>
+        <ChevronDownIcon
+          className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <div className="px-6 pb-4 text-sm text-gray-700 leading-relaxed">
+          {answer}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ProductDetailClient({ productSku, initialProduct }: ProductDetailClientProps) {
@@ -363,6 +399,8 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
               selectedImageIndex={selectedImageIndex}
               onImageChange={handleImageIndexChange}
 				  fallbackImage={getDefaultProductImageWithSku(product.sku, '/images/default-product.jpg')}
+              productSku={product.sku}
+              categoryName={categoryName}
             />
 
             {/* Product Info */}
@@ -564,13 +602,117 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
           </div>
 
           {/* Product Description — full width below the grid */}
-          <div className="mt-12">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Product Description</h2>
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="text-base text-gray-700 whitespace-pre-line leading-relaxed max-w-none">
-                {descriptionToShow}
+          <div className="mt-12 space-y-8">
+            {/* Main Description */}
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Product Description</h2>
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="product-description text-base text-gray-700 whitespace-pre-line leading-relaxed max-w-none">
+                  {descriptionToShow}
+                </div>
               </div>
-            </div>
+            </section>
+
+            {/* Technical Specifications */}
+            {(() => {
+              const specs = parseTechnicalSpecs(product.technical_specs);
+              if (!specs) return null;
+              return (
+                <section>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Technical Specifications</h2>
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden product-specs">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {Object.entries(specs).map(([key, value], idx) => (
+                          <tr key={key} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                            <td className="px-6 py-3 font-medium text-gray-900 w-1/3">{key}</td>
+                            <td className="px-6 py-3 text-gray-700">{String(value)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              );
+            })()}
+
+            {/* Compatibility Info */}
+            {product.compatibility_info && (
+              <section>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Compatibility Information</h2>
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <p className="text-base text-gray-700 whitespace-pre-line leading-relaxed">{product.compatibility_info}</p>
+                </div>
+              </section>
+            )}
+
+            {/* Installation Guide */}
+            {product.installation_guide && (
+              <section>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Installation Guide</h2>
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <p className="text-base text-gray-700 whitespace-pre-line leading-relaxed">{product.installation_guide}</p>
+                </div>
+              </section>
+            )}
+
+            {/* Maintenance Tips */}
+            {product.maintenance_tips && (
+              <section>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Maintenance Tips</h2>
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <p className="text-base text-gray-700 whitespace-pre-line leading-relaxed">{product.maintenance_tips}</p>
+                </div>
+              </section>
+            )}
+
+            {/* Product FAQ */}
+            {product.faqs && product.faqs.filter((f: ProductFAQ) => f.is_active).length > 0 && (
+              <section>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Frequently Asked Questions</h2>
+                <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+                  {product.faqs.filter((f: ProductFAQ) => f.is_active).map((faq: ProductFAQ) => (
+                    <FAQAccordionItem key={faq.id} question={faq.question} answer={faq.answer} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Customer Reviews */}
+            {product.reviews && product.reviews.filter((r: ProductReview) => r.is_approved).length > 0 && (
+              <section>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Customer Reviews</h2>
+                <div className="space-y-4">
+                  {product.reviews.filter((r: ProductReview) => r.is_approved).map((review: ProductReview) => (
+                    <div key={review.id} className="bg-white rounded-lg border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{review.customer_name}</span>
+                          {review.is_verified && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              <CheckIcon className="h-3 w-3 mr-0.5" />
+                              Verified
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500">{new Date(review.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center mb-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          star <= review.rating
+                            ? <StarIconSolid key={star} className="h-4 w-4 text-yellow-400" />
+                            : <StarIcon key={star} className="h-4 w-4 text-gray-300" />
+                        ))}
+                      </div>
+                      {review.review_title && (
+                        <h3 className="font-medium text-gray-900 mb-1">{review.review_title}</h3>
+                      )}
+                      <p className="text-sm text-gray-700">{review.review_content}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
 
           {/* Related Products */}

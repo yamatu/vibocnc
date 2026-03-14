@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"fanuc-backend/config"
@@ -34,9 +36,9 @@ func (poc *ProductOptimizationController) OptimizeProduct(c *gin.Context) {
 		return
 	}
 
-	// Get the product
+	// Get the product with category for category-aware optimization
 	var product models.Product
-	if err := db.First(&product, request.ProductID).Error; err != nil {
+	if err := db.Preload("Category").First(&product, request.ProductID).Error; err != nil {
 		c.JSON(http.StatusNotFound, models.APIResponse{
 			Success: false,
 			Message: "Product not found",
@@ -119,7 +121,7 @@ func (poc *ProductOptimizationController) BulkOptimizeProducts(c *gin.Context) {
 	}
 
 	var products []models.Product
-	query := db.Where("is_active = ?", true)
+	query := db.Preload("Category").Where("is_active = ?", true)
 
 	// Apply filters
 	if len(request.ProductIDs) > 0 {
@@ -306,28 +308,56 @@ func (poc *ProductOptimizationController) calculateSEOScore(product *models.Prod
 	return (score / maxScore) * 5.0 // Scale to 0-5
 }
 
-// enhanceProductContent enhances product content if needed
+// enhanceProductContent enhances product content with category-aware SEO optimization
 func (poc *ProductOptimizationController) enhanceProductContent(product *models.Product, updateData map[string]interface{}) bool {
 	contentUpdated := false
+	categoryName := strings.ToLower(product.Category.Name)
 
-	// Enhance meta title if missing or too short
+	// Category-aware keyword phrases for meta content
+	categoryKeyword := poc.getCategoryKeyword(categoryName)
+	categoryBenefit := poc.getCategoryBenefit(categoryName)
+
+	// Enhance meta title if missing or too short (target: 50-60 chars)
 	if len(product.MetaTitle) < 20 {
-		metaTitle := product.Name + " - " + product.SKU + " | Professional FANUC Parts | Vcocnc"
+		stockTag := "In Stock"
+		if product.StockQuantity <= 0 {
+			stockTag = "Available"
+		}
+		// Format: "{SKU} {CategoryKeyword} - {StockTag} | Vcocnc"
+		metaTitle := fmt.Sprintf("%s %s - %s | Vcocnc FANUC Parts", product.SKU, categoryKeyword, stockTag)
 		if len(metaTitle) > 60 {
-			metaTitle = product.Name + " - " + product.SKU + " | Vcocnc"
+			metaTitle = fmt.Sprintf("%s %s - %s | Vcocnc", product.SKU, categoryKeyword, stockTag)
+		}
+		if len(metaTitle) > 60 {
+			metaTitle = fmt.Sprintf("%s - %s | Vcocnc", product.SKU, stockTag)
 		}
 		updateData["meta_title"] = metaTitle
 		contentUpdated = true
 	}
 
-	// Enhance meta description if missing or too short
+	// Enhance meta description if missing or too short (target: 145-158 chars)
 	if len(product.MetaDescription) < 50 {
-		metaDesc := product.Description
-		if len(metaDesc) > 155 {
-			metaDesc = metaDesc[:152] + "..."
+		stockPhrase := "In stock & ready to ship."
+		if product.StockQuantity <= 0 {
+			stockPhrase = "Available to order."
 		}
-		if metaDesc == "" {
-			metaDesc = product.Name + " (" + product.SKU + ") - Professional FANUC part available at Vcocnc. High-quality industrial automation component with competitive pricing and worldwide shipping."
+		brand := product.Brand
+		if brand == "" {
+			brand = "FANUC"
+		}
+		// Format: "{Brand} {SKU} {categoryKeyword} for {benefit}. {stockPhrase} Tested, 12-month warranty, fast worldwide shipping. Order now at Vcocnc."
+		metaDesc := fmt.Sprintf(
+			"%s %s %s for %s. %s Tested, 12-month warranty, fast worldwide shipping. Order now at Vcocnc.",
+			brand, product.SKU, categoryKeyword, categoryBenefit, stockPhrase,
+		)
+		if len(metaDesc) > 160 {
+			metaDesc = fmt.Sprintf(
+				"%s %s %s — %s %s 12-month warranty, fast shipping. Order at Vcocnc.",
+				brand, product.SKU, categoryKeyword, stockPhrase, categoryBenefit+".",
+			)
+		}
+		if len(metaDesc) > 160 {
+			metaDesc = metaDesc[:157] + "..."
 		}
 		updateData["meta_description"] = metaDesc
 		contentUpdated = true
@@ -336,34 +366,37 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	// Enhance meta keywords if missing
 	if len(product.MetaKeywords) < 20 {
 		keywords := []string{
-			product.Name,
 			product.SKU,
+			product.Name,
+			"FANUC " + categoryKeyword,
 			"FANUC parts",
-			"CNC parts",
-			"industrial automation",
+			"CNC spare parts",
 		}
 		if product.Brand != "" {
-			keywords = append(keywords, product.Brand)
+			keywords = append(keywords, product.Brand+" parts")
 		}
 		if product.Model != "" {
 			keywords = append(keywords, product.Model)
 		}
-		keywords = append(keywords, "Vcocnc", "spare parts", "replacement parts")
-
-		keywordStr := ""
-		for i, kw := range keywords {
-			if i > 0 {
-				keywordStr += ", "
-			}
-			keywordStr += kw
-		}
-		updateData["meta_keywords"] = keywordStr
+		keywords = append(keywords, "industrial automation", "Vcocnc", "buy FANUC parts online")
+		updateData["meta_keywords"] = strings.Join(keywords, ", ")
 		contentUpdated = true
 	}
 
-	// Enhance short description if missing
-	if len(product.ShortDescription) < 50 && len(product.Description) > 0 {
-		shortDesc := product.Description
+	// Enhance short description if missing (category-aware)
+	if len(product.ShortDescription) < 50 {
+		brand := product.Brand
+		if brand == "" {
+			brand = "FANUC"
+		}
+		stockText := "In stock and ready to ship."
+		if product.StockQuantity <= 0 {
+			stockText = "Available for order with fast handling."
+		}
+		shortDesc := fmt.Sprintf(
+			"%s %s %s for %s. %s Quality tested with 12-month warranty.",
+			brand, product.SKU, categoryKeyword, categoryBenefit, stockText,
+		)
 		if len(shortDesc) > 200 {
 			shortDesc = shortDesc[:197] + "..."
 		}
@@ -393,4 +426,68 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	}
 
 	return contentUpdated
+}
+
+// getCategoryKeyword returns a descriptive keyword phrase for the product category
+func (poc *ProductOptimizationController) getCategoryKeyword(categoryName string) string {
+	categoryKeywords := map[string]string{
+		"servo":          "Servo Drive Unit",
+		"motor":          "Servo Motor",
+		"pcb":            "Control PCB Board",
+		"board":          "Circuit Board",
+		"power supply":   "Power Supply Module",
+		"power":          "Power Supply Unit",
+		"i/o":            "I/O Module",
+		"interface":      "Interface Board",
+		"encoder":        "Encoder Unit",
+		"sensor":         "Sensor Module",
+		"cable":          "Connection Cable",
+		"connector":      "Connector Part",
+		"display":        "Display Unit",
+		"keypad":         "Keypad Panel",
+		"spindle":        "Spindle Drive",
+		"amplifier":      "Servo Amplifier",
+		"controller":     "CNC Controller",
+		"teach pendant":  "Teach Pendant",
+		"robot":          "Robot Controller",
+		"battery":        "Battery Unit",
+		"fan":            "Cooling Fan Unit",
+		"membrane":       "Membrane Keysheet",
+	}
+
+	for key, keyword := range categoryKeywords {
+		if strings.Contains(categoryName, key) {
+			return keyword
+		}
+	}
+	return "CNC Spare Part"
+}
+
+// getCategoryBenefit returns a benefit phrase for the product category
+func (poc *ProductOptimizationController) getCategoryBenefit(categoryName string) string {
+	categoryBenefits := map[string]string{
+		"servo":        "precise motion control in CNC systems",
+		"motor":        "high-torque performance in CNC machines",
+		"pcb":          "reliable signal processing in automation",
+		"board":        "stable control in CNC equipment",
+		"power supply": "stable power delivery in industrial systems",
+		"power":        "reliable power for CNC operations",
+		"i/o":          "robust input/output control in automation",
+		"interface":    "reliable communication in CNC systems",
+		"encoder":      "accurate position feedback in CNC machines",
+		"sensor":       "precision measurement in automation",
+		"cable":        "reliable connections in industrial equipment",
+		"display":      "clear operator interface in CNC machines",
+		"spindle":      "high-speed spindle control in CNC systems",
+		"amplifier":    "precise servo control in CNC machines",
+		"controller":   "advanced CNC machine control",
+		"robot":        "industrial robot automation",
+	}
+
+	for key, benefit := range categoryBenefits {
+		if strings.Contains(categoryName, key) {
+			return benefit
+		}
+	}
+	return "CNC and industrial automation applications"
 }

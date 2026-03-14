@@ -11,6 +11,21 @@ interface ProductImageViewerProps {
   selectedImageIndex: number;
   onImageChange: (index: number) => void;
   fallbackImage?: string;
+  productSku?: string;
+  categoryName?: string;
+}
+
+function getImageAlt(productName: string, productSku?: string, categoryName?: string, index: number = 0): string {
+  const sku = productSku || '';
+  const cat = categoryName || 'Industrial Component';
+  switch (index) {
+    case 0:
+      return `${sku} ${productName} - Front View | Vcocnc FANUC Parts`.trim();
+    case 1:
+      return `${sku} ${productName} - Detail View | ${cat}`.trim();
+    default:
+      return `${sku} ${productName} - View ${index + 1} | CNC Spare Part`.trim();
+  }
 }
 
 export default function ProductImageViewer({
@@ -18,7 +33,9 @@ export default function ProductImageViewer({
   productName,
   selectedImageIndex,
   onImageChange,
-  fallbackImage
+  fallbackImage,
+  productSku,
+  categoryName
 }: ProductImageViewerProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -76,7 +93,7 @@ export default function ProductImageViewer({
                 <span className="absolute inset-0 rounded-md overflow-hidden">
                   <Image
                     src={getProductImageUrlByIndex(images, index)}
-                    alt={`${productName} - Professional FANUC Part Image ${index + 1} | Vcocnc`}
+                    alt={getImageAlt(productName, productSku, categoryName, index)}
                     fill
                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                     className="object-cover object-center"
@@ -101,7 +118,7 @@ export default function ProductImageViewer({
         >
           <Image
             src={currentImage}
-            alt={`${productName} - Professional FANUC Part | High Quality Industrial Component | Vcocnc`}
+            alt={getImageAlt(productName, productSku, categoryName, selectedImageIndex)}
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 50vw"
             className="object-cover object-center transition-transform duration-200"
