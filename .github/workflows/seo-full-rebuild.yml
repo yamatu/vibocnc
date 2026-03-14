@@ -1,0 +1,56 @@
+name: SEO Full Rebuild
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Every day at 3:00 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run content optimizer
+        run: |
+          cd scripts
+          pip install -r requirements.txt 2>/dev/null || true
+          python run_optimization.py
+        continue-on-error: true
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Build frontend (ISR)
+        run: cd frontend && npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+
+      - name: Revalidate all products
+        if: env.FRONTEND_URL != '' && env.REVALIDATE_SECRET != ''
+        run: |
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Revalidate-Secret: $REVALIDATE_SECRET" \
+            -d '{"tag":"all-products"}' \
+            "$FRONTEND_URL/api/revalidate" || true
+        env:
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}

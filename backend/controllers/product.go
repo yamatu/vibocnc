@@ -956,6 +956,9 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 	// Invalidate caches (Redis + optional Cloudflare)
 	services.InvalidatePublicCaches(c.Request.Context(), "product:create", nil)
 
+	// Trigger Next.js ISR revalidation
+	services.TriggerNextRevalidate(product.Slug, true)
+
 	// Load created product with relations (select only known columns)
 	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").
 		Preload("Category").
@@ -1164,6 +1167,9 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	// Invalidate caches (Redis + optional Cloudflare)
 	services.InvalidatePublicCaches(c.Request.Context(), "product:update", nil)
 
+	// Trigger Next.js ISR revalidation
+	services.TriggerNextRevalidate(product.Slug, true)
+
 	// Load updated product with relations (select only known columns)
 	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").
 		Preload("Category").
@@ -1247,6 +1253,9 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 
 	// Invalidate caches (Redis + optional Cloudflare)
 	services.InvalidatePublicCaches(c.Request.Context(), "product:delete", nil)
+
+	// Trigger Next.js ISR revalidation
+	services.TriggerNextRevalidate(product.Slug, true)
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,

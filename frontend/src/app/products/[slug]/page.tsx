@@ -6,8 +6,7 @@ import { toProductPathId } from '@/lib/utils';
 import ProductDetailClient from './ProductDetailClient';
 import { redirect, notFound } from 'next/navigation';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 3600; // ISR: revalidate every hour
 
 function slugToSku(slug: string): string {
   if (!slug) return '';

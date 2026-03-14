@@ -16,18 +16,19 @@ const getApiBaseUrl = () => {
 };
 
 // Use server-only fetch with per-request memoization to dedupe calls
+// Supports ISR via cache tags for on-demand revalidation
 export const getProductBySkuCached = cache(async (sku: string) => {
   const trimmed = sku?.trim() || '';
   const baseUrl = getApiBaseUrl();
   // Use query param endpoint to support SKUs containing '/'
   const url = `${baseUrl}/public/products/sku?sku=${encodeURIComponent(trimmed)}`;
 
+  // Build a tag from the SKU for on-demand revalidation
+  const skuTag = `product-${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
   try {
     const res = await fetch(url, {
-      // Always fetch fresh but allow React memoization to dedupe within request
-      cache: 'no-store',
-      // Next hints (no revalidate)
-      next: { revalidate: 0 },
+      next: { revalidate: 3600, tags: [skuTag, 'all-products'] },
       headers: { 'Content-Type': 'application/json' },
     });
 
@@ -48,8 +49,7 @@ export const getProductBySkuCached = cache(async (sku: string) => {
   try {
     const searchUrl = `${baseUrl}/public/products?search=${encodeURIComponent(trimmed)}&is_active=true&page_size=1`;
     const res2 = await fetch(searchUrl, {
-      cache: 'no-store',
-      next: { revalidate: 0 },
+      next: { revalidate: 3600, tags: [skuTag, 'all-products'] },
       headers: { 'Content-Type': 'application/json' },
     });
     if (res2.ok) {
