@@ -1,7 +1,8 @@
 import { getRequestBaseUrl } from '@/lib/request-url'
 import { NextResponse } from 'next/server'
 
-export const revalidate = 3600 // ISR: 1 hour
+export const dynamic = 'force-dynamic'
+export const revalidate = 3600 // 1 hour
 
 // 完整的sitemap索引 - 包含所有sitemap文件
 export async function GET() {

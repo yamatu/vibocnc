@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { ProductService } from '@/services/product.service'
 import { getRequestBaseUrl } from '@/lib/request-url'
 
-export const revalidate = 1800 // ISR: 30 minutes
+export const dynamic = 'force-dynamic'
+export const revalidate = 1800 // 30 minutes
 
 export async function GET() {
   const baseUrl = await getRequestBaseUrl()

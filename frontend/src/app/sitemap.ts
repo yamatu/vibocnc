@@ -1,7 +1,8 @@
 import { MetadataRoute } from 'next'
 import { getRequestBaseUrl } from '@/lib/request-url'
 
-export const revalidate = 3600 // ISR: 1 hour
+export const dynamic = 'force-dynamic'
+export const revalidate = 3600 // 1 hour
 
 // 主sitemap - 只包含最重要的页面，其他通过专门的sitemap文件处理
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

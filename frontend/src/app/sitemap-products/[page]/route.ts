@@ -3,7 +3,8 @@ import { getRequestBaseUrl } from '@/lib/request-url'
 import { ProductService } from '@/services/product.service'
 import { toProductPathId } from '@/lib/utils'
 
-export const revalidate = 1800 // ISR: 30 minutes
+export const dynamic = 'force-dynamic'
+export const revalidate = 1800 // 30 minutes
 
 export async function GET(
   _req: Request,

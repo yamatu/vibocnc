@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { getRequestBaseUrl } from '@/lib/request-url'
 import { CategoryService } from '@/services/category.service'
 
-export const revalidate = 3600 // ISR: 1 hour
+export const dynamic = 'force-dynamic'
+export const revalidate = 3600 // 1 hour
 
 export async function GET() {
   const baseUrl = await getRequestBaseUrl()
