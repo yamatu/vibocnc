@@ -423,7 +423,7 @@ CREATE TABLE IF NOT EXISTS contact_messages (
 
 -- 插入默认管理员用户 (密码: admin123)
 INSERT IGNORE INTO admin_users (username, email, password_hash, full_name, role, is_active) 
-VALUES ('admin', 'admin@vcocnc.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE);
+VALUES ('admin', 'admin@vcocnc.shop', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE);
 
 -- 插入默认语言
 INSERT IGNORE INTO languages (code, name, native_name, is_active, is_default, sort_order) VALUES

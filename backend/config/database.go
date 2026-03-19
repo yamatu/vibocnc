@@ -220,7 +220,7 @@ func createDefaultAdmin() {
 	}
 	email := os.Getenv("DEFAULT_ADMIN_EMAIL")
 	if email == "" {
-		email = "admin@vcocnc.com"
+		email = "admin@vcocnc.shop"
 	}
 	fullName := os.Getenv("DEFAULT_ADMIN_FULLNAME")
 	if fullName == "" {

@@ -428,7 +428,7 @@ CREATE TRIGGER update_contact_messages_updated_at BEFORE UPDATE ON contact_messa
 
 -- 插入默认管理员用户 (密码: admin123)
 INSERT INTO admin_users (username, email, password_hash, full_name, role, is_active)
-VALUES ('admin', 'admin@vcocnc.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE)
+VALUES ('admin', 'admin@vcocnc.shop', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE)
 ON CONFLICT (username) DO NOTHING;
 
 -- 插入默认语言

@@ -44,8 +44,8 @@ export default function ContactPage() {
     {
       icon: GlobeAltIcon,
       label: 'Website',
-      value: 'www.vcocnc.com',
-      link: 'https://www.vcocnc.com',
+      value: 'www.vcocnc.shop',
+      link: 'https://www.vcocnc.shop',
       description: 'Visit our website for more information',
     },
   ];
