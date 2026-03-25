@@ -6,18 +6,27 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
 
 // httpClientRevalidate is a shared client with a short timeout for ISR triggers.
 var httpClientRevalidate = &http.Client{Timeout: 5 * time.Second}
+var nonAlnumRe = regexp.MustCompile(`[^a-z0-9]`)
 
-// TriggerNextRevalidate sends an on-demand ISR revalidation request to the Next.js frontend.
-// It notifies Next.js to purge the cached page for a specific product (by tag)
-// and optionally the "all-products" tag for sitemaps / listing pages.
+func buildProductRevalidateTag(sku string) string {
+	sku = strings.ToLower(strings.TrimSpace(sku))
+	if sku == "" {
+		return ""
+	}
+	return "product-" + nonAlnumRe.ReplaceAllString(sku, "-")
+}
+
+// TriggerNextRevalidate sends on-demand ISR revalidation requests to the Next.js frontend.
+// It purges product fetch caches by tag and page caches by path.
 // Errors are logged but never bubble up – revalidation is best-effort.
-func TriggerNextRevalidate(slug string, alsoAllProducts bool) {
+func TriggerNextRevalidate(skus []string, paths []string, alsoAllProducts bool) {
 	frontendURL := strings.TrimRight(strings.TrimSpace(os.Getenv("FRONTEND_URL")), "/")
 	secret := strings.TrimSpace(os.Getenv("REVALIDATE_SECRET"))
 	if frontendURL == "" || secret == "" {
@@ -26,10 +35,24 @@ func TriggerNextRevalidate(slug string, alsoAllProducts bool) {
 
 	endpoint := frontendURL + "/api/revalidate"
 
-	// Always revalidate the specific product tag
-	if slug != "" {
-		tag := "product-" + strings.ToLower(strings.ReplaceAll(slug, "/", "-"))
+	seenTags := map[string]bool{}
+	for _, sku := range skus {
+		tag := buildProductRevalidateTag(sku)
+		if tag == "" || seenTags[tag] {
+			continue
+		}
+		seenTags[tag] = true
 		go doRevalidateRequest(endpoint, secret, "", tag)
+	}
+
+	seenPaths := map[string]bool{}
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" || seenPaths[path] {
+			continue
+		}
+		seenPaths[path] = true
+		go doRevalidateRequest(endpoint, secret, path, "")
 	}
 
 	// Optionally revalidate the "all-products" tag (sitemaps, listing pages)

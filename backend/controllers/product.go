@@ -955,11 +955,13 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 	// Commit transaction
 	tx.Commit()
 
+	productPath := services.BuildProductPublicPath(product.SKU)
+
 	// Invalidate caches (Redis + optional Cloudflare)
-	services.InvalidatePublicCaches(c.Request.Context(), "product:create", nil)
+	services.InvalidatePublicCaches(c.Request.Context(), "product:create", []string{productPath})
 
 	// Trigger Next.js ISR revalidation
-	services.TriggerNextRevalidate(product.Slug, true)
+	services.TriggerNextRevalidate([]string{product.SKU}, []string{productPath}, true)
 
 	// Load created product with relations (select only known columns)
 	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").
@@ -992,7 +994,7 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 
 	// Find existing product (select minimal columns)
 	var product models.Product
-	if err := db.Select("id,name,slug,image_urls").First(&product, id).Error; err != nil {
+	if err := db.Select("id,sku,name,slug,image_urls").First(&product, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, models.APIResponse{
 				Success: false,
@@ -1067,6 +1069,9 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	} else {
 		imageURLsJSON = "[]"
 	}
+
+	oldSKU := product.SKU
+	oldPath := services.BuildProductPublicPath(oldSKU)
 
 	// Update product fields
 	product.SKU = req.SKU
@@ -1166,11 +1171,13 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	// Commit transaction
 	tx.Commit()
 
+	newPath := services.BuildProductPublicPath(product.SKU)
+
 	// Invalidate caches (Redis + optional Cloudflare)
-	services.InvalidatePublicCaches(c.Request.Context(), "product:update", nil)
+	services.InvalidatePublicCaches(c.Request.Context(), "product:update", []string{oldPath, newPath})
 
 	// Trigger Next.js ISR revalidation
-	services.TriggerNextRevalidate(product.Slug, true)
+	services.TriggerNextRevalidate([]string{oldSKU, product.SKU}, []string{oldPath, newPath}, true)
 
 	// Load updated product with relations (select only known columns)
 	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").
@@ -1253,11 +1260,13 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 		return
 	}
 
+	productPath := services.BuildProductPublicPath(product.SKU)
+
 	// Invalidate caches (Redis + optional Cloudflare)
-	services.InvalidatePublicCaches(c.Request.Context(), "product:delete", nil)
+	services.InvalidatePublicCaches(c.Request.Context(), "product:delete", []string{productPath})
 
 	// Trigger Next.js ISR revalidation
-	services.TriggerNextRevalidate(product.Slug, true)
+	services.TriggerNextRevalidate([]string{product.SKU}, []string{productPath}, true)
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,

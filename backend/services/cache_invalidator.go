@@ -8,17 +8,24 @@ import (
 	"fanuc-backend/utils"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
 )
 
+var productPathSlashRe = regexp.MustCompile(`[\\/]+`)
+var productPathSpaceRe = regexp.MustCompile(`\s+`)
+
 // Default Redis cache key prefixes used by middleware.CachePublicGET.
 const (
-	redisPrefixCategories = "cache:public:categories:"
-	redisPrefixProducts   = "cache:public:products:"
-	redisPrefixHomepage   = "cache:public:homepage:"
+	redisPrefixCategories      = "cache:public:categories:"
+	redisPrefixProducts        = "cache:public:products:"
+	redisPrefixProduct         = "cache:public:product:"
+	redisPrefixProductSKU      = "cache:public:product_sku:"
+	redisPrefixProductSKUQuery = "cache:public:product_sku_query:"
+	redisPrefixHomepage        = "cache:public:homepage:"
 )
 
 func getSiteURLForPurge() string {
@@ -65,11 +72,8 @@ func buildDefaultPurgeURLs(extra []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(urls))
 	for _, u := range urls {
-		u = strings.TrimSpace(u)
+		u = normalizePurgeURL(base, u)
 		if u == "" {
-			continue
-		}
-		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
 			continue
 		}
 		if !seen[u] {
@@ -78,6 +82,30 @@ func buildDefaultPurgeURLs(extra []string) []string {
 		}
 	}
 	return out
+}
+
+func normalizePurgeURL(base, raw string) string {
+	u := strings.TrimSpace(raw)
+	if u == "" {
+		return ""
+	}
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return strings.TrimRight(u, "/")
+	}
+	if strings.HasPrefix(u, "/") {
+		return strings.TrimRight(base, "/") + u
+	}
+	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(u, "/")
+}
+
+func BuildProductPublicPath(sku string) string {
+	sku = strings.TrimSpace(sku)
+	if sku == "" {
+		return ""
+	}
+	sku = productPathSlashRe.ReplaceAllString(sku, "-")
+	sku = productPathSpaceRe.ReplaceAllString(sku, "-")
+	return "/products/" + sku
 }
 
 // ClearRedisByPrefixes deletes keys matching prefix* for each prefix.
@@ -129,7 +157,15 @@ func InvalidatePublicCaches(ctx context.Context, reason string, extraURLs []stri
 
 	// 1) Origin (Redis) cache
 	if s.AutoClearRedisOnMutation {
-		if err := ClearRedisByPrefixes(ctx, redisPrefixCategories, redisPrefixProducts, redisPrefixHomepage); err != nil {
+		if err := ClearRedisByPrefixes(
+			ctx,
+			redisPrefixCategories,
+			redisPrefixProducts,
+			redisPrefixProduct,
+			redisPrefixProductSKU,
+			redisPrefixProductSKUQuery,
+			redisPrefixHomepage,
+		); err != nil {
 			log.Printf("cache invalidation: redis clear failed (%s): %v", reason, err)
 		}
 	}

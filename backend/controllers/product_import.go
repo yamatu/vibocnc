@@ -81,7 +81,7 @@ func (pc *ProductController) ImportProductsXLSX(c *gin.Context) {
 	if result.Created > 0 || result.Updated > 0 {
 		services.InvalidatePublicCaches(c.Request.Context(), "product:import:xlsx", nil)
 		// Trigger Next.js ISR revalidation for all products (batch import)
-		services.TriggerNextRevalidate("", true)
+		services.TriggerNextRevalidate(nil, nil, true)
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Import completed", Data: result})

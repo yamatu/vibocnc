@@ -154,7 +154,15 @@ func (cc *CacheController) PurgeNow(c *gin.Context) {
 
 	// Optionally clear Redis public cache
 	if req.ClearRedis {
-		_ = services.ClearRedisByPrefixes(c.Request.Context(), "cache:public:categories:", "cache:public:products:", "cache:public:homepage:")
+		_ = services.ClearRedisByPrefixes(
+			c.Request.Context(),
+			"cache:public:categories:",
+			"cache:public:products:",
+			"cache:public:product:",
+			"cache:public:product_sku:",
+			"cache:public:product_sku_query:",
+			"cache:public:homepage:",
+		)
 	}
 
 	// If Cloudflare is disabled, we still consider this a valid "manual refresh" when ClearRedis=true.

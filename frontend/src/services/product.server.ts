@@ -15,6 +15,11 @@ const getApiBaseUrl = () => {
   return `${backendUrl}/api/v1`;
 };
 
+const buildProductSkuTag = (sku: string) => {
+  const trimmed = sku?.trim().toLowerCase() || '';
+  return `product-${trimmed.replace(/[^a-z0-9]/g, '-')}`;
+};
+
 // Use server-only fetch with per-request memoization to dedupe calls
 // Supports ISR via cache tags for on-demand revalidation
 export const getProductBySkuCached = cache(async (sku: string) => {
@@ -24,7 +29,7 @@ export const getProductBySkuCached = cache(async (sku: string) => {
   const url = `${baseUrl}/public/products/sku?sku=${encodeURIComponent(trimmed)}`;
 
   // Build a tag from the SKU for on-demand revalidation
-  const skuTag = `product-${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  const skuTag = buildProductSkuTag(trimmed);
 
   try {
     const res = await fetch(url, {
