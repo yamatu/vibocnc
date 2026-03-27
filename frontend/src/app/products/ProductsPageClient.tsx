@@ -46,6 +46,10 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
 
   const { addItem } = useCartStore();
 
+  useEffect(() => {
+    setCurrentPage(initialData.currentPage);
+  }, [initialData.currentPage]);
+
   // Client-side sorting only (filtering is done server-side)
   const sortedProducts = [...initialData.products].sort((a: any, b: any) => {
     switch (sortBy) {
@@ -105,6 +109,9 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
         params.set('category_id', selectedCategory);
         params.set('include_descendants', 'true');
       }
+      if (currentPage > 1) {
+        params.set('page', String(currentPage));
+      }
 
       const newUrl = `/products${params.toString() ? '?' + params.toString() : ''}`;
       if (newUrl !== window.location.pathname + window.location.search) {
@@ -113,7 +120,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
     }, 500); // Increased debounce time
 
     return () => clearTimeout(timer);
-  }, [searchQuery, selectedCategory, router]);
+  }, [searchQuery, selectedCategory, currentPage, router]);
 
 
 
