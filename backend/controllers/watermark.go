@@ -203,8 +203,7 @@ func (wc *WatermarkController) DefaultProductImage(c *gin.Context) {
 		return
 	}
 
-	// Cache for a while; when default base changes the image may not update immediately.
-	c.Header("Cache-Control", "public, max-age=3600")
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
 	c.Header("ETag", fmt.Sprintf("\"%s\"", wm.SHA256))
-	c.Data(http.StatusOK, "image/png", b)
+	c.Data(http.StatusOK, wm.Asset.MimeType, b)
 }

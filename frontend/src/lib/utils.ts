@@ -170,8 +170,8 @@ export function getProductImageUrl(imageUrls: string[] | any[] | any, fallback: 
 export function getDefaultProductImageWithSku(sku?: string, fallback: string = '/images/placeholder.svg'): string {
   const s = String(sku || '').trim();
   if (!s) return fallback;
-  // Use query param so SKUs containing '/' still work.
-  return `/api/v1/public/products/default-image?sku=${encodeURIComponent(s)}`;
+  const safeSku = s.replace(/[\\/]+/g, '-').replace(/\s+/g, '-');
+  return `/api/v1/public/products/default-image/${encodeURIComponent(safeSku)}?sku=${encodeURIComponent(s)}`;
 }
 
 // Get specific product image URL by index

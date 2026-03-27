@@ -732,7 +732,6 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                         width={200}
                         height={200}
                         className="h-40 w-full object-cover object-center"
-                        unoptimized
                       />
                     </div>
                     <div className="mt-2">

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -75,8 +76,33 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 	if len(text) > 80 {
 		text = text[:80]
 	}
+	text = strings.ToUpper(text)
 
 	var baseImg image.Image
+	baseIdentity := "builtin"
+
+	if req.BaseAssetID != nil && *req.BaseAssetID > 0 {
+		var base models.MediaAsset
+		if err := db.First(&base, *req.BaseAssetID).Error; err != nil {
+			return nil, err
+		}
+		baseIdentity = "asset:" + strings.TrimSpace(base.SHA256)
+		if baseIdentity == "asset:" {
+			baseIdentity = fmt.Sprintf("asset-id:%d", base.ID)
+		}
+	}
+
+	pos := normalizeWatermarkPosition(req.Position)
+	cacheKey := buildWatermarkCacheKey(baseIdentity, text, pos)
+	fileName := cacheKey + ".jpg"
+	relPath := filepath.ToSlash(filepath.Join("media", fileName))
+
+	var existing models.MediaAsset
+	if err := db.Where("relative_path = ?", relPath).First(&existing).Error; err == nil {
+		return &WatermarkResult{Asset: existing, CreatedNew: false, SHA256: existing.SHA256}, nil
+	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
 
 	if req.BaseAssetID != nil && *req.BaseAssetID > 0 {
 		var base models.MediaAsset
@@ -91,29 +117,17 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 	}
 
 	if baseImg == nil {
-		// Generate a simple placeholder base when no default image is configured.
 		baseImg = generateDefaultBaseImage(1000, 1000)
 	}
 
-	pos := normalizeWatermarkPosition(req.Position)
+	baseImg = prepareWatermarkBaseImage(baseImg)
 
-	// Render PNG bytes.
-	outBytes, err := renderWatermarkPNG(baseImg, text, pos)
+	outBytes, err := renderWatermarkJPEG(baseImg, text, pos)
 	if err != nil {
 		return nil, err
 	}
 	h := sha256.Sum256(outBytes)
 	sha := hex.EncodeToString(h[:])
-
-	// If we already have the exact bytes, return it.
-	var existing models.MediaAsset
-	if err := db.Where("sha256 = ?", sha).First(&existing).Error; err == nil {
-		return &WatermarkResult{Asset: existing, CreatedNew: false, SHA256: existing.SHA256}, nil
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-
-	fileName := sha + ".png"
 
 	uploadRoot := getUploadRootForServices()
 	mediaDir := filepath.Join(uploadRoot, "media")
@@ -121,9 +135,7 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 		return nil, err
 	}
 	finalPath := filepath.Join(mediaDir, fileName)
-	relPath := filepath.ToSlash(filepath.Join("media", fileName))
 
-	// Write file if missing.
 	if _, statErr := os.Stat(finalPath); statErr != nil {
 		if err := os.WriteFile(finalPath, outBytes, 0o644); err != nil {
 			return nil, err
@@ -143,14 +155,14 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 	if origName == "" {
 		origName = "watermark"
 	}
-	origName = origName + ".png"
+	origName = origName + ".jpg"
 
 	asset := models.MediaAsset{
 		OriginalName: origName,
 		FileName:     fileName,
 		RelativePath: relPath,
 		SHA256:       sha,
-		MimeType:     "image/png",
+		MimeType:     "image/jpeg",
 		SizeBytes:    int64(len(outBytes)),
 		Title:        strings.TrimSpace(req.Title),
 		AltText:      strings.TrimSpace(req.AltText),
@@ -159,9 +171,8 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 	}
 
 	if err := db.Create(&asset).Error; err != nil {
-		// If created concurrently, fallback to reading.
 		var again models.MediaAsset
-		if e2 := db.Where("sha256 = ?", sha).First(&again).Error; e2 == nil {
+		if e2 := db.Where("relative_path = ?", relPath).First(&again).Error; e2 == nil {
 			return &WatermarkResult{Asset: again, CreatedNew: false, SHA256: again.SHA256}, nil
 		}
 		return nil, err
@@ -176,6 +187,33 @@ func getUploadRootForServices() string {
 		return "./uploads"
 	}
 	return p
+}
+
+func watermarkMaxDimension() int {
+	return clampInt(envInt("WATERMARK_MAX_DIM", 1400), 400, 4000)
+}
+
+func watermarkJPEGQuality() int {
+	return clampInt(envInt("WATERMARK_JPEG_QUALITY", 82), 55, 92)
+}
+
+func buildWatermarkCacheKey(baseIdentity, text, position string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf(
+		"watermark:v2|base=%s|text=%s|pos=%s|max=%d|quality=%d",
+		baseIdentity,
+		text,
+		position,
+		watermarkMaxDimension(),
+		watermarkJPEGQuality(),
+	)))
+	return hex.EncodeToString(sum[:])
+}
+
+func prepareWatermarkBaseImage(img image.Image) image.Image {
+	if img == nil {
+		return img
+	}
+	return resizeNearest(img, watermarkMaxDimension())
 }
 
 func loadMediaAssetImage(asset *models.MediaAsset) (image.Image, error) {
@@ -218,7 +256,7 @@ func getGoRegularFont() (*opentype.Font, error) {
 	return fontParsed, fontParseErr
 }
 
-func renderWatermarkPNG(base image.Image, text string, position string) ([]byte, error) {
+func renderWatermarkJPEG(base image.Image, text string, position string) ([]byte, error) {
 	b := base.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w <= 0 || h <= 0 {
@@ -253,7 +291,6 @@ func renderWatermarkPNG(base image.Image, text string, position string) ([]byte,
 
 	d := &font.Drawer{Face: face}
 	text = strings.TrimSpace(text)
-	text = strings.ToUpper(text)
 	adv := d.MeasureString(text)
 	textW := adv.Ceil()
 	metrics := face.Metrics()
@@ -281,8 +318,7 @@ func renderWatermarkPNG(base image.Image, text string, position string) ([]byte,
 	d.DrawString(text)
 
 	var out bytes.Buffer
-	enc := png.Encoder{CompressionLevel: png.DefaultCompression}
-	if err := enc.Encode(&out, canvas); err != nil {
+	if err := jpeg.Encode(&out, canvas, &jpeg.Options{Quality: watermarkJPEGQuality()}); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil

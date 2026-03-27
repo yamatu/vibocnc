@@ -314,7 +314,6 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             className="h-48 w-full object-cover object-center"
                             priority={false}
                             loading="lazy"
-                            unoptimized
                           />
                         </Link>
 
@@ -389,7 +388,6 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             sizes="120px"
                             className="h-20 w-20 object-cover rounded-lg"
                             loading="lazy"
-                            unoptimized
                           />
                         </Link>
 

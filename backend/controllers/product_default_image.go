@@ -33,6 +33,46 @@ func defaultImageURLForSKU(sku string) string {
 	return "/api/v1/public/products/default-image?sku=" + url.QueryEscape(s)
 }
 
+func staticDefaultImageURLForSKU(db *gorm.DB, sku string) (string, error) {
+	s := strings.TrimSpace(sku)
+	if s == "" {
+		s = "PRODUCT"
+	}
+
+	var baseID *uint
+	position := "bottom-right"
+	if db != nil {
+		if setting, err := services.GetOrCreateWatermarkSetting(db); err == nil {
+			if setting.Enabled {
+				baseID = setting.BaseMediaAssetID
+			}
+			position = setting.WatermarkPosition
+		}
+	}
+
+	wm, err := services.GenerateWatermarkedMediaAsset(db, services.WatermarkRequest{
+		BaseAssetID: baseID,
+		Text:        s,
+		Folder:      "watermarked-default",
+		Position:    position,
+	})
+	if err != nil {
+		if baseID != nil {
+			wm, err = services.GenerateWatermarkedMediaAsset(db, services.WatermarkRequest{
+				BaseAssetID: nil,
+				Text:        s,
+				Folder:      "watermarked-default",
+				Position:    position,
+			})
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return "/uploads/" + wm.Asset.RelativePath, nil
+}
+
 func parseImageURLsJSON(s string) []string {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "[]" {
@@ -121,7 +161,10 @@ func (pc *ProductController) BulkApplyDefaultImage(c *gin.Context) {
 				skipped++
 				continue
 			}
-			defURL := defaultImageURLForSKU(p.SKU)
+			defURL, err := staticDefaultImageURLForSKU(db, p.SKU)
+			if err != nil {
+				return err
+			}
 			if err := db.Model(&models.Product{}).Where("id = ?", p.ID).Update("image_urls", toImageURLsJSON([]string{defURL})).Error; err != nil {
 				return err
 			}
@@ -179,10 +222,16 @@ func (pc *ProductController) BulkRemoveDefaultImage(c *gin.Context) {
 				continue
 			}
 			defURL := defaultImageURLForSKU(p.SKU)
+			staticURL, _ := staticDefaultImageURLForSKU(db, p.SKU)
 			out := make([]string, 0, len(urls))
 			changed := false
 			for _, u := range urls {
 				if strings.TrimSpace(u) == defURL {
+					changed = true
+					removed++
+					continue
+				}
+				if staticURL != "" && strings.TrimSpace(u) == staticURL {
 					changed = true
 					removed++
 					continue

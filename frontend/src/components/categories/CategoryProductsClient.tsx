@@ -302,7 +302,6 @@ export default function CategoryProductsClient({
                         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                         className="h-48 w-full object-cover object-center"
                         loading="lazy"
-                        unoptimized
                       />
                     </Link>
                   </div>
@@ -364,7 +363,6 @@ export default function CategoryProductsClient({
                         sizes="120px"
                         className="h-20 w-20 object-cover rounded-lg"
                         loading="lazy"
-                        unoptimized
                       />
                     </Link>
 

@@ -136,7 +136,6 @@ export function Header() {
                       width={48}
                       height={48}
                       className="h-full w-full object-cover"
-                      unoptimized
                     />
                   </div>
                   <div className="min-w-0 flex-1">
