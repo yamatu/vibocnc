@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import {
@@ -20,6 +20,13 @@ import { queryKeys } from '@/lib/react-query';
 import type { MediaAsset, MediaUploadResponse } from '@/services/media.service';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
+type MediaAssetUpdates = Partial<Pick<MediaAsset, 'folder' | 'tags' | 'title' | 'alt_text'>>;
+type BatchUpdatePayload = { ids: number[]; folder?: string; tags?: string };
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 function formatBytes(bytes: number) {
   if (!bytes || bytes < 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -36,8 +43,8 @@ export default function AdminMediaPage() {
   const { locale, t } = useAdminI18n();
   const queryClient = useQueryClient();
 
-  const [q, setQ] = useState('');
-  const [folder, setFolder] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [folderInput, setFolderInput] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(24);
 
@@ -68,17 +75,25 @@ export default function AdminMediaPage() {
   const [editFolder, setEditFolder] = useState('');
   const [editTags, setEditTags] = useState('');
 
+  const q = useDeferredValue(searchInput.trim());
+  const folder = useDeferredValue(folderInput.trim());
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, folder]);
+
   const filters = useMemo(() => ({ q, folder, page, pageSize }), [q, folder, page, pageSize]);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error } = useQuery({
     queryKey: queryKeys.media.list(filters),
     queryFn: () =>
       MediaService.list({
-        q: q.trim() || undefined,
-        folder: folder.trim() || undefined,
+        q: q || undefined,
+        folder: folder || undefined,
         page,
         page_size: pageSize,
       }),
+    placeholderData: previousData => previousData,
     retry: 1,
   });
 
@@ -97,8 +112,7 @@ export default function AdminMediaPage() {
   useEffect(() => {
     // If filters changed and current page is out of range, reset.
     if (page > totalPages) setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, folder, pageSize, totalPages]);
+  }, [q, folder, page, pageSize, totalPages]);
 
   const uploadMutation = useMutation({
     mutationFn: () => MediaService.upload(uploadFiles, { folder: uploadFolder.trim() || undefined, tags: uploadTags.trim() || undefined }),
@@ -129,7 +143,7 @@ export default function AdminMediaPage() {
       setUploadTags('');
       setShowUploadModal(false);
     },
-    onError: (e: any) => toast.error(e?.message || t('media.toast.uploadFailed', locale === 'zh' ? '上传失败' : 'Failed to upload')),
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.uploadFailed', locale === 'zh' ? '上传失败' : 'Failed to upload'))),
   });
 
   const batchDeleteMutation = useMutation({
@@ -139,11 +153,11 @@ export default function AdminMediaPage() {
       setSelectedIds([]);
       queryClient.invalidateQueries({ queryKey: queryKeys.media.lists() });
     },
-    onError: (e: any) => toast.error(e?.message || t('media.toast.deleteFailed', locale === 'zh' ? '删除失败' : 'Failed to delete')),
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.deleteFailed', locale === 'zh' ? '删除失败' : 'Failed to delete'))),
   });
 
   const batchUpdateMutation = useMutation({
-    mutationFn: (payload: { ids: number[]; folder?: string; tags?: string }) =>
+    mutationFn: (payload: BatchUpdatePayload) =>
       MediaService.batchUpdate(payload.ids, {
         folder: payload.folder,
         tags: payload.tags,
@@ -156,17 +170,17 @@ export default function AdminMediaPage() {
       setBatchTags('');
       queryClient.invalidateQueries({ queryKey: queryKeys.media.lists() });
     },
-    onError: (e: any) => toast.error(e?.message || t('media.toast.updateFailed', locale === 'zh' ? '更新失败' : 'Failed to update')),
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.updateFailed', locale === 'zh' ? '更新失败' : 'Failed to update'))),
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload: { id: number; updates: any }) => MediaService.update(payload.id, payload.updates),
+    mutationFn: (payload: { id: number; updates: MediaAssetUpdates }) => MediaService.update(payload.id, payload.updates),
     onSuccess: () => {
       toast.success(t('common.save', locale === 'zh' ? '保存' : 'Saved'));
       setEditingAsset(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.media.lists() });
     },
-    onError: (e: any) => toast.error(e?.message || t('common.saveFailed', locale === 'zh' ? '保存失败' : 'Failed to save')),
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('common.saveFailed', locale === 'zh' ? '保存失败' : 'Failed to save'))),
   });
 
   const watermarkSettingsMutation = useMutation({
@@ -176,7 +190,7 @@ export default function AdminMediaPage() {
       toast.success(t('media.toast.watermarkSettingsUpdated', locale === 'zh' ? '水印设置已更新' : 'Watermark settings updated'));
       queryClient.invalidateQueries({ queryKey: queryKeys.media.watermarkSettings() });
     },
-    onError: (e: any) => toast.error(e?.message || t('media.toast.watermarkSettingsUpdateFailed', locale === 'zh' ? '更新水印设置失败' : 'Failed to update watermark settings')),
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.watermarkSettingsUpdateFailed', locale === 'zh' ? '更新水印设置失败' : 'Failed to update watermark settings'))),
   });
 
   const watermarkMutation = useMutation({
@@ -192,7 +206,7 @@ export default function AdminMediaPage() {
       // Optional: auto-select the new asset
       setSelectedIds([asset.id]);
     },
-    onError: (e: any) => toast.error(e?.message || t('media.toast.watermarkFailed', locale === 'zh' ? '生成水印失败' : 'Failed to watermark image')),
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.watermarkFailed', locale === 'zh' ? '生成水印失败' : 'Failed to watermark image'))),
   });
 
   const toggleSelected = (id: number) => {
@@ -230,7 +244,7 @@ export default function AdminMediaPage() {
 
   const canBatch = selectedIds.length > 0;
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <AdminLayout>
         <div className="flex justify-center items-center py-20">
@@ -240,7 +254,7 @@ export default function AdminMediaPage() {
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <AdminLayout>
         <div className="text-center py-20">
@@ -383,8 +397,8 @@ export default function AdminMediaPage() {
                 </div>
                 <input
                   type="text"
-                  value={q}
-                  onChange={(e) => { setQ(e.target.value); setPage(1); }}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                   placeholder={t('media.searchPh', locale === 'zh' ? '文件名 / 哈希 / 标题...' : 'filename / hash / title...')}
                 />
@@ -395,8 +409,8 @@ export default function AdminMediaPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('media.folder', locale === 'zh' ? '文件夹' : 'Folder')}</label>
               <input
                 type="text"
-                value={folder}
-                onChange={(e) => { setFolder(e.target.value); setPage(1); }}
+                value={folderInput}
+                onChange={(e) => setFolderInput(e.target.value)}
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
 				placeholder={t('media.folder.ph', locale === 'zh' ? '例如：homepage' : 'e.g. homepage')}
               />
@@ -561,6 +575,11 @@ export default function AdminMediaPage() {
               <div className="mt-6 flex items-center justify-between">
                   <div className="text-sm text-gray-600">
                     {t('common.total', locale === 'zh' ? '总计：' : 'Total:')} <span className="font-medium">{total}</span>
+                    {isFetching ? (
+                      <span className="ml-2 text-xs text-gray-400">
+                        {t('common.loading', locale === 'zh' ? '加载中...' : 'Loading...')}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                   <button
@@ -614,7 +633,7 @@ export default function AdminMediaPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('media.watermark.textSource', locale === 'zh' ? '水印文字来源' : 'Text source')}</label>
                   <select
                     value={watermarkTextSource}
-                    onChange={(e) => setWatermarkTextSource(e.target.value as any)}
+                    onChange={(e) => setWatermarkTextSource(e.target.value === 'custom' ? 'custom' : 'sku')}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md"
                   >
                     <option value="sku">{t('media.watermark.fromSku', locale === 'zh' ? '使用 SKU' : 'From SKU')}</option>
@@ -892,7 +911,7 @@ export default function AdminMediaPage() {
                 </button>
                 <button
                   onClick={() => {
-                    const payload: any = { ids: selectedIds };
+                    const payload: BatchUpdatePayload = { ids: selectedIds };
                     if (batchFolder.trim()) payload.folder = batchFolder.trim();
                     if (batchTags.trim()) payload.tags = batchTags.trim();
                     if (!payload.folder && !payload.tags) {
