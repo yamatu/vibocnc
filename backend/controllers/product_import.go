@@ -68,7 +68,7 @@ func (pc *ProductController) ImportProductsXLSX(c *gin.Context) {
 	defer src.Close()
 
 	db := config.GetDB()
-	result, err := services.ImportProductsFromXLSX(c.Request.Context(), db, src, services.ProductImportOptions{
+	task, err := services.StartProductImportTask(c.Request.Context(), db, src, file.Filename, services.ProductImportOptions{
 		Brand:         brand,
 		Overwrite:     overwrite,
 		CreateMissing: createMissing,
@@ -78,11 +78,22 @@ func (pc *ProductController) ImportProductsXLSX(c *gin.Context) {
 		return
 	}
 
-	if result.Created > 0 || result.Updated > 0 {
-		services.InvalidatePublicCaches(c.Request.Context(), "product:import:xlsx", nil)
-		// Trigger Next.js ISR revalidation for all products (batch import)
-		services.TriggerNextRevalidate(nil, nil, true)
+	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "Import started", Data: task})
+}
+
+// Admin: GET /api/v1/admin/products/import/xlsx/tasks/:id
+func (pc *ProductController) GetProductImportTask(c *gin.Context) {
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Missing task id", Error: "missing_task_id"})
+		return
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Import completed", Data: result})
+	task, ok := services.GetProductImportTaskSnapshot(taskID)
+	if !ok {
+		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Import task not found", Error: "task_not_found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Import task status", Data: task})
 }

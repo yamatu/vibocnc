@@ -170,6 +170,7 @@ func SetupRoutes(r *gin.Engine) {
 				// Bulk import (XLSX)
 				products.GET("/import/template", productController.DownloadImportTemplate)
 				products.POST("/import/xlsx", productController.ImportProductsXLSX)
+				products.GET("/import/xlsx/tasks/:id", productController.GetProductImportTask)
 
 				// Bulk update is_active / is_featured
 				products.PUT("/bulk-update", productController.BulkUpdateProducts)

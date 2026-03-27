@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -22,6 +22,7 @@ import {
 import AdminLayout from '@/components/admin/AdminLayout';
 import Pagination from '@/components/common/Pagination';
 import { ProductService, CategoryService } from '@/services';
+import type { ProductImportTaskSnapshot } from '@/services/product.service';
 import { queryKeys } from '@/lib/react-query';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl } from '@/lib/utils';
 import { useAdminI18n } from '@/lib/admin-i18n';
@@ -45,8 +46,20 @@ function AdminProductsContent() {
   const [importOverwrite, setImportOverwrite] = useState<boolean>(false);
   const [importCreateMissing, setImportCreateMissing] = useState<boolean>(true);
   const [importResult, setImportResult] = useState<any>(null);
+  const [importTask, setImportTask] = useState<ProductImportTaskSnapshot | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const importPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    return () => {
+      if (importPollRef.current) {
+        clearInterval(importPollRef.current);
+        importPollRef.current = null;
+      }
+    };
+  }, []);
 
   // Scroll position management
   const saveScrollPosition = () => {
@@ -267,6 +280,55 @@ function AdminProductsContent() {
     }
   };
 
+  const stopImportPolling = () => {
+    if (importPollRef.current) {
+      clearInterval(importPollRef.current);
+      importPollRef.current = null;
+    }
+  };
+
+  const handleImportTaskUpdate = (task: ProductImportTaskSnapshot) => {
+    setImportTask(task);
+    if (task.result) {
+      setImportResult(task.result);
+    }
+    if (task.status === 'completed') {
+      stopImportPolling();
+      toast.success(
+        t(
+          'products.import.completed',
+          locale === 'zh'
+            ? `导入完成：新增 ${task.created || 0}，更新 ${task.updated || 0}`
+            : `Import completed: ${task.created || 0} created, ${task.updated || 0} updated`
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+    }
+    if (task.status === 'failed') {
+      stopImportPolling();
+      toast.error(task.message || t('products.import.failed', locale === 'zh' ? '导入失败' : 'Import failed'));
+    }
+  };
+
+  const startImportPolling = (taskId: string) => {
+    stopImportPolling();
+
+    const poll = async () => {
+      try {
+        const task = await ProductService.getImportProductsTask(taskId);
+        handleImportTaskUpdate(task);
+      } catch (error: any) {
+        stopImportPolling();
+        toast.error(error.message || t('products.import.failed', locale === 'zh' ? '导入失败' : 'Import failed'));
+      }
+    };
+
+    void poll();
+    importPollRef.current = setInterval(() => {
+      void poll();
+    }, 1500);
+  };
+
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!importFile) throw new Error(locale === 'zh' ? '请选择 .xlsx 文件' : 'Please select an .xlsx file');
@@ -274,21 +336,23 @@ function AdminProductsContent() {
         brand: importBrand,
         overwrite: importOverwrite,
         create_missing: importCreateMissing,
+      }, (pct) => {
+        setUploadProgress(pct);
       });
     },
-    onSuccess: (data: any) => {
-      setImportResult(data);
-      toast.success(
-        t(
-          'products.import.completed',
-          locale === 'zh'
-            ? `导入完成：新增 ${data?.created || 0}，更新 ${data?.updated || 0}`
-            : `Import completed: ${data?.created || 0} created, ${data?.updated || 0} updated`
-        )
-      );
-      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+    onMutate: () => {
+      setUploadProgress(0);
+      setImportResult(null);
+      setImportTask(null);
+      stopImportPolling();
+    },
+    onSuccess: (task: ProductImportTaskSnapshot) => {
+      setUploadProgress(100);
+      setImportTask(task);
+      startImportPolling(task.id);
     },
     onError: (error: any) => {
+      stopImportPolling();
       toast.error(error.message || t('products.import.failed', locale === 'zh' ? '导入失败' : 'Import failed'));
     },
   });
@@ -413,6 +477,9 @@ function AdminProductsContent() {
                 setShowImportModal(true);
                 setImportResult(null);
                 setImportFile(null);
+                setImportTask(null);
+                setUploadProgress(0);
+                stopImportPolling();
               }}
               className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
             >
@@ -438,7 +505,10 @@ function AdminProductsContent() {
 				  <div className="text-xs text-gray-500">{t('products.import.columns', locale === 'zh' ? '模板列：型号 / 价格 / 数量 / 重量kg' : 'Template columns: Model, Price, Quantity, WeightKg')}</div>
                 </div>
                 <button
-                  onClick={() => setShowImportModal(false)}
+                  onClick={() => {
+                    stopImportPolling();
+                    setShowImportModal(false);
+                  }}
                   className="rounded-md p-1 text-gray-500 hover:bg-gray-100"
                 >
                   <XMarkIcon className="h-5 w-5" />
@@ -476,6 +546,9 @@ function AdminProductsContent() {
                       const f = e.target.files?.[0] || null;
                       setImportFile(f);
                       setImportResult(null);
+                      setImportTask(null);
+                      setUploadProgress(0);
+                      stopImportPolling();
                     }}
                     className="block w-full text-sm"
                   />
@@ -502,6 +575,45 @@ function AdminProductsContent() {
 					{t('products.import.overwrite', locale === 'zh' ? '覆盖名称/描述/SEO' : 'Overwrite name/description/SEO')}
                   </label>
                 </div>
+
+                {(importMutation.isPending || importTask) && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-sm text-gray-700">
+                        <span>{locale === 'zh' ? '文件上传进度' : 'Upload progress'}</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="mt-1 h-2 overflow-hidden rounded-full bg-blue-100">
+                        <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+                      </div>
+                    </div>
+
+                    {importTask && (
+                      <div>
+                        <div className="flex items-center justify-between text-sm text-gray-700">
+                          <span>{locale === 'zh' ? '后台导入进度' : 'Import progress'}</span>
+                          <span>{Math.round(importTask.progress_pct || 0)}%</span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-emerald-100">
+                          <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${Math.max(0, Math.min(100, importTask.progress_pct || 0))}%` }} />
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                          <span>{locale === 'zh'
+                            ? `状态：${importTask.status === 'queued' ? '排队中' : importTask.status === 'processing' ? '处理中' : importTask.status === 'completed' ? '已完成' : '失败'}`
+                            : `Status: ${importTask.status}`}</span>
+                          <span>{locale === 'zh' ? `已处理：${importTask.processed_rows}/${importTask.total_rows || '?'}` : `Processed: ${importTask.processed_rows}/${importTask.total_rows || '?'}`}</span>
+                          <span>{locale === 'zh' ? `新增：${importTask.created}` : `Created: ${importTask.created}`}</span>
+                          <span>{locale === 'zh' ? `更新：${importTask.updated}` : `Updated: ${importTask.updated}`}</span>
+                          <span>{locale === 'zh' ? `跳过：${importTask.skipped}` : `Skipped: ${importTask.skipped}`}</span>
+                          <span>{locale === 'zh' ? `失败：${importTask.failed}` : `Failed: ${importTask.failed}`}</span>
+                        </div>
+                        {importTask.message && (
+                          <div className="mt-2 text-xs text-gray-500">{importTask.message}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {importResult && (
                     <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
@@ -542,7 +654,10 @@ function AdminProductsContent() {
 
               <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
                 <button
-                  onClick={() => setShowImportModal(false)}
+                  onClick={() => {
+                    stopImportPolling();
+                    setShowImportModal(false);
+                  }}
                   className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
                 >
 				  {t('common.close', locale === 'zh' ? '关闭' : 'Close')}

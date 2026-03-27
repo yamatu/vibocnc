@@ -1,19 +1,30 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"fanuc-backend/models"
 	"fanuc-backend/utils"
 
+	"github.com/google/uuid"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
+)
+
+const (
+	productImportBatchSize     = 200
+	productImportRecentItems   = 200
+	productImportTempDirName   = "product-imports"
+	productImportMaxSavedTasks = 25
 )
 
 type ProductImportOptions struct {
@@ -52,6 +63,66 @@ type ProductImportResult struct {
 	CreatedNew bool                `json:"create_missing"`
 }
 
+type ProductImportTaskStatus string
+
+const (
+	ProductImportTaskQueued     ProductImportTaskStatus = "queued"
+	ProductImportTaskProcessing ProductImportTaskStatus = "processing"
+	ProductImportTaskCompleted  ProductImportTaskStatus = "completed"
+	ProductImportTaskFailed     ProductImportTaskStatus = "failed"
+)
+
+type ProductImportTaskSnapshot struct {
+	ID            string                  `json:"id"`
+	Status        ProductImportTaskStatus `json:"status"`
+	Brand         string                  `json:"brand"`
+	Filename      string                  `json:"filename"`
+	ProgressPct   float64                 `json:"progress_pct"`
+	ProcessedRows int                     `json:"processed_rows"`
+	TotalRows     int                     `json:"total_rows"`
+	Created       int                     `json:"created"`
+	Updated       int                     `json:"updated"`
+	Skipped       int                     `json:"skipped"`
+	Failed        int                     `json:"failed"`
+	Message       string                  `json:"message,omitempty"`
+	Result        *ProductImportResult    `json:"result,omitempty"`
+	StartedAt     *time.Time              `json:"started_at,omitempty"`
+	CompletedAt   *time.Time              `json:"completed_at,omitempty"`
+	CreatedAt     time.Time               `json:"created_at"`
+	UpdatedAt     time.Time               `json:"updated_at"`
+}
+
+type productImportTask struct {
+	mu sync.RWMutex
+
+	ID            string
+	Status        ProductImportTaskStatus
+	Brand         string
+	Filename      string
+	FilePath      string
+	ProgressPct   float64
+	ProcessedRows int
+	TotalRows     int
+	Message       string
+	Result        ProductImportResult
+	Error         string
+	StartedAt     *time.Time
+	CompletedAt   *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type ProductImportManager struct {
+	mu    sync.RWMutex
+	order []string
+	tasks map[string]*productImportTask
+}
+
+var productImportTasks = &ProductImportManager{
+	order: make([]string, 0, productImportMaxSavedTasks),
+	tasks: make(map[string]*productImportTask),
+}
+
 func GenerateProductImportTemplateXLSX(brand string) ([]byte, error) {
 	brand = strings.ToLower(strings.TrimSpace(brand))
 	if brand == "" {
@@ -65,13 +136,11 @@ func GenerateProductImportTemplateXLSX(brand string) ([]byte, error) {
 	sheet := "Products"
 	f.SetSheetName("Sheet1", sheet)
 
-	// Headers (Chinese + English helper)
 	headers := []string{"型号(Model)", "价格(Price)", "数量(Quantity)", "重量kg(WeightKg)"}
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		_ = f.SetCellValue(sheet, cell, h)
 	}
-	// Example row
 	_ = f.SetCellValue(sheet, "A2", "A02B-0120-C041")
 	_ = f.SetCellValue(sheet, "B2", 1200)
 	_ = f.SetCellValue(sheet, "C2", 5)
@@ -97,10 +166,149 @@ func GenerateProductImportTemplateXLSX(brand string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func StartProductImportTask(ctx context.Context, db *gorm.DB, src io.Reader, filename string, opts ProductImportOptions) (ProductImportTaskSnapshot, error) {
+	if db == nil {
+		return ProductImportTaskSnapshot{}, errors.New("db is nil")
+	}
+
+	brand := strings.ToLower(strings.TrimSpace(opts.Brand))
+	if brand == "" {
+		brand = "fanuc"
+	}
+	if brand != "fanuc" {
+		return ProductImportTaskSnapshot{}, fmt.Errorf("unsupported brand: %s", brand)
+	}
+
+	tempDir := filepath.Join(os.TempDir(), productImportTempDirName)
+	if err := os.MkdirAll(tempDir, 0o755); err != nil {
+		return ProductImportTaskSnapshot{}, err
+	}
+
+	taskID := uuid.NewString()
+	tmpFile, err := os.CreateTemp(tempDir, fmt.Sprintf("%s-*.xlsx", taskID))
+	if err != nil {
+		return ProductImportTaskSnapshot{}, err
+	}
+
+	cleanupOnError := true
+	defer func() {
+		if cleanupOnError {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpFile.Name())
+		}
+	}()
+
+	if _, err := io.Copy(tmpFile, src); err != nil {
+		return ProductImportTaskSnapshot{}, err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return ProductImportTaskSnapshot{}, err
+	}
+
+	task := &productImportTask{
+		ID:       taskID,
+		Status:   ProductImportTaskQueued,
+		Brand:    brand,
+		Filename: filename,
+		FilePath: tmpFile.Name(),
+		Result: ProductImportResult{
+			Brand:      brand,
+			Items:      make([]ProductImportItem, 0, productImportRecentItems),
+			Template:   "model_price_quantity_v1",
+			Overwrite:  opts.Overwrite,
+			CreatedNew: opts.CreateMissing,
+		},
+		Message:   "queued",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	productImportTasks.add(task)
+	cleanupOnError = false
+
+	go runProductImportTask(context.WithoutCancel(ctx), db, taskID, opts)
+
+	return task.snapshot(), nil
+}
+
+func GetProductImportTaskSnapshot(taskID string) (ProductImportTaskSnapshot, bool) {
+	return productImportTasks.getSnapshot(taskID)
+}
+
 func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts ProductImportOptions) (ProductImportResult, error) {
 	if db == nil {
 		return ProductImportResult{}, errors.New("db is nil")
 	}
+
+	tempDir := filepath.Join(os.TempDir(), productImportTempDirName)
+	if err := os.MkdirAll(tempDir, 0o755); err != nil {
+		return ProductImportResult{}, err
+	}
+
+	tmpFile, err := os.CreateTemp(tempDir, "sync-*.xlsx")
+	if err != nil {
+		return ProductImportResult{}, err
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+	}()
+
+	if _, err := io.Copy(tmpFile, r); err != nil {
+		return ProductImportResult{}, err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return ProductImportResult{}, err
+	}
+
+	return processProductImportFile(ctx, db, tmpPath, opts, nil)
+}
+
+func runProductImportTask(ctx context.Context, db *gorm.DB, taskID string, opts ProductImportOptions) {
+	task, ok := productImportTasks.get(taskID)
+	if !ok {
+		return
+	}
+
+	now := time.Now()
+	task.update(func(t *productImportTask) {
+		t.Status = ProductImportTaskProcessing
+		t.Message = "processing"
+		t.StartedAt = &now
+		t.UpdatedAt = now
+	})
+
+	res, err := processProductImportFile(ctx, db, task.FilePath, opts, task)
+	finishedAt := time.Now()
+	if err != nil {
+		task.update(func(t *productImportTask) {
+			t.Status = ProductImportTaskFailed
+			t.Message = err.Error()
+			t.Error = err.Error()
+			t.CompletedAt = &finishedAt
+			t.UpdatedAt = finishedAt
+		})
+	} else {
+		task.update(func(t *productImportTask) {
+			t.Status = ProductImportTaskCompleted
+			t.ProgressPct = 100
+			t.ProcessedRows = res.TotalRows
+			t.TotalRows = res.TotalRows
+			t.Result = res
+			t.Message = "completed"
+			t.CompletedAt = &finishedAt
+			t.UpdatedAt = finishedAt
+		})
+		if res.Created > 0 || res.Updated > 0 {
+			InvalidatePublicCaches(context.Background(), "product:import:xlsx", nil)
+			TriggerNextRevalidate(nil, nil, true)
+		}
+	}
+
+	_ = os.Remove(task.FilePath)
+}
+
+func processProductImportFile(ctx context.Context, db *gorm.DB, filePath string, opts ProductImportOptions, task *productImportTask) (ProductImportResult, error) {
 	brand := strings.ToLower(strings.TrimSpace(opts.Brand))
 	if brand == "" {
 		brand = "fanuc"
@@ -108,17 +316,8 @@ func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts 
 	if brand != "fanuc" {
 		return ProductImportResult{}, fmt.Errorf("unsupported brand: %s", brand)
 	}
-	if !opts.CreateMissing {
-		// default: create missing
-		opts.CreateMissing = true
-	}
 
-	fileBytes, err := io.ReadAll(r)
-	if err != nil {
-		return ProductImportResult{}, err
-	}
-
-	f, err := excelize.OpenReader(bytes.NewReader(fileBytes))
+	f, err := excelize.OpenFile(filePath)
 	if err != nil {
 		return ProductImportResult{}, err
 	}
@@ -129,61 +328,199 @@ func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts 
 		sheet = "Products"
 	}
 
-	rows, err := readImportRows(f, sheet)
+	totalRows, err := countImportRows(f, sheet)
 	if err != nil {
 		return ProductImportResult{}, err
 	}
 
 	res := ProductImportResult{
 		Brand:      brand,
-		TotalRows:  len(rows),
-		Items:      make([]ProductImportItem, 0, len(rows)),
+		TotalRows:  totalRows,
+		Items:      make([]ProductImportItem, 0, minInt(totalRows, productImportRecentItems)),
 		Template:   "model_price_quantity_v1",
 		Overwrite:  opts.Overwrite,
 		CreatedNew: opts.CreateMissing,
 	}
-
-	if len(rows) == 0 {
+	updateTaskProgress(task, res, 0, totalRows, "reading workbook")
+	if totalRows == 0 {
 		return res, nil
 	}
 
-	// Preload categories once (slug -> id)
-	catBySlug := map[string]uint{}
-	var cats []models.Category
-	if e := db.Model(&models.Category{}).Where("is_active = ?", true).Find(&cats).Error; e == nil {
-		for _, c := range cats {
-			catBySlug[c.Slug] = c.ID
-		}
+	catBySlug, defaultCategoryID := loadImportCategories(db)
+	rows, err := f.Rows(sheet)
+	if err != nil {
+		return res, err
 	}
-	defaultCategoryID := uint(0)
-	if id, ok := catBySlug["pcb-boards"]; ok {
-		defaultCategoryID = id
-	} else if len(cats) > 0 {
-		defaultCategoryID = cats[0].ID
+	defer func() { _ = rows.Close() }()
+
+	processed := 0
+	batch := make([]ProductImportRow, 0, productImportBatchSize)
+	rowNo := 0
+	headerMap := importHeaderMap{}
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := applyImportBatch(ctx, db, batch, opts, catBySlug, defaultCategoryID, &res); err != nil {
+			return err
+		}
+		processed += len(batch)
+		updateTaskProgress(task, res, processed, totalRows, fmt.Sprintf("processed %d/%d", processed, totalRows))
+		batch = batch[:0]
+		return nil
 	}
 
-	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, row := range rows {
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		rowNo++
+		cols, err := rows.Columns()
+		if err != nil {
+			return res, err
+		}
+		if rowNo == 1 {
+			headerMap = detectImportHeader(cols)
+			continue
+		}
+		row, ok, err := parseImportRow(cols, headerMap, rowNo)
+		if err != nil {
+			return res, err
+		}
+		if !ok {
+			continue
+		}
+		batch = append(batch, row)
+		if len(batch) >= productImportBatchSize {
+			if err := flush(); err != nil {
+				return res, err
+			}
+		}
+	}
+	if err := flush(); err != nil {
+		return res, err
+	}
+	if err := rows.Error(); err != nil {
+		return res, err
+	}
+
+	updateTaskProgress(task, res, res.TotalRows, res.TotalRows, "completed")
+	return res, nil
+}
+
+func countImportRows(f *excelize.File, sheet string) (int, error) {
+	rows, err := f.Rows(sheet)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	rowNo := 0
+	total := 0
+	headerMap := importHeaderMap{}
+	for rows.Next() {
+		rowNo++
+		cols, err := rows.Columns()
+		if err != nil {
+			return 0, err
+		}
+		if rowNo == 1 {
+			headerMap = detectImportHeader(cols)
+			continue
+		}
+		model := strings.TrimSpace(getCol(cols, headerMap.Model))
+		priceStr := getCol(cols, headerMap.Price)
+		qtyStr := getCol(cols, headerMap.Qty)
+		weightStr := getCol(cols, headerMap.Weight)
+		if model == "" && strings.TrimSpace(priceStr) == "" && strings.TrimSpace(qtyStr) == "" && strings.TrimSpace(weightStr) == "" {
+			continue
+		}
+		total++
+	}
+	return total, rows.Error()
+}
+
+type importHeaderMap struct {
+	Model  int
+	Price  int
+	Qty    int
+	Weight int
+}
+
+func detectImportHeader(header []string) importHeaderMap {
+	m := importHeaderMap{Model: 0, Price: 1, Qty: 2, Weight: 3}
+	for i, h := range header {
+		key := strings.ToLower(strings.TrimSpace(h))
+		key = strings.ReplaceAll(key, " ", "")
+		if strings.Contains(key, "型号") || strings.Contains(key, "model") || key == "sku" {
+			m.Model = i
+		}
+		if strings.Contains(key, "价格") || strings.Contains(key, "price") {
+			m.Price = i
+		}
+		if strings.Contains(key, "数量") || strings.Contains(key, "qty") || strings.Contains(key, "quantity") || strings.Contains(key, "stock") {
+			m.Qty = i
+		}
+		if strings.Contains(key, "weight") || strings.Contains(key, "重量") || strings.Contains(key, "kg") {
+			m.Weight = i
+		}
+	}
+	return m
+}
+
+func parseImportRow(cols []string, headerMap importHeaderMap, rowNo int) (ProductImportRow, bool, error) {
+	model := strings.TrimSpace(getCol(cols, headerMap.Model))
+	priceStr := getCol(cols, headerMap.Price)
+	qtyStr := getCol(cols, headerMap.Qty)
+	weightStr := getCol(cols, headerMap.Weight)
+
+	if model == "" && strings.TrimSpace(priceStr) == "" && strings.TrimSpace(qtyStr) == "" && strings.TrimSpace(weightStr) == "" {
+		return ProductImportRow{}, false, nil
+	}
+
+	price, err := parseFloatCell(priceStr)
+	if err != nil {
+		return ProductImportRow{}, false, fmt.Errorf("row %d: invalid price: %v", rowNo, err)
+	}
+	qty, err := parseIntCell(qtyStr)
+	if err != nil {
+		return ProductImportRow{}, false, fmt.Errorf("row %d: invalid quantity: %v", rowNo, err)
+	}
+	wkg, err := parseFloatCell(weightStr)
+	if err != nil {
+		return ProductImportRow{}, false, fmt.Errorf("row %d: invalid weight: %v", rowNo, err)
+	}
+
+	return ProductImportRow{
+		RowNumber: rowNo,
+		Model:     model,
+		Price:     price,
+		Quantity:  qty,
+		WeightKg:  wkg,
+	}, true, nil
+}
+
+func applyImportBatch(ctx context.Context, db *gorm.DB, batch []ProductImportRow, opts ProductImportOptions, catBySlug map[string]uint, defaultCategoryID uint, res *ProductImportResult) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, row := range batch {
 			model := normalizeModel(row.Model)
 			if model == "" {
-				res.Failed++
-				res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: row.Model, Action: "failed", Message: "model is empty"})
+				appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: row.Model, Action: "failed", Message: "model is empty"})
 				continue
 			}
 
 			product, found, findErr := findProductByModelOrSKU(tx, model)
 			if findErr != nil {
-				res.Failed++
-				res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", Message: findErr.Error()})
+				appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", Message: findErr.Error()})
 				continue
 			}
 
-			enr, eerr := EnrichProductByBrand(brand, model)
+			enr, eerr := EnrichProductByBrand(opts.Brand, model)
 			if eerr != nil {
-				res.Failed++
-				res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", Message: eerr.Error()})
+				appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", Message: eerr.Error()})
 				continue
 			}
+
 			categoryID := defaultCategoryID
 			if id, ok := catBySlug[enr.CategorySlug]; ok && id > 0 {
 				categoryID = id
@@ -193,14 +530,13 @@ func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts 
 			}
 
 			if found {
-				updates := map[string]any{}
-				updates["price"] = row.Price
-				updates["stock_quantity"] = row.Quantity
+				updates := map[string]any{
+					"price":          row.Price,
+					"stock_quantity": row.Quantity,
+				}
 				if row.WeightKg > 0 {
 					updates["weight"] = row.WeightKg
 				}
-
-				// Keep existing content by default; only fill missing, unless overwrite=true
 				if opts.Overwrite || strings.TrimSpace(product.Name) == "" {
 					updates["name"] = enr.Name
 				}
@@ -219,7 +555,6 @@ func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts 
 				if opts.Overwrite || strings.TrimSpace(product.MetaKeywords) == "" {
 					updates["meta_keywords"] = enr.MetaKeywords
 				}
-
 				if strings.TrimSpace(product.Brand) == "" {
 					updates["brand"] = "FANUC"
 				}
@@ -237,22 +572,18 @@ func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts 
 				}
 
 				if e := tx.Model(&models.Product{}).Where("id = ?", product.ID).Updates(updates).Error; e != nil {
-					res.Failed++
-					res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", ProductID: product.ID, SKU: product.SKU, Message: e.Error()})
+					appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", ProductID: product.ID, SKU: product.SKU, Message: e.Error()})
 					continue
 				}
-				res.Updated++
-				res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "updated", ProductID: product.ID, SKU: product.SKU, Message: "updated"})
+				appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "updated", ProductID: product.ID, SKU: product.SKU, Message: "updated"})
 				continue
 			}
 
 			if !opts.CreateMissing {
-				res.Skipped++
-				res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "skipped", Message: "product not found"})
+				appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "skipped", Message: "product not found"})
 				continue
 			}
 
-			// Create missing product
 			baseSlug := utils.GenerateSlug(enr.Name)
 			slug := utils.GenerateUniqueSlug(baseSlug, func(s string) bool {
 				var count int64
@@ -265,6 +596,7 @@ func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts 
 				w := row.WeightKg
 				wPtr = &w
 			}
+
 			p := models.Product{
 				SKU:              model,
 				Name:             enr.Name,
@@ -287,53 +619,69 @@ func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts 
 			}
 
 			if e := tx.Select("SKU", "Name", "Slug", "ShortDescription", "Description", "Price", "StockQuantity", "Weight", "Brand", "Model", "PartNumber", "CategoryID", "IsActive", "IsFeatured", "MetaTitle", "MetaDescription", "MetaKeywords", "ImageURLs").Create(&p).Error; e != nil {
-				res.Failed++
-				res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", Message: e.Error()})
+				appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "failed", Message: e.Error()})
 				continue
 			}
-
-			res.Created++
-			res.Items = append(res.Items, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "created", ProductID: p.ID, SKU: p.SKU, Message: "created"})
+			appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: model, Action: "created", ProductID: p.ID, SKU: p.SKU, Message: "created"})
 		}
 		return nil
 	})
-	if err != nil {
-		return res, err
-	}
-	res.Failed = countAction(res.Items, "failed")
-	return res, nil
 }
 
-func countAction(items []ProductImportItem, action string) int {
-	n := 0
-	for _, it := range items {
-		if it.Action == action {
-			n++
+func appendImportItem(res *ProductImportResult, item ProductImportItem) {
+	switch item.Action {
+	case "created":
+		res.Created++
+	case "updated":
+		res.Updated++
+	case "skipped":
+		res.Skipped++
+	case "failed":
+		res.Failed++
+	}
+	res.TotalRows = maxInt(res.TotalRows, res.Created+res.Updated+res.Skipped+res.Failed)
+	res.Items = append(res.Items, item)
+	if len(res.Items) > productImportRecentItems {
+		res.Items = append([]ProductImportItem(nil), res.Items[len(res.Items)-productImportRecentItems:]...)
+	}
+}
+
+func updateTaskProgress(task *productImportTask, res ProductImportResult, processed int, total int, message string) {
+	if task == nil {
+		return
+	}
+	task.update(func(t *productImportTask) {
+		t.ProcessedRows = processed
+		t.TotalRows = total
+		t.Message = message
+		t.Result = res
+		if total > 0 {
+			t.ProgressPct = float64(processed) * 100 / float64(total)
+			if t.ProgressPct > 100 {
+				t.ProgressPct = 100
+			}
+		} else {
+			t.ProgressPct = 0
+		}
+		t.UpdatedAt = time.Now()
+	})
+}
+
+func loadImportCategories(db *gorm.DB) (map[string]uint, uint) {
+	catBySlug := map[string]uint{}
+	var cats []models.Category
+	if e := db.Model(&models.Category{}).Where("is_active = ?", true).Find(&cats).Error; e == nil {
+		for _, c := range cats {
+			catBySlug[c.Slug] = c.ID
 		}
 	}
-	return n
-}
-
-func normalizeModel(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
+	defaultCategoryID := uint(0)
+	if id, ok := catBySlug["pcb-boards"]; ok {
+		defaultCategoryID = id
+	} else if len(cats) > 0 {
+		defaultCategoryID = cats[0].ID
 	}
-	s = strings.ReplaceAll(s, "\\", "-")
-	s = strings.ReplaceAll(s, "/", "-")
-	s = strings.ReplaceAll(s, " ", "-")
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	s = strings.Trim(s, "-")
-	s = strings.ToUpper(s)
-	if strings.HasPrefix(s, "FANUC-") {
-		s = strings.TrimPrefix(s, "FANUC-")
-	}
-	if strings.HasPrefix(s, "FANUC ") {
-		s = strings.TrimSpace(strings.TrimPrefix(s, "FANUC "))
-	}
-	return s
+	return catBySlug, defaultCategoryID
 }
 
 func parseFloatCell(s string) (float64, error) {
@@ -361,70 +709,33 @@ func parseIntCell(s string) (int, error) {
 	return v, err
 }
 
-func readImportRows(f *excelize.File, sheet string) ([]ProductImportRow, error) {
-	rows, err := f.GetRows(sheet)
-	if err != nil {
-		return nil, err
+func getCol(cols []string, idx int) string {
+	if idx < 0 || idx >= len(cols) {
+		return ""
 	}
-	if len(rows) == 0 {
-		return nil, nil
-	}
+	return cols[idx]
+}
 
-	// Detect header mapping
-	header := rows[0]
-	colModel := 0
-	colPrice := 1
-	colQty := 2
-	colWeight := 3
-	for i, h := range header {
-		key := strings.ToLower(strings.TrimSpace(h))
-		key = strings.ReplaceAll(key, " ", "")
-		if strings.Contains(key, "型号") || strings.Contains(key, "model") || key == "sku" {
-			colModel = i
-		}
-		if strings.Contains(key, "价格") || strings.Contains(key, "price") {
-			colPrice = i
-		}
-		if strings.Contains(key, "数量") || strings.Contains(key, "qty") || strings.Contains(key, "quantity") || strings.Contains(key, "stock") {
-			colQty = i
-		}
-		if strings.Contains(key, "weight") || strings.Contains(key, "重量") || strings.Contains(key, "kg") {
-			colWeight = i
-		}
+func normalizeModel(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
 	}
-
-	out := make([]ProductImportRow, 0, len(rows)-1)
-	for idx := 1; idx < len(rows); idx++ {
-		r := rows[idx]
-		get := func(i int) string {
-			if i < 0 || i >= len(r) {
-				return ""
-			}
-			return r[i]
-		}
-		model := strings.TrimSpace(get(colModel))
-		priceStr := get(colPrice)
-		qtyStr := get(colQty)
-		weightStr := get(colWeight)
-
-		if model == "" && strings.TrimSpace(priceStr) == "" && strings.TrimSpace(qtyStr) == "" && strings.TrimSpace(weightStr) == "" {
-			continue
-		}
-		price, err := parseFloatCell(priceStr)
-		if err != nil {
-			return nil, fmt.Errorf("row %d: invalid price: %v", idx+1, err)
-		}
-		qty, err := parseIntCell(qtyStr)
-		if err != nil {
-			return nil, fmt.Errorf("row %d: invalid quantity: %v", idx+1, err)
-		}
-		wkg, err := parseFloatCell(weightStr)
-		if err != nil {
-			return nil, fmt.Errorf("row %d: invalid weight: %v", idx+1, err)
-		}
-		out = append(out, ProductImportRow{RowNumber: idx + 1, Model: model, Price: price, Quantity: qty, WeightKg: wkg})
+	s = strings.ReplaceAll(s, "\\", "-")
+	s = strings.ReplaceAll(s, "/", "-")
+	s = strings.ReplaceAll(s, " ", "-")
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
 	}
-	return out, nil
+	s = strings.Trim(s, "-")
+	s = strings.ToUpper(s)
+	if strings.HasPrefix(s, "FANUC-") {
+		s = strings.TrimPrefix(s, "FANUC-")
+	}
+	if strings.HasPrefix(s, "FANUC ") {
+		s = strings.TrimSpace(strings.TrimPrefix(s, "FANUC "))
+	}
+	return s
 }
 
 func findProductByModelOrSKU(db *gorm.DB, model string) (models.Product, bool, error) {
@@ -457,21 +768,18 @@ func findProductByModelOrSKU(db *gorm.DB, model string) (models.Product, bool, e
 	add("FANUC-" + normalized)
 	add("FANUC " + normalized)
 
-	// exact SKU
 	if err := db.Model(&models.Product{}).Where("sku IN ?", candidates).Order(gorm.Expr("FIELD(sku, ?) DESC, updated_at DESC", candidates)).First(&product).Error; err == nil {
 		return product, true, nil
 	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return product, false, err
 	}
 
-	// exact model/part
 	if err := db.Model(&models.Product{}).Where("model = ? OR part_number = ?", normalized, normalized).Order("updated_at DESC").First(&product).Error; err == nil {
 		return product, true, nil
 	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return product, false, err
 	}
 
-	// prefix fallback
 	like := normalized + "%"
 	if err := db.Model(&models.Product{}).Where("sku LIKE ? OR model LIKE ? OR part_number LIKE ?", like, like, like).Order("updated_at DESC").First(&product).Error; err == nil {
 		return product, true, nil
@@ -489,4 +797,116 @@ func findProductByModelOrSKU(db *gorm.DB, model string) (models.Product, bool, e
 		return product, false, err
 	}
 	return product, false, nil
+}
+
+func (m *ProductImportManager) add(task *productImportTask) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.tasks[task.ID] = task
+	m.order = append(m.order, task.ID)
+	for len(m.order) > productImportMaxSavedTasks {
+		pruned := false
+		for i, taskID := range m.order {
+			existing, ok := m.tasks[taskID]
+			if !ok {
+				m.order = append(m.order[:i], m.order[i+1:]...)
+				pruned = true
+				break
+			}
+
+			existing.mu.RLock()
+			status := existing.Status
+			path := existing.FilePath
+			existing.mu.RUnlock()
+			if status != ProductImportTaskCompleted && status != ProductImportTaskFailed {
+				continue
+			}
+
+			m.order = append(m.order[:i], m.order[i+1:]...)
+			delete(m.tasks, taskID)
+			if path != "" {
+				_ = os.Remove(path)
+			}
+			pruned = true
+			break
+		}
+		if !pruned {
+			break
+		}
+	}
+}
+
+func (m *ProductImportManager) get(taskID string) (*productImportTask, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	task, ok := m.tasks[taskID]
+	return task, ok
+}
+
+func (m *ProductImportManager) getSnapshot(taskID string) (ProductImportTaskSnapshot, bool) {
+	task, ok := m.get(taskID)
+	if !ok {
+		return ProductImportTaskSnapshot{}, false
+	}
+	return task.snapshot(), true
+}
+
+func (t *productImportTask) update(fn func(*productImportTask)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	fn(t)
+}
+
+func (t *productImportTask) snapshot() ProductImportTaskSnapshot {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	result := t.Result
+	items := append([]ProductImportItem(nil), result.Items...)
+	result.Items = items
+
+	snap := ProductImportTaskSnapshot{
+		ID:            t.ID,
+		Status:        t.Status,
+		Brand:         t.Brand,
+		Filename:      t.Filename,
+		ProgressPct:   t.ProgressPct,
+		ProcessedRows: t.ProcessedRows,
+		TotalRows:     t.TotalRows,
+		Created:       result.Created,
+		Updated:       result.Updated,
+		Skipped:       result.Skipped,
+		Failed:        result.Failed,
+		Message:       t.Message,
+		CreatedAt:     t.CreatedAt,
+		UpdatedAt:     t.UpdatedAt,
+	}
+	if t.StartedAt != nil {
+		v := *t.StartedAt
+		snap.StartedAt = &v
+	}
+	if t.CompletedAt != nil {
+		v := *t.CompletedAt
+		snap.CompletedAt = &v
+	}
+	if t.Status == ProductImportTaskCompleted || t.Status == ProductImportTaskFailed {
+		resCopy := result
+		snap.Result = &resCopy
+	}
+	return snap
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

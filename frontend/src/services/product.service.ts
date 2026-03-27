@@ -17,6 +17,46 @@ export interface ProductFilters {
   is_featured?: string;
 }
 
+export interface ProductImportResult {
+  brand: string;
+  total_rows: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  items: Array<{
+    row_number: number;
+    model: string;
+    action: string;
+    product_id?: number;
+    sku?: string;
+    message?: string;
+  }>;
+  template: string;
+  overwrite: boolean;
+  create_missing: boolean;
+}
+
+export interface ProductImportTaskSnapshot {
+  id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  brand: string;
+  filename: string;
+  progress_pct: number;
+  processed_rows: number;
+  total_rows: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  message?: string;
+  result?: ProductImportResult;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export class ProductService {
   // Get products (public)
   static async getProducts(filters: ProductFilters = {}): Promise<PaginationResponse<Product>> {
@@ -404,18 +444,34 @@ export class ProductService {
   }
 
   // Admin: Import products via XLSX (model/price/quantity)
-  static async importProductsXlsx(file: File, opts?: { brand?: string; overwrite?: boolean; create_missing?: boolean }): Promise<any> {
+  static async importProductsXlsx(
+    file: File,
+    opts?: { brand?: string; overwrite?: boolean; create_missing?: boolean },
+    onUploadProgress?: (progressPct: number) => void
+  ): Promise<ProductImportTaskSnapshot> {
     const form = new FormData();
     form.append('file', file);
     form.append('brand', String(opts?.brand || 'fanuc'));
     if (typeof opts?.overwrite === 'boolean') form.append('overwrite', String(opts.overwrite));
     if (typeof opts?.create_missing === 'boolean') form.append('create_missing', String(opts.create_missing));
 
-    const response = await apiClient.post<APIResponse<any>>('/admin/products/import/xlsx', form, {
+    const response = await apiClient.post<APIResponse<ProductImportTaskSnapshot>>('/admin/products/import/xlsx', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 0,
+      onUploadProgress: (event: any) => {
+        if (!onUploadProgress || !event?.total) return;
+        const pct = Math.min(100, Math.max(0, Math.round((event.loaded * 100) / event.total)));
+        onUploadProgress(pct);
+      },
     });
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || response.data.error || 'Failed to import products');
+  }
+
+  static async getImportProductsTask(taskId: string): Promise<ProductImportTaskSnapshot> {
+    const response = await apiClient.get<APIResponse<ProductImportTaskSnapshot>>(`/admin/products/import/xlsx/tasks/${encodeURIComponent(taskId)}`);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || response.data.error || 'Failed to fetch import task');
   }
 
   // Get featured products (public)
