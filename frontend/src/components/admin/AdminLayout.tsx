@@ -267,10 +267,10 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
         )}
 
         {/* Sidebar */}
-        <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+        <div className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}>
-          <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-6">
             <div className="flex items-center space-x-3">
               <div className="bg-blue-600 text-white px-3 py-1 rounded font-bold text-lg">
                 FANUC
@@ -285,7 +285,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
             </button>
           </div>
 
-          <nav className="mt-6 px-3">
+          <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-6 admin-sidebar-scroll">
             <div className="space-y-1">
               {navigation.map((item) => {
                 const isActive = pathname === item.href;
@@ -314,7 +314,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
           </nav>
 
           {/* User info at bottom */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
+          <div className="shrink-0 border-t border-gray-200 p-4 bg-white">
             <div className="flex items-center space-x-3 mb-3">
               <UserCircleIcon className="h-8 w-8 text-gray-400" />
               <div className="flex-1 min-w-0">
