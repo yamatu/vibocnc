@@ -42,6 +42,20 @@ type BulkSelectionPayload = {
   batch_size?: number;
 };
 
+type AutoCategorizeProgress = {
+  status: 'idle' | 'preparing' | 'running' | 'completed' | 'failed';
+  processed: number;
+  total: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  currentBatch: number;
+  totalBatches: number;
+  message: string;
+};
+
+const AUTO_CATEGORIZE_BATCH_SIZE = 100;
+
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -72,6 +86,17 @@ function AdminProductsContent() {
   const [categoryImageBrand, setCategoryImageBrand] = useState('fanuc');
   const [categoryImageMode, setCategoryImageMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
   const [lastAutoCategorizeResult, setLastAutoCategorizeResult] = useState<BulkAutoCategorizeResult | null>(null);
+  const [autoCategorizeProgress, setAutoCategorizeProgress] = useState<AutoCategorizeProgress>({
+    status: 'idle',
+    processed: 0,
+    total: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    currentBatch: 0,
+    totalBatches: 0,
+    message: '',
+  });
 
   const queryClient = useQueryClient();
 
@@ -261,34 +286,6 @@ function AdminProductsContent() {
     },
   });
 
-  const bulkAutoCategorizeMutation = useMutation({
-    mutationFn: (payload: {
-      ids?: number[];
-      skus?: string[];
-      search?: string;
-      category_id?: string;
-      status?: 'active' | 'inactive' | 'all' | '';
-      featured?: 'true' | 'false' | '';
-      brand?: string;
-      batch_size?: number;
-    }) => ProductService.bulkAutoCategorize(payload),
-    onSuccess: (data) => {
-      setLastAutoCategorizeResult(data);
-      toast.success(
-        t(
-          'products.bulk.autoCategorized',
-          locale === 'zh'
-            ? `自动分类完成：更新 ${data.updated}，跳过 ${data.skipped}，失败 ${data.failed}`
-            : `Auto categorization completed: ${data.updated} updated, ${data.skipped} skipped, ${data.failed} failed`
-        )
-      );
-      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, t('products.bulk.autoCategorizeFailed', locale === 'zh' ? '自动分类失败' : 'Failed to auto categorize')));
-    },
-  });
-
   const bulkCategoryImageMutation = useMutation({
     mutationFn: (payload: {
       ids?: number[];
@@ -346,8 +343,145 @@ function AdminProductsContent() {
   };
 
   const bulkAutoCategorize = () => {
-    const payload = selectAllResults ? buildSelectAllPayload() : { ids: selectedIds };
-    bulkAutoCategorizeMutation.mutate({ ...payload, brand: categoryImageBrand || undefined });
+    if (!selectAllResults && selectedIds.length === 0) {
+      toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
+      return;
+    }
+
+    const run = async () => {
+      try {
+        setLastAutoCategorizeResult(null);
+        setAutoCategorizeProgress({
+          status: 'preparing',
+          processed: 0,
+          total: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          currentBatch: 0,
+          totalBatches: 0,
+          message: locale === 'zh' ? '正在准备分批任务...' : 'Preparing batch job...',
+        });
+
+        let targetIds = [...selectedIds];
+        if (selectAllResults) {
+          const snapshot = await ProductService.getAdminProductSelectionIds({
+            ...buildSelectAllPayload(),
+            brand: categoryImageBrand || undefined,
+          });
+          targetIds = snapshot.ids;
+        }
+
+        if (targetIds.length === 0) {
+          setAutoCategorizeProgress({
+            status: 'idle',
+            processed: 0,
+            total: 0,
+            updated: 0,
+            skipped: 0,
+            failed: 0,
+            currentBatch: 0,
+            totalBatches: 0,
+            message: '',
+          });
+          toast.error(t('products.bulk.noProducts', locale === 'zh' ? '没有可处理的产品' : 'No products to process'));
+          return;
+        }
+
+        const total = targetIds.length;
+        const totalBatches = Math.ceil(total / AUTO_CATEGORIZE_BATCH_SIZE);
+        const aggregate: BulkAutoCategorizeResult = {
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          items: [],
+        };
+
+        setAutoCategorizeProgress({
+          status: 'running',
+          processed: 0,
+          total,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          currentBatch: 0,
+          totalBatches,
+          message: locale === 'zh' ? `共 ${total} 个产品，开始分 ${totalBatches} 批处理` : `Processing ${total} products across ${totalBatches} batches`,
+        });
+
+        for (let start = 0; start < total; start += AUTO_CATEGORIZE_BATCH_SIZE) {
+          const batchIds = targetIds.slice(start, start + AUTO_CATEGORIZE_BATCH_SIZE);
+          const batchIndex = Math.floor(start / AUTO_CATEGORIZE_BATCH_SIZE) + 1;
+
+          setAutoCategorizeProgress((prev) => ({
+            ...prev,
+            status: 'running',
+            currentBatch: batchIndex,
+            totalBatches,
+            message: locale === 'zh'
+              ? `正在处理第 ${batchIndex}/${totalBatches} 批（${batchIds.length} 个产品）`
+              : `Processing batch ${batchIndex}/${totalBatches} (${batchIds.length} products)`,
+          }));
+
+          const result = await ProductService.bulkAutoCategorize({
+            ids: batchIds,
+            brand: categoryImageBrand || undefined,
+            batch_size: batchIds.length,
+          });
+
+          aggregate.updated += result.updated;
+          aggregate.skipped += result.skipped;
+          aggregate.failed += result.failed;
+          if (aggregate.items.length < 50 && result.items?.length) {
+            aggregate.items = aggregate.items.concat(result.items).slice(0, 50);
+          }
+
+          const processed = Math.min(start + batchIds.length, total);
+          setAutoCategorizeProgress({
+            status: 'running',
+            processed,
+            total,
+            updated: aggregate.updated,
+            skipped: aggregate.skipped,
+            failed: aggregate.failed,
+            currentBatch: batchIndex,
+            totalBatches,
+            message: locale === 'zh'
+              ? `已完成 ${processed}/${total} 个产品`
+              : `${processed}/${total} products completed`,
+          });
+        }
+
+        setLastAutoCategorizeResult(aggregate);
+        setAutoCategorizeProgress((prev) => ({
+          ...prev,
+          status: 'completed',
+          processed: total,
+          total,
+          currentBatch: totalBatches,
+          totalBatches,
+          message: locale === 'zh' ? '自动分类已全部完成' : 'Auto categorization completed',
+        }));
+        queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+        toast.success(
+          t(
+            'products.bulk.autoCategorized',
+            locale === 'zh'
+              ? `自动分类完成：更新 ${aggregate.updated}，跳过 ${aggregate.skipped}，失败 ${aggregate.failed}`
+              : `Auto categorization completed: ${aggregate.updated} updated, ${aggregate.skipped} skipped, ${aggregate.failed} failed`
+          )
+        );
+      } catch (error: unknown) {
+        setAutoCategorizeProgress((prev) => ({
+          ...prev,
+          status: 'failed',
+          message: getErrorMessage(error, t('products.bulk.autoCategorizeFailed', locale === 'zh' ? '自动分类失败' : 'Failed to auto categorize')),
+        }));
+        toast.error(getErrorMessage(error, t('products.bulk.autoCategorizeFailed', locale === 'zh' ? '自动分类失败' : 'Failed to auto categorize')));
+      }
+    };
+
+    void run();
   };
 
   const handleCategoryImageSelected = (assets: MediaAsset[]) => {
@@ -885,11 +1019,13 @@ function AdminProductsContent() {
               <button
                 onClick={bulkAutoCategorize}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={bulkAutoCategorizeMutation.isPending || (!selectAllResults && selectedIds.length === 0)}
+                disabled={autoCategorizeProgress.status === 'preparing' || autoCategorizeProgress.status === 'running' || (!selectAllResults && selectedIds.length === 0)}
 				title={t('products.bulk.autoCategorizeTitle', locale === 'zh' ? '按品牌和型号规则批量自动分类并补全缺失 SEO 字段' : 'Auto categorize by brand/model rules and fill missing SEO fields')}
               >
                 <TagIcon className="h-4 w-4 mr-2" />
-				{t('products.bulk.autoCategorize', locale === 'zh' ? '自动分类' : 'Auto Categorize')}
+				{autoCategorizeProgress.status === 'preparing' || autoCategorizeProgress.status === 'running'
+				  ? (locale === 'zh' ? '自动分类进行中...' : 'Auto Categorizing...')
+				  : t('products.bulk.autoCategorize', locale === 'zh' ? '自动分类' : 'Auto Categorize')}
               </button>
 
               <button
@@ -971,6 +1107,55 @@ function AdminProductsContent() {
                 </div>
               )}
             </div>
+            {autoCategorizeProgress.status !== 'idle' && (
+              <div className={`mt-4 rounded-lg border p-4 ${
+                autoCategorizeProgress.status === 'failed'
+                  ? 'border-rose-200 bg-rose-50'
+                  : autoCategorizeProgress.status === 'completed'
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-cyan-200 bg-cyan-50'
+              }`}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {locale === 'zh' ? '自动分类进度' : 'Auto categorization progress'}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-700">{autoCategorizeProgress.message}</div>
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    {autoCategorizeProgress.total > 0
+                      ? `${autoCategorizeProgress.processed}/${autoCategorizeProgress.total}`
+                      : (locale === 'zh' ? '准备中' : 'Preparing')}
+                  </div>
+                </div>
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/80">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      autoCategorizeProgress.status === 'failed'
+                        ? 'bg-rose-500'
+                        : autoCategorizeProgress.status === 'completed'
+                          ? 'bg-emerald-500'
+                          : 'bg-cyan-500'
+                    }`}
+                    style={{
+                      width: `${autoCategorizeProgress.total > 0
+                        ? Math.min(100, Math.round((autoCategorizeProgress.processed / autoCategorizeProgress.total) * 100))
+                        : 8}%`
+                    }}
+                  />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-3 text-sm text-gray-700">
+                  <span>{locale === 'zh' ? '已更新' : 'Updated'}: {autoCategorizeProgress.updated}</span>
+                  <span>{locale === 'zh' ? '已跳过' : 'Skipped'}: {autoCategorizeProgress.skipped}</span>
+                  <span>{locale === 'zh' ? '失败' : 'Failed'}: {autoCategorizeProgress.failed}</span>
+                  {autoCategorizeProgress.totalBatches > 0 && (
+                    <span>
+                      {locale === 'zh' ? '批次' : 'Batch'}: {autoCategorizeProgress.currentBatch}/{autoCategorizeProgress.totalBatches}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
             {lastAutoCategorizeResult && (
               <div className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 p-3">
                 <div className="text-sm font-medium text-cyan-900">

@@ -178,7 +178,7 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	db := config.GetDB()
 
 	// Parse pagination parameters
-	page, pageSize := utils.ParsePagination(c.Query("page"), c.Query("page_size"))
+	page, pageSize := utils.ParsePaginationWithMax(c.Query("page"), c.Query("page_size"), 500)
 	offset := utils.CalculateOffset(page, pageSize)
 
 	// Parse filters
@@ -711,7 +711,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		}
 		if req.Search != "" {
 			like := "%" + req.Search + "%"
-			tx = tx.Where("name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like)
+			tx = tx.Where("sku LIKE ? OR name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like, like)
 		}
 		if req.Status == "active" {
 			tx = tx.Where("is_active = ?", true)
@@ -762,7 +762,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	}
 	if req.Search != "" {
 		like := "%" + req.Search + "%"
-		selector = selector.Where("name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like)
+		selector = selector.Where("sku LIKE ? OR name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like, like)
 	}
 	if req.Status == "active" {
 		selector = selector.Where("is_active = ?", true)

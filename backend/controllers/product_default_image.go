@@ -110,7 +110,7 @@ func buildProductSelector(db *gorm.DB, req bulkDefaultImageReq) *gorm.DB {
 	}
 	if strings.TrimSpace(req.Search) != "" {
 		like := "%" + strings.TrimSpace(req.Search) + "%"
-		q = q.Where("name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like)
+		q = q.Where("sku LIKE ? OR name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like, like)
 	}
 	if req.Status == "active" {
 		q = q.Where("is_active = ?", true)

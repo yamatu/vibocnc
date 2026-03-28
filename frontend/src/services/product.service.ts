@@ -78,6 +78,11 @@ export interface BulkAutoCategorizeResult {
   items: BulkAutoCategorizeResultItem[];
 }
 
+export interface BulkSelectionIdsResult {
+  ids: number[];
+  total: number;
+}
+
 export interface BulkCategoryImageResult {
   updated: number;
   skipped: number;
@@ -498,6 +503,21 @@ export class ProductService {
     const response = await apiClient.put<APIResponse<BulkAutoCategorizeResult>>('/admin/products/bulk-auto-categorize', payload);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to auto categorize products');
+  }
+
+  static async getAdminProductSelectionIds(payload: {
+    ids?: number[];
+    skus?: string[];
+    search?: string;
+    category_id?: string;
+    status?: 'active' | 'inactive' | 'all' | '';
+    featured?: 'true' | 'false' | '';
+    brand?: string;
+    batch_size?: number;
+  }): Promise<BulkSelectionIdsResult> {
+    const response = await apiClient.post<APIResponse<BulkSelectionIdsResult>>('/admin/products/selection-ids', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to fetch product selection');
   }
 
   static async bulkApplyCategoryImage(payload: {

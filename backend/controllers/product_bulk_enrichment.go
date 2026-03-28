@@ -27,6 +27,11 @@ type bulkAutoCategorizeReq struct {
 	bulkProductScopeReq
 }
 
+type bulkSelectionIDsResp struct {
+	IDs   []uint `json:"ids"`
+	Total int64  `json:"total"`
+}
+
 type bulkCategoryImageReq struct {
 	bulkProductScopeReq
 	MediaAssetID uint   `json:"media_asset_id" binding:"required"`
@@ -78,6 +83,40 @@ func categorySlugMap(db *gorm.DB) map[string]uint {
 		}
 	}
 	return out
+}
+
+// Admin: POST /api/v1/admin/products/selection-ids
+func (pc *ProductController) GetBulkProductSelectionIDs(c *gin.Context) {
+	var req bulkProductScopeReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+
+	db := config.GetDB()
+	selector := buildBulkProductSelector(db, req)
+
+	var rows []struct {
+		ID uint `json:"id"`
+	}
+	if err := selector.Select("id").Order("id ASC").Find(&rows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to fetch product selection", Error: err.Error()})
+		return
+	}
+
+	ids := make([]uint, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Product selection retrieved successfully",
+		Data: bulkSelectionIDsResp{
+			IDs:   ids,
+			Total: int64(len(ids)),
+		},
+	})
 }
 
 // Admin: PUT /api/v1/admin/products/bulk-auto-categorize

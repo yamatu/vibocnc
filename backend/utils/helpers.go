@@ -74,6 +74,30 @@ func ParsePagination(pageStr, pageSizeStr string) (int, int) {
 	return page, pageSize
 }
 
+// ParsePaginationWithMax parses pagination parameters with an explicit max page size.
+func ParsePaginationWithMax(pageStr, pageSizeStr string, maxPageSize int) (int, int) {
+	page := 1
+	pageSize := 20
+
+	if maxPageSize <= 0 {
+		maxPageSize = 20
+	}
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= maxPageSize {
+			pageSize = ps
+		}
+	}
+
+	return page, pageSize
+}
+
 // CalculateOffset calculates database offset for pagination
 func CalculateOffset(page, pageSize int) int {
 	return (page - 1) * pageSize

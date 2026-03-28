@@ -168,6 +168,7 @@ func SetupRoutes(r *gin.Engine) {
 
 				// Bulk update is_active / is_featured
 				products.PUT("/bulk-update", productController.BulkUpdateProducts)
+				products.POST("/selection-ids", productController.GetBulkProductSelectionIDs)
 				products.PUT("/bulk-auto-categorize", productController.BulkAutoCategorizeProducts)
 
 				// Bulk: apply/remove default watermark image URL
