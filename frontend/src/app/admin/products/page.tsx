@@ -17,15 +17,34 @@ import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
   SparklesIcon,
-  XMarkIcon
+  XMarkIcon,
+  TagIcon
 } from '@heroicons/react/24/outline';
 import AdminLayout from '@/components/admin/AdminLayout';
 import Pagination from '@/components/common/Pagination';
+import MediaPickerModal from '@/components/admin/MediaPickerModal';
 import { ProductService, CategoryService } from '@/services';
-import type { ProductImportTaskSnapshot } from '@/services/product.service';
+import type { BulkAutoCategorizeResult, ProductImportResult, ProductImportTaskSnapshot } from '@/services/product.service';
+import type { MediaAsset } from '@/services/media.service';
+import type { Product } from '@/types';
 import { queryKeys } from '@/lib/react-query';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl } from '@/lib/utils';
 import { useAdminI18n } from '@/lib/admin-i18n';
+
+type BulkSelectionPayload = {
+  ids?: number[];
+  skus?: string[];
+  search?: string;
+  category_id?: string;
+  status?: 'active' | 'inactive' | 'all' | '';
+  featured?: 'true' | 'false' | '';
+  brand?: string;
+  batch_size?: number;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 function AdminProductsContent() {
   const { locale, t } = useAdminI18n();
@@ -45,10 +64,14 @@ function AdminProductsContent() {
   const [importBrand, setImportBrand] = useState<string>('fanuc');
   const [importOverwrite, setImportOverwrite] = useState<boolean>(false);
   const [importCreateMissing, setImportCreateMissing] = useState<boolean>(true);
-  const [importResult, setImportResult] = useState<any>(null);
+  const [importResult, setImportResult] = useState<ProductImportResult | null>(null);
   const [importTask, setImportTask] = useState<ProductImportTaskSnapshot | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const importPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showCategoryImagePicker, setShowCategoryImagePicker] = useState(false);
+  const [categoryImageBrand, setCategoryImageBrand] = useState('fanuc');
+  const [categoryImageMode, setCategoryImageMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
+  const [lastAutoCategorizeResult, setLastAutoCategorizeResult] = useState<BulkAutoCategorizeResult | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -83,7 +106,7 @@ function AdminProductsContent() {
   };
 
   // Save scroll position when navigating to edit page
-  const handleEditClick = (productId: number) => {
+  const handleEditClick = () => {
     saveScrollPosition();
     // The actual navigation will be handled by the Link component
   };
@@ -143,7 +166,6 @@ function AdminProductsContent() {
     setStatusFilter(st);
     setCurrentPage(Number.isFinite(p) && p > 0 ? p : 1);
     setPageSize([20, 50, 100, 200, 500].includes(ps) ? ps : 20);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   // Fetch products from API with pagination
@@ -194,14 +216,14 @@ function AdminProductsContent() {
       setSelectAllResults(false);
       queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('products.toast.bulkFailed', 'Bulk update failed'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.toast.bulkFailed', 'Bulk update failed')));
     },
   });
 
   const bulkApplyDefaultImageMutation = useMutation({
-    mutationFn: (payload: any) => ProductService.bulkApplyDefaultImage(payload),
-    onSuccess: (data: any) => {
+    mutationFn: (payload: BulkSelectionPayload) => ProductService.bulkApplyDefaultImage(payload),
+    onSuccess: (data) => {
       toast.success(
         t(
           'products.defaultImage.applied',
@@ -214,14 +236,14 @@ function AdminProductsContent() {
       setSelectAllResults(false);
       queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('products.defaultImage.applyFailed', locale === 'zh' ? '应用默认图片失败' : 'Failed to apply default images'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.defaultImage.applyFailed', locale === 'zh' ? '应用默认图片失败' : 'Failed to apply default images')));
     },
   });
 
   const bulkRemoveDefaultImageMutation = useMutation({
-    mutationFn: (payload: any) => ProductService.bulkRemoveDefaultImage(payload),
-    onSuccess: (data: any) => {
+    mutationFn: (payload: BulkSelectionPayload) => ProductService.bulkRemoveDefaultImage(payload),
+    onSuccess: (data) => {
       toast.success(
         t(
           'products.defaultImage.removed',
@@ -234,18 +256,82 @@ function AdminProductsContent() {
       setSelectAllResults(false);
       queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('products.defaultImage.removeFailed', locale === 'zh' ? '移除默认图片失败' : 'Failed to remove default images'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.defaultImage.removeFailed', locale === 'zh' ? '移除默认图片失败' : 'Failed to remove default images')));
     },
   });
 
-  const buildSelectAllPayload = () => ({
+  const bulkAutoCategorizeMutation = useMutation({
+    mutationFn: (payload: {
+      ids?: number[];
+      skus?: string[];
+      search?: string;
+      category_id?: string;
+      status?: 'active' | 'inactive' | 'all' | '';
+      featured?: 'true' | 'false' | '';
+      brand?: string;
+      batch_size?: number;
+    }) => ProductService.bulkAutoCategorize(payload),
+    onSuccess: (data) => {
+      setLastAutoCategorizeResult(data);
+      toast.success(
+        t(
+          'products.bulk.autoCategorized',
+          locale === 'zh'
+            ? `自动分类完成：更新 ${data.updated}，跳过 ${data.skipped}，失败 ${data.failed}`
+            : `Auto categorization completed: ${data.updated} updated, ${data.skipped} skipped, ${data.failed} failed`
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.bulk.autoCategorizeFailed', locale === 'zh' ? '自动分类失败' : 'Failed to auto categorize')));
+    },
+  });
+
+  const bulkCategoryImageMutation = useMutation({
+    mutationFn: (payload: {
+      ids?: number[];
+      skus?: string[];
+      search?: string;
+      category_id?: string;
+      status?: 'active' | 'inactive' | 'all' | '';
+      featured?: 'true' | 'false' | '';
+      brand?: string;
+      batch_size?: number;
+      media_asset_id: number;
+      apply_mode?: 'fill_empty' | 'replace_all';
+    }) => ProductService.bulkApplyCategoryImage(payload),
+    onSuccess: (data) => {
+      toast.success(
+        t(
+          'products.bulk.categoryImageApplied',
+          locale === 'zh'
+            ? `批量替换产品图完成：更新 ${data.updated}，跳过 ${data.skipped}`
+            : `Category image update completed: ${data.updated} updated, ${data.skipped} skipped`
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+      setShowCategoryImagePicker(false);
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.bulk.categoryImageFailed', locale === 'zh' ? '批量替换产品图失败' : 'Failed to apply category image')));
+    },
+  });
+
+  const buildSelectAllPayload = (): BulkSelectionPayload => ({
     batch_size: 500,
     search: searchQuery || undefined,
     category_id: selectedCategory || undefined,
     status: (statusFilter === 'all' || statusFilter === 'featured') ? 'all' : (statusFilter as 'active' | 'inactive'),
     featured: (statusFilter === 'featured') ? 'true' : undefined,
   });
+
+  const buildScopedPayload = (): BulkSelectionPayload => (
+    selectAllResults
+      ? { ...buildSelectAllPayload(), brand: categoryImageBrand || undefined }
+      : { ids: selectedIds, brand: categoryImageBrand || undefined }
+  );
 
   const bulkApplyDefaultImages = () => {
     if (!selectAllResults && selectedIds.length === 0) { toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product')); return; }
@@ -259,6 +345,21 @@ function AdminProductsContent() {
     bulkRemoveDefaultImageMutation.mutate(payload);
   };
 
+  const bulkAutoCategorize = () => {
+    const payload = selectAllResults ? buildSelectAllPayload() : { ids: selectedIds };
+    bulkAutoCategorizeMutation.mutate({ ...payload, brand: categoryImageBrand || undefined });
+  };
+
+  const handleCategoryImageSelected = (assets: MediaAsset[]) => {
+    const asset = assets[0];
+    if (!asset) return;
+    bulkCategoryImageMutation.mutate({
+      ...buildScopedPayload(),
+      media_asset_id: asset.id,
+      apply_mode: categoryImageMode,
+    });
+  };
+
   // (Removed) Auto Import from Site feature
 
   // Delete product mutation
@@ -268,12 +369,12 @@ function AdminProductsContent() {
       toast.success(t('products.toast.deleted', 'Product deleted successfully!'));
       queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('products.toast.deleteFailed', 'Failed to delete product'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.toast.deleteFailed', 'Failed to delete product')));
     },
   });
 
-  const handleDelete = (product: any) => {
+  const handleDelete = (product: Product) => {
     const msg = t('products.confirm.delete', 'Are you sure you want to delete \"{name}\"? This action cannot be undone.', { name: product.name });
     if (window.confirm(msg)) {
       deleteProductMutation.mutate(product.id);
@@ -317,9 +418,9 @@ function AdminProductsContent() {
       try {
         const task = await ProductService.getImportProductsTask(taskId);
         handleImportTaskUpdate(task);
-      } catch (error: any) {
+      } catch (error: unknown) {
         stopImportPolling();
-        toast.error(error.message || t('products.import.failed', locale === 'zh' ? '导入失败' : 'Import failed'));
+        toast.error(getErrorMessage(error, t('products.import.failed', locale === 'zh' ? '导入失败' : 'Import failed')));
       }
     };
 
@@ -351,9 +452,9 @@ function AdminProductsContent() {
       setImportTask(task);
       startImportPolling(task.id);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       stopImportPolling();
-      toast.error(error.message || t('products.import.failed', locale === 'zh' ? '导入失败' : 'Import failed'));
+      toast.error(getErrorMessage(error, t('products.import.failed', locale === 'zh' ? '导入失败' : 'Import failed')));
     },
   });
 
@@ -369,8 +470,8 @@ function AdminProductsContent() {
       a.remove();
       window.URL.revokeObjectURL(url);
       toast.success(t('products.import.templateDownloaded', locale === 'zh' ? '模板已下载' : 'Template downloaded'));
-    } catch (e: any) {
-      toast.error(e.message || t('products.import.templateDownloadFailed', locale === 'zh' ? '下载模板失败' : 'Failed to download template'));
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, t('products.import.templateDownloadFailed', locale === 'zh' ? '下载模板失败' : 'Failed to download template')));
     }
   };
 
@@ -415,9 +516,9 @@ function AdminProductsContent() {
     updateURL({ search: '', category: '', status: 'all', page: 1 });
   };
 
-  const toggleSelectAllOnPage = (checked: boolean, current: any[]) => {
+  const toggleSelectAllOnPage = (checked: boolean, current: Product[]) => {
     setSelectAllResults(false);
-    if (checked) setSelectedIds(current.map((p: any) => p.id));
+    if (checked) setSelectedIds(current.map((p) => p.id));
     else setSelectedIds([]);
   };
 
@@ -636,7 +737,7 @@ function AdminProductsContent() {
                             </tr>
                           </thead>
                           <tbody>
-                            {importResult.items.slice(0, 200).map((it: any, i: number) => (
+                            {importResult.items.slice(0, 200).map((it, i: number) => (
                               <tr key={`${it.row_number || i}-${it.model || i}`} className="border-t">
                                 <td className="px-3 py-2 text-gray-700">{it.row_number}</td>
                                 <td className="px-3 py-2 font-mono text-gray-900">{it.model}</td>
@@ -782,6 +883,26 @@ function AdminProductsContent() {
               </button>
 
               <button
+                onClick={bulkAutoCategorize}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={bulkAutoCategorizeMutation.isPending || (!selectAllResults && selectedIds.length === 0)}
+				title={t('products.bulk.autoCategorizeTitle', locale === 'zh' ? '按品牌和型号规则批量自动分类并补全缺失 SEO 字段' : 'Auto categorize by brand/model rules and fill missing SEO fields')}
+              >
+                <TagIcon className="h-4 w-4 mr-2" />
+				{t('products.bulk.autoCategorize', locale === 'zh' ? '自动分类' : 'Auto Categorize')}
+              </button>
+
+              <button
+                onClick={() => setShowCategoryImagePicker(true)}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-fuchsia-600 hover:bg-fuchsia-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={bulkCategoryImageMutation.isPending || (!selectAllResults && selectedIds.length === 0)}
+				title={t('products.bulk.categoryImageTitle', locale === 'zh' ? '按当前筛选的品牌/分类批量替换产品图，可只补空图或全部覆盖' : 'Bulk replace product images by current brand/category filter')}
+              >
+                <PhotoIcon className="h-4 w-4 mr-2" />
+				{t('products.bulk.categoryImage', locale === 'zh' ? '分类批量换图' : 'Batch Category Image')}
+              </button>
+
+              <button
                 onClick={bulkApplyDefaultImages}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={
@@ -815,6 +936,77 @@ function AdminProductsContent() {
                 </div>
               )}
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">{t('products.import.brand', locale === 'zh' ? '品牌' : 'Brand')}</span>
+                <select
+                  value={categoryImageBrand}
+                  onChange={(e) => setCategoryImageBrand(e.target.value)}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md"
+                >
+                  <option value="fanuc">FANUC</option>
+                  <option value="mitsubishi">Mitsubishi</option>
+                  <option value="siemens">Siemens</option>
+                  <option value="abb">ABB</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">{t('products.bulk.imageMode', locale === 'zh' ? '换图模式' : 'Image mode')}</span>
+                <select
+                  value={categoryImageMode}
+                  onChange={(e) => setCategoryImageMode(e.target.value as 'fill_empty' | 'replace_all')}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md"
+                >
+                  <option value="fill_empty">{t('products.bulk.imageModeFill', locale === 'zh' ? '只补空图' : 'Fill Empty Only')}</option>
+                  <option value="replace_all">{t('products.bulk.imageModeReplace', locale === 'zh' ? '全部覆盖' : 'Replace All')}</option>
+                </select>
+              </div>
+              {selectedCategory ? (
+                <div className="text-sm text-gray-500">
+                  {t('products.bulk.categoryScoped', locale === 'zh' ? '当前会按已选分类范围执行' : 'Current category filter will scope this action')}
+                </div>
+              ) : (
+                <div className="text-sm text-amber-600">
+                  {t('products.bulk.categoryScopedHint', locale === 'zh' ? '未选分类时会作用于当前品牌下的全部筛选结果' : 'Without a category filter, this applies to all current results for the selected brand')}
+                </div>
+              )}
+            </div>
+            {lastAutoCategorizeResult && (
+              <div className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                <div className="text-sm font-medium text-cyan-900">
+                  {t('products.bulk.autoCategorizeLast', locale === 'zh' ? '最近一次自动分类结果' : 'Last auto categorization result')}
+                </div>
+                <div className="mt-1 text-sm text-cyan-800">
+                  {locale === 'zh'
+                    ? `更新 ${lastAutoCategorizeResult.updated}，跳过 ${lastAutoCategorizeResult.skipped}，失败 ${lastAutoCategorizeResult.failed}`
+                    : `${lastAutoCategorizeResult.updated} updated, ${lastAutoCategorizeResult.skipped} skipped, ${lastAutoCategorizeResult.failed} failed`}
+                </div>
+                {lastAutoCategorizeResult.items?.length > 0 && (
+                  <div className="mt-3 max-h-48 overflow-auto rounded border border-cyan-100 bg-white">
+                    <table className="min-w-full text-xs">
+                      <thead className="sticky top-0 bg-cyan-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">SKU</th>
+                          <th className="px-3 py-2 text-left">{locale === 'zh' ? '分类' : 'Category'}</th>
+                          <th className="px-3 py-2 text-left">{locale === 'zh' ? '规则' : 'Rule'}</th>
+                          <th className="px-3 py-2 text-left">{locale === 'zh' ? '结果' : 'Result'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lastAutoCategorizeResult.items.map((item) => (
+                          <tr key={`${item.product_id}-${item.sku}`} className="border-t">
+                            <td className="px-3 py-2 font-mono text-gray-900">{item.sku}</td>
+                            <td className="px-3 py-2 text-gray-700">{item.category_slug}</td>
+                            <td className="px-3 py-2 text-gray-500">{item.match_rule}</td>
+                            <td className="px-3 py-2 text-gray-700">{item.action}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1022,7 +1214,7 @@ function AdminProductsContent() {
                         <Link
                           href={`/admin/products/${product.id}/edit?returnTo=${encodeURIComponent(buildListUrl())}`}
                           className="text-indigo-600 hover:text-indigo-900"
-                          onClick={() => handleEditClick(product.id)}
+                          onClick={() => handleEditClick()}
                         >
                           <PencilIcon className="h-4 w-4" />
                         </Link>
@@ -1094,6 +1286,14 @@ function AdminProductsContent() {
           )}
         </div>
       </div>
+      <MediaPickerModal
+        open={showCategoryImagePicker}
+        onClose={() => setShowCategoryImagePicker(false)}
+        onSelect={handleCategoryImageSelected}
+        multiple={false}
+        title={t('products.bulk.categoryImagePick', locale === 'zh' ? '选择要批量应用到当前品牌/分类的图片' : 'Select the image to apply to current brand/category')}
+        initialFolder={selectedCategory ? '' : categoryImageBrand}
+      />
     </AdminLayout>
   );
 }

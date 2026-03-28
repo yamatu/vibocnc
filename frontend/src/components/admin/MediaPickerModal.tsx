@@ -9,18 +9,25 @@ import { queryKeys } from '@/lib/react-query';
 import type { MediaAsset } from '@/services/media.service';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 type Props = {
   open: boolean;
   onClose: () => void;
   onSelect: (assets: MediaAsset[]) => void;
   multiple?: boolean;
   title?: string;
+  initialQuery?: string;
+  initialFolder?: string;
 };
 
-export default function MediaPickerModal({ open, onClose, onSelect, multiple = false, title = 'Select from Media Library' }: Props) {
+export default function MediaPickerModal({ open, onClose, onSelect, multiple = false, title = 'Select from Media Library', initialQuery = '', initialFolder = '' }: Props) {
   const { t } = useAdminI18n();
   const queryClient = useQueryClient();
   const [q, setQ] = useState('');
+  const [folder, setFolder] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 24;
   const [selected, setSelected] = useState<MediaAsset[]>([]);
@@ -34,20 +41,21 @@ export default function MediaPickerModal({ open, onClose, onSelect, multiple = f
   useEffect(() => {
     if (!open) return;
     // Reset modal state on each open so it behaves predictably across different pages.
-    setQ('');
+    setQ(initialQuery);
+    setFolder(initialFolder);
     setPage(1);
     setSelected([]);
     setUploadFiles([]);
     setUploadFolder('');
     setUploadTags('');
     setIsDragging(false);
-  }, [open]);
+  }, [open, initialFolder, initialQuery]);
 
-  const filters = useMemo(() => ({ q, page, pageSize }), [q, page]);
+  const filters = useMemo(() => ({ q, folder, page, pageSize }), [q, folder, page, pageSize]);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.media.list(filters),
-    queryFn: () => MediaService.list({ q: q.trim() || undefined, page, page_size: pageSize }),
+    queryFn: () => MediaService.list({ q: q.trim() || undefined, folder: folder.trim() || undefined, page, page_size: pageSize }),
     enabled: open,
     retry: 1,
   });
@@ -115,7 +123,7 @@ export default function MediaPickerModal({ open, onClose, onSelect, multiple = f
       setUploadFiles([]);
       queryClient.invalidateQueries({ queryKey: queryKeys.media.lists() });
     },
-    onError: (e: any) => toast.error(e?.message || t('media.picker.uploadFailed', 'Failed to upload')),
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.picker.uploadFailed', 'Failed to upload'))),
   });
 
   const confirm = () => {
@@ -139,7 +147,7 @@ export default function MediaPickerModal({ open, onClose, onSelect, multiple = f
             </button>
           </div>
 
-          <div className="flex items-center gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_auto_auto] gap-3 mb-4">
             <div className="flex-1">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -156,6 +164,15 @@ export default function MediaPickerModal({ open, onClose, onSelect, multiple = f
                 />
               </div>
             </div>
+            <input
+              value={folder}
+              onChange={(e) => {
+                setFolder(e.target.value);
+                setPage(1);
+              }}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder={t('media.picker.folderFilter', 'Folder filter')}
+            />
             <input
               ref={fileInputRef}
               type="file"

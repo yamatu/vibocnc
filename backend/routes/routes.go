@@ -161,12 +161,6 @@ func SetupRoutes(r *gin.Engine) {
 			products := admin.Group("/products")
 			products.Use(middleware.EditorOrAdmin())
 			{
-				products.GET("", productController.GetProducts)
-				products.GET("/:id", productController.GetProduct)
-				products.POST("", productController.CreateProduct)
-				products.PUT("/:id", productController.UpdateProduct)
-				products.DELETE("/:id", middleware.AdminOnly(), productController.DeleteProduct)
-
 				// Bulk import (XLSX)
 				products.GET("/import/template", productController.DownloadImportTemplate)
 				products.POST("/import/xlsx", productController.ImportProductsXLSX)
@@ -174,10 +168,18 @@ func SetupRoutes(r *gin.Engine) {
 
 				// Bulk update is_active / is_featured
 				products.PUT("/bulk-update", productController.BulkUpdateProducts)
+				products.PUT("/bulk-auto-categorize", productController.BulkAutoCategorizeProducts)
 
 				// Bulk: apply/remove default watermark image URL
 				products.PUT("/bulk-default-image/apply", productController.BulkApplyDefaultImage)
 				products.PUT("/bulk-default-image/remove", productController.BulkRemoveDefaultImage)
+				products.PUT("/bulk-category-image", productController.BulkApplyCategoryImage)
+
+				products.GET("", productController.GetProducts)
+				products.GET("/:id", productController.GetProduct)
+				products.POST("", productController.CreateProduct)
+				products.PUT("/:id", productController.UpdateProduct)
+				products.DELETE("/:id", middleware.AdminOnly(), productController.DeleteProduct)
 
 				// Product image management
 				products.POST("/:id/images", productController.AddImage)

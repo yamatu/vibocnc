@@ -15,9 +15,10 @@ import {
 } from '@heroicons/react/24/outline';
 
 import AdminLayout from '@/components/admin/AdminLayout';
-import { MediaService } from '@/services';
+import { CategoryService, MediaService, ProductService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
 import type { MediaAsset, MediaUploadResponse } from '@/services/media.service';
+import type { Category } from '@/types';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
 type MediaAssetUpdates = Partial<Pick<MediaAsset, 'folder' | 'tags' | 'title' | 'alt_text'>>;
@@ -68,6 +69,9 @@ export default function AdminMediaPage() {
   const [showBatchEditModal, setShowBatchEditModal] = useState(false);
   const [batchFolder, setBatchFolder] = useState('');
   const [batchTags, setBatchTags] = useState('');
+  const [applyBrand, setApplyBrand] = useState('fanuc');
+  const [applyCategoryId, setApplyCategoryId] = useState('');
+  const [applyMode, setApplyMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
 
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -108,6 +112,12 @@ export default function AdminMediaPage() {
     queryFn: () => MediaService.getWatermarkSettings(),
     retry: 1,
   });
+
+  const { data: categoriesData = [] } = useQuery({
+    queryKey: queryKeys.categories.lists(),
+    queryFn: () => CategoryService.getAdminCategories(),
+  });
+  const categories = Array.isArray(categoriesData) ? (categoriesData as Category[]) : [];
 
   useEffect(() => {
     // If filters changed and current page is out of range, reset.
@@ -207,6 +217,22 @@ export default function AdminMediaPage() {
       setSelectedIds([asset.id]);
     },
     onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.watermarkFailed', locale === 'zh' ? '生成水印失败' : 'Failed to watermark image'))),
+  });
+
+  const bulkCategoryImageMutation = useMutation({
+    mutationFn: (payload: { media_asset_id: number; brand?: string; category_id?: string; apply_mode?: 'fill_empty' | 'replace_all'; batch_size?: number }) =>
+      ProductService.bulkApplyCategoryImage(payload),
+    onSuccess: (data) => {
+      toast.success(
+        t(
+          'media.toast.categoryImageApplied',
+          locale === 'zh'
+            ? `批量换图完成：更新 ${data.updated}，跳过 ${data.skipped}`
+            : `Batch image replacement completed: ${data.updated} updated, ${data.skipped} skipped`
+        )
+      );
+    },
+    onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.categoryImageApplyFailed', locale === 'zh' ? '批量换图失败' : 'Failed to apply image to products'))),
   });
 
   const toggleSelected = (id: number) => {
@@ -427,6 +453,93 @@ export default function AdminMediaPage() {
                   <option key={n} value={n}>{n}</option>
                 ))}
               </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">{t('media.bulkImage.title', locale === 'zh' ? '按品牌/分类批量替换产品图' : 'Bulk Replace Product Images by Brand/Category')}</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {t(
+                  'media.bulkImage.desc',
+                  locale === 'zh'
+                    ? '先在图库网格中选择 1 张图片，再按品牌和分类批量应用到产品。支持只补空图，或直接覆盖现有产品图。'
+                    : 'Select exactly one image in the media grid, then apply it to products by brand/category. You can fill empty images only or replace all existing images.'
+                )}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.import.brand', locale === 'zh' ? '品牌' : 'Brand')}</label>
+                <select
+                  value={applyBrand}
+                  onChange={(e) => setApplyBrand(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="fanuc">FANUC</option>
+                  <option value="mitsubishi">Mitsubishi</option>
+                  <option value="siemens">Siemens</option>
+                  <option value="abb">ABB</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('products.field.category', locale === 'zh' ? '分类' : 'Category')}</label>
+                <select
+                  value={applyCategoryId}
+                  onChange={(e) => setApplyCategoryId(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="">{t('products.page.allCategories', locale === 'zh' ? '全部分类' : 'All Categories')}</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={String(category.id)}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('media.bulkImage.mode', locale === 'zh' ? '换图模式' : 'Apply Mode')}</label>
+                <select
+                  value={applyMode}
+                  onChange={(e) => setApplyMode(e.target.value === 'replace_all' ? 'replace_all' : 'fill_empty')}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="fill_empty">{t('products.bulk.imageModeFill', locale === 'zh' ? '只补空图' : 'Fill Empty Only')}</option>
+                  <option value="replace_all">{t('products.bulk.imageModeReplace', locale === 'zh' ? '全部覆盖' : 'Replace All')}</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  disabled={!singleSelectedId || bulkCategoryImageMutation.isPending}
+                  onClick={() => {
+                    if (!singleSelectedId) {
+                      toast.error(t('media.bulkImage.needOne', locale === 'zh' ? '请先在网格中选择 1 张图片' : 'Select exactly one image first'));
+                      return;
+                    }
+                    bulkCategoryImageMutation.mutate({
+                      media_asset_id: singleSelectedId,
+                      brand: applyBrand || undefined,
+                      category_id: applyCategoryId || undefined,
+                      apply_mode: applyMode,
+                      batch_size: 500,
+                    });
+                  }}
+                  className="inline-flex items-center justify-center w-full px-4 py-2 text-sm rounded-md bg-fuchsia-600 text-white hover:bg-fuchsia-700 disabled:opacity-50"
+                >
+                  <PhotoIcon className="h-4 w-4 mr-2" />
+                  {bulkCategoryImageMutation.isPending
+                    ? t('common.processing', locale === 'zh' ? '处理中...' : 'Processing...')
+                    : t('media.bulkImage.apply', locale === 'zh' ? '批量应用到产品' : 'Apply to Products')}
+                </button>
+              </div>
+            </div>
+            <div className="text-xs text-gray-500">
+              {singleSelectedId
+                ? t('media.bulkImage.selected', locale === 'zh' ? `当前已选择图片 ID：${singleSelectedId}` : `Selected image ID: ${singleSelectedId}`)
+                : t('media.bulkImage.notSelected', locale === 'zh' ? '当前未选择图片，按钮将不可用。' : 'No image selected yet, so the action is disabled.')}
             </div>
           </div>
         </div>

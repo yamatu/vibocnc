@@ -5,6 +5,7 @@ import {
   Product, 
   ProductCreateRequest 
 } from '@/types';
+import type { AxiosProgressEvent } from 'axios';
 
 export interface ProductFilters {
   page?: number;
@@ -57,6 +58,55 @@ export interface ProductImportTaskSnapshot {
   updated_at: string;
 }
 
+export interface BulkAutoCategorizeResultItem {
+  product_id: number;
+  sku: string;
+  model: string;
+  brand: string;
+  category_slug: string;
+  category_id: number;
+  previous_category_id: number;
+  part_type: string;
+  match_rule: string;
+  action: string;
+}
+
+export interface BulkAutoCategorizeResult {
+  updated: number;
+  skipped: number;
+  failed: number;
+  items: BulkAutoCategorizeResultItem[];
+}
+
+export interface BulkCategoryImageResult {
+  updated: number;
+  skipped: number;
+  image_url: string;
+  apply_mode: 'fill_empty' | 'replace_all';
+}
+
+export interface ProductImageRecord {
+  id: number;
+  product_id: number;
+  url: string;
+  filename?: string;
+  original_name?: string;
+  alt_text?: string;
+  sort_order?: number;
+  is_primary?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+function isNetworkishError(error: unknown): error is {
+  code?: string;
+  message?: string;
+  response?: { status?: number; data?: { message?: string } };
+  constructor?: { name?: string };
+} {
+  return typeof error === 'object' && error !== null;
+}
+
 export class ProductService {
   // Get products (public)
   static async getProducts(filters: ProductFilters = {}): Promise<PaginationResponse<Product>> {
@@ -89,19 +139,20 @@ export class ProductService {
       }
 
       throw new Error(response.data.message || 'Failed to fetch products');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ ProductService.getProducts error:', error);
 
       // Check if it's a network error (backend not running) or timeout
-      if (error.code === 'ECONNREFUSED' ||
+      if (isNetworkishError(error) && (
+          error.code === 'ECONNREFUSED' ||
           error.code === 'ECONNABORTED' ||
           error.message?.includes('Network Error') ||
           error.message?.includes('ECONNREFUSED') ||
           error.message?.includes('timeout') ||
           error.message?.includes('aborted') ||
-          (error.code === 23 && error.constructor?.name === 'TimeoutError') ||
+          (error.code === '23' && error.constructor?.name === 'TimeoutError') ||
           error.response?.status === 404 ||
-          (error.response?.status && error.response.status >= 500)) {
+          (error.response?.status && error.response.status >= 500))) {
         console.warn('🔧 Backend server appears to be down or timed out, returning mock data');
         return this.getMockProductsData(filters);
       }
@@ -250,27 +301,27 @@ export class ProductService {
       if (response.data.success && response.data.data) {
         return response.data.data;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Network/timeout/5xx fallback to search
-      if (
+      if (isNetworkishError(error) && (
         error?.code === 'ECONNREFUSED' ||
         error?.code === 'ECONNABORTED' ||
         error?.message?.includes('Network Error') ||
         error?.message?.includes('ECONNREFUSED') ||
         error?.message?.includes('timeout') ||
         error?.message?.includes('aborted') ||
-        (error?.code === 23 && error?.constructor?.name === 'TimeoutError') ||
+        (error?.code === '23' && error?.constructor?.name === 'TimeoutError') ||
         error?.response?.status === 404 ||
         (error?.response?.status && error.response.status >= 500)
-      ) {
+      )) {
         try {
           const searchRes = await this.getProducts({ search: trimmed, is_active: 'true', page: 1, page_size: 1 });
           const first = (searchRes.data || [])[0];
           if (first) return first as unknown as Product;
-        } catch (_) {}
+        } catch {}
       }
       // If it's some other error, rethrow
-      if (error?.response?.data?.message) throw new Error(error.response.data.message);
+      if (isNetworkishError(error) && error?.response?.data?.message) throw new Error(error.response.data.message);
       throw error;
     }
 
@@ -279,7 +330,7 @@ export class ProductService {
       const searchRes = await this.getProducts({ search: trimmed, is_active: 'true', page: 1, page_size: 1 });
       const first = (searchRes.data || [])[0];
       if (first) return first as unknown as Product;
-    } catch (_) {}
+    } catch {}
 
     throw new Error('Product not found');
   }
@@ -415,7 +466,7 @@ export class ProductService {
     featured?: 'true' | 'false' | '';
     batch_size?: number;
   }): Promise<{ updated: number; skipped: number }> {
-    const response = await apiClient.put<APIResponse<any>>('/admin/products/bulk-default-image/apply', payload);
+    const response = await apiClient.put<APIResponse<{ updated: number; skipped: number }>>('/admin/products/bulk-default-image/apply', payload);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to apply default images');
   }
@@ -429,9 +480,41 @@ export class ProductService {
     featured?: 'true' | 'false' | '';
     batch_size?: number;
   }): Promise<{ updated: number; removed: number; skipped: number }> {
-    const response = await apiClient.put<APIResponse<any>>('/admin/products/bulk-default-image/remove', payload);
+    const response = await apiClient.put<APIResponse<{ updated: number; removed: number; skipped: number }>>('/admin/products/bulk-default-image/remove', payload);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to remove default images');
+  }
+
+  static async bulkAutoCategorize(payload: {
+    ids?: number[];
+    skus?: string[];
+    search?: string;
+    category_id?: string;
+    status?: 'active' | 'inactive' | 'all' | '';
+    featured?: 'true' | 'false' | '';
+    brand?: string;
+    batch_size?: number;
+  }): Promise<BulkAutoCategorizeResult> {
+    const response = await apiClient.put<APIResponse<BulkAutoCategorizeResult>>('/admin/products/bulk-auto-categorize', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to auto categorize products');
+  }
+
+  static async bulkApplyCategoryImage(payload: {
+    ids?: number[];
+    skus?: string[];
+    search?: string;
+    category_id?: string;
+    status?: 'active' | 'inactive' | 'all' | '';
+    featured?: 'true' | 'false' | '';
+    brand?: string;
+    batch_size?: number;
+    media_asset_id: number;
+    apply_mode?: 'fill_empty' | 'replace_all';
+  }): Promise<BulkCategoryImageResult> {
+    const response = await apiClient.put<APIResponse<BulkCategoryImageResult>>('/admin/products/bulk-category-image', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to apply category image');
   }
 
   // Admin: Download XLSX import template
@@ -458,7 +541,7 @@ export class ProductService {
     const response = await apiClient.post<APIResponse<ProductImportTaskSnapshot>>('/admin/products/import/xlsx', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 0,
-      onUploadProgress: (event: any) => {
+      onUploadProgress: (event: AxiosProgressEvent) => {
         if (!onUploadProgress || !event?.total) return;
         const pct = Math.min(100, Math.max(0, Math.round((event.loaded * 100) / event.total)));
         onUploadProgress(pct);
@@ -480,7 +563,7 @@ export class ProductService {
       // Reuse getProducts so we inherit its fallbacks and mocking
       const res = await this.getProducts({ is_featured: 'true', page_size: limit });
       return res.data || [];
-    } catch (error: any) {
+    } catch {
       console.warn('🔧 Falling back to mock featured products');
       const mock = this.getMockProductsData({ is_featured: 'true', page_size: limit });
       return mock.data || [];
@@ -494,8 +577,8 @@ export class ProductService {
   }
 
   // Get product images (admin)
-  static async getProductImages(productId: number): Promise<any[]> {
-    const response = await apiClient.get<APIResponse<any[]>>(
+  static async getProductImages(productId: number): Promise<ProductImageRecord[]> {
+    const response = await apiClient.get<APIResponse<ProductImageRecord[]>>(
       `/admin/products/${productId}/images`
     );
 
@@ -512,8 +595,8 @@ export class ProductService {
     alt_text?: string;
     is_primary?: boolean;
     sort_order?: number;
-  }): Promise<any> {
-    const response = await apiClient.post<APIResponse<any>>(
+  }): Promise<ProductImageRecord> {
+    const response = await apiClient.post<APIResponse<ProductImageRecord>>(
       `/admin/products/${productId}/images`,
       imageData
     );

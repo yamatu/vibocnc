@@ -124,12 +124,9 @@ var productImportTasks = &ProductImportManager{
 }
 
 func GenerateProductImportTemplateXLSX(brand string) ([]byte, error) {
-	brand = strings.ToLower(strings.TrimSpace(brand))
+	brand = NormalizeBrandKey(brand)
 	if brand == "" {
 		brand = "fanuc"
-	}
-	if brand != "fanuc" {
-		return nil, fmt.Errorf("unsupported brand: %s", brand)
 	}
 
 	f := excelize.NewFile()
@@ -175,9 +172,7 @@ func StartProductImportTask(ctx context.Context, db *gorm.DB, src io.Reader, fil
 	if brand == "" {
 		brand = "fanuc"
 	}
-	if brand != "fanuc" {
-		return ProductImportTaskSnapshot{}, fmt.Errorf("unsupported brand: %s", brand)
-	}
+	brand = NormalizeBrandKey(brand)
 
 	tempDir := filepath.Join(os.TempDir(), productImportTempDirName)
 	if err := os.MkdirAll(tempDir, 0o755); err != nil {
@@ -313,9 +308,7 @@ func processProductImportFile(ctx context.Context, db *gorm.DB, filePath string,
 	if brand == "" {
 		brand = "fanuc"
 	}
-	if brand != "fanuc" {
-		return ProductImportResult{}, fmt.Errorf("unsupported brand: %s", brand)
-	}
+	brand = NormalizeBrandKey(brand)
 
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
@@ -346,7 +339,7 @@ func processProductImportFile(ctx context.Context, db *gorm.DB, filePath string,
 		return res, nil
 	}
 
-	catBySlug, defaultCategoryID := loadImportCategories(db)
+	catBySlug, defaultCategoryID := loadImportCategories(db, brand)
 	rows, err := f.Rows(sheet)
 	if err != nil {
 		return res, err
@@ -503,7 +496,7 @@ func parseImportRow(cols []string, headerMap importHeaderMap, rowNo int) (Produc
 func applyImportBatch(ctx context.Context, db *gorm.DB, batch []ProductImportRow, opts ProductImportOptions, catBySlug map[string]uint, defaultCategoryID uint, res *ProductImportResult) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, row := range batch {
-			model := normalizeModel(row.Model)
+			model := NormalizeProductModel(row.Model)
 			if model == "" {
 				appendImportItem(res, ProductImportItem{RowNumber: row.RowNumber, Model: row.Model, Action: "failed", Message: "model is empty"})
 				continue
@@ -556,7 +549,7 @@ func applyImportBatch(ctx context.Context, db *gorm.DB, batch []ProductImportRow
 					updates["meta_keywords"] = enr.MetaKeywords
 				}
 				if strings.TrimSpace(product.Brand) == "" {
-					updates["brand"] = "FANUC"
+					updates["brand"] = CanonicalBrandName(opts.Brand)
 				}
 				if strings.TrimSpace(product.Model) == "" {
 					updates["model"] = model
@@ -606,7 +599,7 @@ func applyImportBatch(ctx context.Context, db *gorm.DB, batch []ProductImportRow
 				Price:            row.Price,
 				StockQuantity:    row.Quantity,
 				Weight:           wPtr,
-				Brand:            "FANUC",
+				Brand:            CanonicalBrandName(opts.Brand),
 				Model:            model,
 				PartNumber:       model,
 				CategoryID:       categoryID,
@@ -667,7 +660,7 @@ func updateTaskProgress(task *productImportTask, res ProductImportResult, proces
 	})
 }
 
-func loadImportCategories(db *gorm.DB) (map[string]uint, uint) {
+func loadImportCategories(db *gorm.DB, brand string) (map[string]uint, uint) {
 	catBySlug := map[string]uint{}
 	var cats []models.Category
 	if e := db.Model(&models.Category{}).Where("is_active = ?", true).Find(&cats).Error; e == nil {
@@ -676,7 +669,8 @@ func loadImportCategories(db *gorm.DB) (map[string]uint, uint) {
 		}
 	}
 	defaultCategoryID := uint(0)
-	if id, ok := catBySlug["pcb-boards"]; ok {
+	defaultCategorySlug := InferProductCategory(brand, "").CategorySlug
+	if id, ok := catBySlug[defaultCategorySlug]; ok {
 		defaultCategoryID = id
 	} else if len(cats) > 0 {
 		defaultCategoryID = cats[0].ID
@@ -714,28 +708,6 @@ func getCol(cols []string, idx int) string {
 		return ""
 	}
 	return cols[idx]
-}
-
-func normalizeModel(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	s = strings.ReplaceAll(s, "\\", "-")
-	s = strings.ReplaceAll(s, "/", "-")
-	s = strings.ReplaceAll(s, " ", "-")
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	s = strings.Trim(s, "-")
-	s = strings.ToUpper(s)
-	if strings.HasPrefix(s, "FANUC-") {
-		s = strings.TrimPrefix(s, "FANUC-")
-	}
-	if strings.HasPrefix(s, "FANUC ") {
-		s = strings.TrimSpace(strings.TrimPrefix(s, "FANUC "))
-	}
-	return s
 }
 
 func findProductByModelOrSKU(db *gorm.DB, model string) (models.Product, bool, error) {
