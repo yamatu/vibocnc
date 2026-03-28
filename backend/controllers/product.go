@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"fanuc-backend/config"
 	"fanuc-backend/models"
@@ -727,20 +728,22 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 
 	// If explicit IDs/SKUs provided, run a single update
 	if len(req.IDs) > 0 || len(req.SKUs) > 0 {
-		if err := tx.Updates(updates).Error; err != nil {
+		res := tx.Updates(updates)
+		if res.Error != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
 				Success: false,
 				Message: "Failed to update products",
-				Error:   err.Error(),
+				Error:   res.Error.Error(),
 			})
 			return
 		}
-		// Invalidate caches (Redis + optional Cloudflare)
-		services.InvalidatePublicCaches(c.Request.Context(), "product:bulk-update", nil)
+		// Keep the user-facing request fast; cache invalidation is best-effort.
+		go services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
 
 		c.JSON(http.StatusOK, models.APIResponse{
 			Success: true,
 			Message: "Products updated successfully",
+			Data:    map[string]int64{"updated": res.RowsAffected},
 		})
 		return
 
@@ -801,8 +804,8 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		return
 	}
 
-	// Invalidate caches (Redis + optional Cloudflare)
-	services.InvalidatePublicCaches(c.Request.Context(), "product:bulk-update", nil)
+	// Keep the user-facing request fast; cache invalidation is best-effort.
+	go services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,

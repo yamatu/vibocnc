@@ -55,6 +55,7 @@ type AutoCategorizeProgress = {
 };
 
 const AUTO_CATEGORIZE_BATCH_SIZE = 100;
+const BULK_UPDATE_BATCH_SIZE = 100;
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -87,6 +88,17 @@ function AdminProductsContent() {
   const [categoryImageMode, setCategoryImageMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
   const [lastAutoCategorizeResult, setLastAutoCategorizeResult] = useState<BulkAutoCategorizeResult | null>(null);
   const [autoCategorizeProgress, setAutoCategorizeProgress] = useState<AutoCategorizeProgress>({
+    status: 'idle',
+    processed: 0,
+    total: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    currentBatch: 0,
+    totalBatches: 0,
+    message: '',
+  });
+  const [bulkUpdateProgress, setBulkUpdateProgress] = useState<AutoCategorizeProgress>({
     status: 'idle',
     processed: 0,
     total: 0,
@@ -661,34 +673,135 @@ function AdminProductsContent() {
   };
 
   const bulkSetActive = (value: boolean) => {
-    if (!selectAllResults && selectedIds.length === 0) { toast.error(t('products.toast.selectOne', 'Select at least one product')); return; }
-    if (selectAllResults) {
-      bulkUpdateMutation.mutate({
-        is_active: value,
-        batch_size: 500,
-        search: searchQuery || undefined,
-        category_id: selectedCategory || undefined,
-        status: (statusFilter === 'all' || statusFilter === 'featured') ? 'all' : (statusFilter as 'active' | 'inactive'),
-        featured: (statusFilter === 'featured') ? 'true' : undefined,
-      });
-    } else {
-      bulkUpdateMutation.mutate({ ids: selectedIds, is_active: value });
-    }
+    void runBulkFlagUpdate('is_active', value);
   };
 
   const bulkSetFeatured = (value: boolean) => {
-    if (!selectAllResults && selectedIds.length === 0) { toast.error(t('products.toast.selectOne', 'Select at least one product')); return; }
-    if (selectAllResults) {
-      bulkUpdateMutation.mutate({
-        is_featured: value,
-        batch_size: 500,
-        search: searchQuery || undefined,
-        category_id: selectedCategory || undefined,
-        status: (statusFilter === 'all' || statusFilter === 'featured') ? 'all' : (statusFilter as 'active' | 'inactive'),
-        featured: (statusFilter === 'featured') ? 'true' : undefined,
+    void runBulkFlagUpdate('is_featured', value);
+  };
+
+  const runBulkFlagUpdate = async (field: 'is_active' | 'is_featured', value: boolean) => {
+    if (!selectAllResults && selectedIds.length === 0) {
+      toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
+      return;
+    }
+
+    try {
+      setBulkUpdateProgress({
+        status: 'preparing',
+        processed: 0,
+        total: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+        message: locale === 'zh' ? '正在准备批量更新...' : 'Preparing bulk update...',
       });
-    } else {
-      bulkUpdateMutation.mutate({ ids: selectedIds, is_featured: value });
+
+      let targetIds = [...selectedIds];
+      if (selectAllResults) {
+        const snapshot = await ProductService.getAdminProductSelectionIds(buildSelectAllPayload());
+        targetIds = snapshot.ids;
+      }
+
+      if (targetIds.length === 0) {
+        setBulkUpdateProgress({
+          status: 'idle',
+          processed: 0,
+          total: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          currentBatch: 0,
+          totalBatches: 0,
+          message: '',
+        });
+        toast.error(t('products.bulk.noProducts', locale === 'zh' ? '没有可处理的产品' : 'No products to process'));
+        return;
+      }
+
+      const total = targetIds.length;
+      const totalBatches = Math.ceil(total / BULK_UPDATE_BATCH_SIZE);
+
+      setBulkUpdateProgress({
+        status: 'running',
+        processed: 0,
+        total,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        currentBatch: 0,
+        totalBatches,
+        message: locale === 'zh'
+          ? `共 ${total} 个产品，开始分 ${totalBatches} 批处理`
+          : `Processing ${total} products across ${totalBatches} batches`,
+      });
+
+      for (let start = 0; start < total; start += BULK_UPDATE_BATCH_SIZE) {
+        const batchIds = targetIds.slice(start, start + BULK_UPDATE_BATCH_SIZE);
+        const batchIndex = Math.floor(start / BULK_UPDATE_BATCH_SIZE) + 1;
+
+        setBulkUpdateProgress((prev) => ({
+          ...prev,
+          status: 'running',
+          currentBatch: batchIndex,
+          totalBatches,
+          message: locale === 'zh'
+            ? `正在处理第 ${batchIndex}/${totalBatches} 批（${batchIds.length} 个产品）`
+            : `Processing batch ${batchIndex}/${totalBatches} (${batchIds.length} products)`,
+        }));
+
+        await ProductService.bulkUpdateProducts({
+          ids: batchIds,
+          [field]: value,
+        });
+
+        const processed = Math.min(start + batchIds.length, total);
+        setBulkUpdateProgress({
+          status: 'running',
+          processed,
+          total,
+          updated: processed,
+          skipped: 0,
+          failed: 0,
+          currentBatch: batchIndex,
+          totalBatches,
+          message: locale === 'zh'
+            ? `已完成 ${processed}/${total} 个产品`
+            : `${processed}/${total} products completed`,
+        });
+      }
+
+      setBulkUpdateProgress((prev) => ({
+        ...prev,
+        status: 'completed',
+        processed: total,
+        total,
+        updated: total,
+        currentBatch: totalBatches,
+        totalBatches,
+        message: locale === 'zh' ? '批量更新已完成' : 'Bulk update completed',
+      }));
+      setSelectedIds([]);
+      setSelectAllResults(false);
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+      toast.success(
+        field === 'is_active'
+          ? (value
+            ? t('products.bulk.setActiveDone', locale === 'zh' ? `已批量启用 ${total} 个产品` : `Activated ${total} products`)
+            : t('products.bulk.setInactiveDone', locale === 'zh' ? `已批量停用 ${total} 个产品` : `Deactivated ${total} products`))
+          : (value
+            ? t('products.bulk.markFeaturedDone', locale === 'zh' ? `已批量设为推荐 ${total} 个产品` : `Marked ${total} products as featured`)
+            : t('products.bulk.unmarkFeaturedDone', locale === 'zh' ? `已批量取消推荐 ${total} 个产品` : `Unmarked ${total} featured products`))
+      );
+    } catch (error: unknown) {
+      setBulkUpdateProgress((prev) => ({
+        ...prev,
+        status: 'failed',
+        message: getErrorMessage(error, t('products.toast.bulkFailed', locale === 'zh' ? '批量更新失败' : 'Bulk update failed')),
+      }));
+      toast.error(getErrorMessage(error, t('products.toast.bulkFailed', locale === 'zh' ? '批量更新失败' : 'Bulk update failed')));
     }
   };
 
@@ -975,7 +1088,7 @@ function AdminProductsContent() {
               <button
                 onClick={() => bulkSetActive(true)}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={bulkUpdateMutation.isPending || (!selectAllResults && selectedIds.length === 0)}
+                disabled={(bulkUpdateMutation.isPending || bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running') || (!selectAllResults && selectedIds.length === 0)}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -986,7 +1099,7 @@ function AdminProductsContent() {
               <button
                 onClick={() => bulkSetActive(false)}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={bulkUpdateMutation.isPending || (!selectAllResults && selectedIds.length === 0)}
+                disabled={(bulkUpdateMutation.isPending || bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running') || (!selectAllResults && selectedIds.length === 0)}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -997,7 +1110,7 @@ function AdminProductsContent() {
               <button
                 onClick={() => bulkSetFeatured(true)}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={bulkUpdateMutation.isPending || (!selectAllResults && selectedIds.length === 0)}
+                disabled={(bulkUpdateMutation.isPending || bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running') || (!selectAllResults && selectedIds.length === 0)}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
@@ -1008,7 +1121,7 @@ function AdminProductsContent() {
               <button
                 onClick={() => bulkSetFeatured(false)}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-slate-600 hover:bg-slate-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={bulkUpdateMutation.isPending || (!selectAllResults && selectedIds.length === 0)}
+                disabled={(bulkUpdateMutation.isPending || bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running') || (!selectAllResults && selectedIds.length === 0)}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
@@ -1107,6 +1220,53 @@ function AdminProductsContent() {
                 </div>
               )}
             </div>
+            {bulkUpdateProgress.status !== 'idle' && (
+              <div className={`mt-4 rounded-lg border p-4 ${
+                bulkUpdateProgress.status === 'failed'
+                  ? 'border-rose-200 bg-rose-50'
+                  : bulkUpdateProgress.status === 'completed'
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-blue-200 bg-blue-50'
+              }`}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {locale === 'zh' ? '批量更新进度' : 'Bulk update progress'}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-700">{bulkUpdateProgress.message}</div>
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    {bulkUpdateProgress.total > 0
+                      ? `${bulkUpdateProgress.processed}/${bulkUpdateProgress.total}`
+                      : (locale === 'zh' ? '准备中' : 'Preparing')}
+                  </div>
+                </div>
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/80">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      bulkUpdateProgress.status === 'failed'
+                        ? 'bg-rose-500'
+                        : bulkUpdateProgress.status === 'completed'
+                          ? 'bg-emerald-500'
+                          : 'bg-blue-500'
+                    }`}
+                    style={{
+                      width: `${bulkUpdateProgress.total > 0
+                        ? Math.min(100, Math.round((bulkUpdateProgress.processed / bulkUpdateProgress.total) * 100))
+                        : 8}%`
+                    }}
+                  />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-3 text-sm text-gray-700">
+                  <span>{locale === 'zh' ? '已处理' : 'Processed'}: {bulkUpdateProgress.processed}</span>
+                  {bulkUpdateProgress.totalBatches > 0 && (
+                    <span>
+                      {locale === 'zh' ? '批次' : 'Batch'}: {bulkUpdateProgress.currentBatch}/{bulkUpdateProgress.totalBatches}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
             {autoCategorizeProgress.status !== 'idle' && (
               <div className={`mt-4 rounded-lg border p-4 ${
                 autoCategorizeProgress.status === 'failed'
