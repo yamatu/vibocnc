@@ -23,6 +23,8 @@ type ProductController struct{}
 
 var imagesTableOnce sync.Once
 var imagesTableExists bool
+var faqsTableOnce sync.Once
+var faqsTableExists bool
 
 func hasImagesTable() bool {
 	imagesTableOnce.Do(func() {
@@ -31,6 +33,15 @@ func hasImagesTable() bool {
 		}
 	})
 	return imagesTableExists
+}
+
+func hasProductFAQsTable() bool {
+	faqsTableOnce.Do(func() {
+		if config.DB != nil {
+			faqsTableExists = config.DB.Migrator().HasTable(&models.ProductFAQ{})
+		}
+	})
+	return faqsTableExists
 }
 
 // helper: apply common preloads; conditionally include Images only when table exists
@@ -50,8 +61,10 @@ func withProductPreloads(db *gorm.DB) *gorm.DB {
 func withPublicProductPreloads(db *gorm.DB) *gorm.DB {
 	q := db.Preload("Category").
 		Preload("PurchaseLinks", "is_active = ?", true).
-		Preload("Reviews", "is_approved = ?", true).
-		Preload("FAQs", "is_active = ?", true)
+		Preload("Reviews", "is_approved = ?", true)
+	if hasProductFAQsTable() {
+		q = q.Preload("FAQs", "is_active = ?", true)
+	}
 	if hasImagesTable() {
 		q = q.Preload("Images")
 	}
@@ -778,7 +791,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		selector = selector.Where("is_featured = ?", false)
 	}
 
-	if err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, batchNo int) error {
+	if err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
 		// collect IDs
 		ids := make([]uint, 0, len(batch))
 		for _, p := range batch {
@@ -792,8 +805,6 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 			return res.Error
 		}
 		totalUpdated += res.RowsAffected
-		// clear batch slice for next fill
-		batch = batch[:0]
 		return nil
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{

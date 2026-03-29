@@ -254,7 +254,6 @@ func (pc *ProductController) BulkAutoCategorizeProducts(c *gin.Context) {
 				})
 			}
 		}
-		batch = batch[:0]
 		return nil
 	}).Error
 	if err != nil {
@@ -338,7 +337,6 @@ func (pc *ProductController) BulkApplyCategoryImage(c *gin.Context) {
 			}
 			updated++
 		}
-		batch = batch[:0]
 		return nil
 	}).Error
 	if err != nil {

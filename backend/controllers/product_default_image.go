@@ -170,7 +170,6 @@ func (pc *ProductController) BulkApplyDefaultImage(c *gin.Context) {
 			}
 			updated++
 		}
-		batch = batch[:0]
 		return nil
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to apply default images", Error: err.Error()})
@@ -254,7 +253,6 @@ func (pc *ProductController) BulkRemoveDefaultImage(c *gin.Context) {
 			}
 			updated++
 		}
-		batch = batch[:0]
 		return nil
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to remove default images", Error: err.Error()})
