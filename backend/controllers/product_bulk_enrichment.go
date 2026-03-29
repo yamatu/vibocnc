@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -262,7 +263,8 @@ func (pc *ProductController) BulkAutoCategorizeProducts(c *gin.Context) {
 	}
 
 	if updated > 0 {
-		services.InvalidatePublicCaches(c.Request.Context(), "product:bulk-auto-categorize", nil)
+		// Keep the user-facing request fast; cache invalidation is best-effort.
+		go services.InvalidatePublicCaches(context.Background(), "product:bulk-auto-categorize", nil)
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
@@ -345,7 +347,8 @@ func (pc *ProductController) BulkApplyCategoryImage(c *gin.Context) {
 	}
 
 	if updated > 0 {
-		services.InvalidatePublicCaches(c.Request.Context(), "product:bulk-category-image", nil)
+		// Keep the user-facing request fast; cache invalidation is best-effort.
+		go services.InvalidatePublicCaches(context.Background(), "product:bulk-category-image", nil)
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
