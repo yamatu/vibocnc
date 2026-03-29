@@ -448,6 +448,7 @@ export class ProductService {
     // optional filters for select-all
     search?: string;
     category_id?: string;
+    include_descendants?: boolean;
     status?: 'active' | 'inactive' | 'all';
     featured?: 'true' | 'false' | '';
     batch_size?: number;
@@ -467,6 +468,7 @@ export class ProductService {
     skus?: string[];
     search?: string;
     category_id?: string;
+    include_descendants?: boolean;
     status?: 'active' | 'inactive' | 'all' | '';
     featured?: 'true' | 'false' | '';
     batch_size?: number;
@@ -481,6 +483,7 @@ export class ProductService {
     skus?: string[];
     search?: string;
     category_id?: string;
+    include_descendants?: boolean;
     status?: 'active' | 'inactive' | 'all' | '';
     featured?: 'true' | 'false' | '';
     batch_size?: number;
@@ -495,6 +498,7 @@ export class ProductService {
     skus?: string[];
     search?: string;
     category_id?: string;
+    include_descendants?: boolean;
     status?: 'active' | 'inactive' | 'all' | '';
     featured?: 'true' | 'false' | '';
     brand?: string;
@@ -510,6 +514,7 @@ export class ProductService {
     skus?: string[];
     search?: string;
     category_id?: string;
+    include_descendants?: boolean;
     status?: 'active' | 'inactive' | 'all' | '';
     featured?: 'true' | 'false' | '';
     brand?: string;
@@ -525,6 +530,7 @@ export class ProductService {
     skus?: string[];
     search?: string;
     category_id?: string;
+    include_descendants?: boolean;
     status?: 'active' | 'inactive' | 'all' | '';
     featured?: 'true' | 'false' | '';
     brand?: string;

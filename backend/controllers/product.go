@@ -673,11 +673,12 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		IsActive   *bool    `json:"is_active"`
 		IsFeatured *bool    `json:"is_featured"`
 		// Optional filters to select all matching records
-		Search     string `json:"search"`
-		CategoryID string `json:"category_id"`
-		Status     string `json:"status"`     // "active" | "inactive" | "all" | ""
-		Featured   string `json:"featured"`   // "true" | "false" | ""
-		BatchSize  int    `json:"batch_size"` // optional, default 500
+		Search             string `json:"search"`
+		CategoryID         string `json:"category_id"`
+		IncludeDescendants bool   `json:"include_descendants"`
+		Status             string `json:"status"`     // "active" | "inactive" | "all" | ""
+		Featured           string `json:"featured"`   // "true" | "false" | ""
+		BatchSize          int    `json:"batch_size"` // optional, default 500
 	}
 
 	var req BulkUpdateReq
@@ -721,7 +722,21 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	// Or selection by filters (when no explicit IDs/SKUs are provided)
 	if len(req.IDs) == 0 && len(req.SKUs) == 0 {
 		if req.CategoryID != "" {
-			tx = tx.Where("category_id = ?", req.CategoryID)
+			if req.IncludeDescendants {
+				rootID, err := strconv.ParseUint(req.CategoryID, 10, 32)
+				if err == nil && rootID > 0 {
+					ids, derr := getDescendantCategoryIDs(db, uint(rootID))
+					if derr == nil && len(ids) > 0 {
+						tx = tx.Where("category_id IN ?", ids)
+					} else {
+						tx = tx.Where("category_id = ?", req.CategoryID)
+					}
+				} else {
+					tx = tx.Where("category_id = ?", req.CategoryID)
+				}
+			} else {
+				tx = tx.Where("category_id = ?", req.CategoryID)
+			}
 		}
 		if req.Search != "" {
 			like := "%" + req.Search + "%"
@@ -774,7 +789,21 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	// Build a selector with same filters (without IDs/SKUs) to stream IDs
 	selector := db.Model(&models.Product{})
 	if req.CategoryID != "" {
-		selector = selector.Where("category_id = ?", req.CategoryID)
+		if req.IncludeDescendants {
+			rootID, err := strconv.ParseUint(req.CategoryID, 10, 32)
+			if err == nil && rootID > 0 {
+				ids, derr := getDescendantCategoryIDs(db, uint(rootID))
+				if derr == nil && len(ids) > 0 {
+					selector = selector.Where("category_id IN ?", ids)
+				} else {
+					selector = selector.Where("category_id = ?", req.CategoryID)
+				}
+			} else {
+				selector = selector.Where("category_id = ?", req.CategoryID)
+			}
+		} else {
+			selector = selector.Where("category_id = ?", req.CategoryID)
+		}
 	}
 	if req.Search != "" {
 		like := "%" + req.Search + "%"

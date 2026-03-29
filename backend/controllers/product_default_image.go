@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"fanuc-backend/config"
@@ -15,13 +16,14 @@ import (
 )
 
 type bulkDefaultImageReq struct {
-	IDs        []uint   `json:"ids"`
-	SKUs       []string `json:"skus"`
-	Search     string   `json:"search"`
-	CategoryID string   `json:"category_id"`
-	Status     string   `json:"status"`     // "active" | "inactive" | "all" | ""
-	Featured   string   `json:"featured"`   // "true" | "false" | ""
-	BatchSize  int      `json:"batch_size"` // optional, default 500
+	IDs                []uint   `json:"ids"`
+	SKUs               []string `json:"skus"`
+	Search             string   `json:"search"`
+	CategoryID         string   `json:"category_id"`
+	IncludeDescendants bool     `json:"include_descendants"`
+	Status             string   `json:"status"`     // "active" | "inactive" | "all" | ""
+	Featured           string   `json:"featured"`   // "true" | "false" | ""
+	BatchSize          int      `json:"batch_size"` // optional, default 500
 }
 
 func defaultImageURLForSKU(sku string) string {
@@ -106,7 +108,21 @@ func toImageURLsJSON(urls []string) string {
 func buildProductSelector(db *gorm.DB, req bulkDefaultImageReq) *gorm.DB {
 	q := db.Model(&models.Product{})
 	if req.CategoryID != "" {
-		q = q.Where("category_id = ?", req.CategoryID)
+		if req.IncludeDescendants {
+			rootID, err := strconv.ParseUint(req.CategoryID, 10, 32)
+			if err == nil && rootID > 0 {
+				ids, derr := getDescendantCategoryIDs(db, uint(rootID))
+				if derr == nil && len(ids) > 0 {
+					q = q.Where("category_id IN ?", ids)
+				} else {
+					q = q.Where("category_id = ?", req.CategoryID)
+				}
+			} else {
+				q = q.Where("category_id = ?", req.CategoryID)
+			}
+		} else {
+			q = q.Where("category_id = ?", req.CategoryID)
+		}
 	}
 	if strings.TrimSpace(req.Search) != "" {
 		like := "%" + strings.TrimSpace(req.Search) + "%"

@@ -14,14 +14,15 @@ import (
 )
 
 type bulkProductScopeReq struct {
-	IDs        []uint   `json:"ids"`
-	SKUs       []string `json:"skus"`
-	Search     string   `json:"search"`
-	CategoryID string   `json:"category_id"`
-	Status     string   `json:"status"`
-	Featured   string   `json:"featured"`
-	Brand      string   `json:"brand"`
-	BatchSize  int      `json:"batch_size"`
+	IDs                []uint   `json:"ids"`
+	SKUs               []string `json:"skus"`
+	Search             string   `json:"search"`
+	CategoryID         string   `json:"category_id"`
+	IncludeDescendants bool     `json:"include_descendants"`
+	Status             string   `json:"status"`
+	Featured           string   `json:"featured"`
+	Brand              string   `json:"brand"`
+	BatchSize          int      `json:"batch_size"`
 }
 
 type bulkAutoCategorizeReq struct {
@@ -62,10 +63,11 @@ func buildBulkProductSelector(db *gorm.DB, req bulkProductScopeReq) *gorm.DB {
 		selector = selector.Where("sku IN ?", req.SKUs)
 	} else {
 		selector = buildProductSelector(selector, bulkDefaultImageReq{
-			Search:     req.Search,
-			CategoryID: req.CategoryID,
-			Status:     req.Status,
-			Featured:   req.Featured,
+			Search:             req.Search,
+			CategoryID:         req.CategoryID,
+			IncludeDescendants: req.IncludeDescendants,
+			Status:             req.Status,
+			Featured:           req.Featured,
 		})
 	}
 

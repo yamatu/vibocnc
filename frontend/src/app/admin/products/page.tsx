@@ -36,6 +36,7 @@ type BulkSelectionPayload = {
   skus?: string[];
   search?: string;
   category_id?: string;
+  include_descendants?: boolean;
   status?: 'active' | 'inactive' | 'all' | '';
   featured?: 'true' | 'false' | '';
   brand?: string;
@@ -217,6 +218,7 @@ function AdminProductsContent() {
     queryFn: () => ProductService.getAdminProducts({
       search: searchQuery,
       category_id: selectedCategory || undefined,
+      include_descendants: selectedCategory ? 'true' : undefined,
       is_active: statusFilter === 'active' ? 'true' : statusFilter === 'inactive' ? 'false' : undefined,
       is_featured: statusFilter === 'featured' ? 'true' : undefined,
       page: currentPage,
@@ -332,6 +334,7 @@ function AdminProductsContent() {
     batch_size: 500,
     search: searchQuery || undefined,
     category_id: selectedCategory || undefined,
+    include_descendants: Boolean(selectedCategory),
     status: (statusFilter === 'all' || statusFilter === 'featured') ? 'all' : (statusFilter as 'active' | 'inactive'),
     featured: (statusFilter === 'featured') ? 'true' : undefined,
   });
