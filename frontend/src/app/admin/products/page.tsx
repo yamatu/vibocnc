@@ -68,6 +68,7 @@ function AdminProductsContent() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20); // Dynamic page size
@@ -153,6 +154,7 @@ function AdminProductsContent() {
   const updateURL = (updates: Partial<{
     search: string;
     category: string;
+    brand: string;
     status: string;
     page: number;
     pageSize: number;
@@ -161,12 +163,14 @@ function AdminProductsContent() {
 
     const finalSearch = updates.search !== undefined ? updates.search : searchQuery;
     const finalCategory = updates.category !== undefined ? updates.category : selectedCategory;
+    const finalBrand = updates.brand !== undefined ? updates.brand : selectedBrand;
     const finalStatus = updates.status !== undefined ? updates.status : statusFilter;
     const finalPage = updates.page !== undefined ? updates.page : currentPage;
     const finalPageSize = updates.pageSize !== undefined ? updates.pageSize : pageSize;
 
     if (finalSearch) params.set('search', finalSearch);
     if (finalCategory) params.set('category', finalCategory);
+    if (finalBrand) params.set('brand', finalBrand);
     if (finalStatus && finalStatus !== 'all') params.set('status', finalStatus);
     if (finalPage && finalPage > 1) params.set('page', String(finalPage));
     if (finalPageSize !== 20) params.set('pageSize', String(finalPageSize));
@@ -183,6 +187,7 @@ function AdminProductsContent() {
     const params = new URLSearchParams();
     if (searchQuery) params.set('search', searchQuery);
     if (selectedCategory) params.set('category', selectedCategory);
+    if (selectedBrand) params.set('brand', selectedBrand);
     if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
     if (currentPage && currentPage > 1) params.set('page', String(currentPage));
     if (pageSize !== 20) params.set('pageSize', String(pageSize));
@@ -195,12 +200,14 @@ function AdminProductsContent() {
     if (!searchParams) return;
     const s = searchParams.get('search') || '';
     const c = searchParams.get('category') || '';
+    const b = searchParams.get('brand') || '';
     const st = (searchParams.get('status') as 'all' | 'active' | 'inactive' | 'featured') || 'all';
     const p = parseInt(searchParams.get('page') || '1', 10);
     const ps = parseInt(searchParams.get('pageSize') || '20', 10);
 
     setSearchQuery(s);
     setSelectedCategory(c);
+    setSelectedBrand(b);
     setStatusFilter(st);
     setCurrentPage(Number.isFinite(p) && p > 0 ? p : 1);
     setPageSize([20, 50, 100, 200, 500].includes(ps) ? ps : 20);
@@ -211,6 +218,7 @@ function AdminProductsContent() {
     queryKey: queryKeys.products.list({
       search: searchQuery,
       category: selectedCategory,
+      brand: selectedBrand,
       status: statusFilter,
       page: currentPage,
       pageSize
@@ -219,6 +227,7 @@ function AdminProductsContent() {
       search: searchQuery,
       category_id: selectedCategory || undefined,
       include_descendants: selectedCategory ? 'true' : undefined,
+      brand: selectedBrand || undefined,
       is_active: statusFilter === 'active' ? 'true' : statusFilter === 'inactive' ? 'false' : undefined,
       is_featured: statusFilter === 'featured' ? 'true' : undefined,
       page: currentPage,
@@ -335,14 +344,17 @@ function AdminProductsContent() {
     search: searchQuery || undefined,
     category_id: selectedCategory || undefined,
     include_descendants: Boolean(selectedCategory),
+    brand: selectedBrand || undefined,
     status: (statusFilter === 'all' || statusFilter === 'featured') ? 'all' : (statusFilter as 'active' | 'inactive'),
     featured: (statusFilter === 'featured') ? 'true' : undefined,
   });
 
+  const effectiveBulkBrand = selectedBrand || categoryImageBrand || undefined;
+
   const buildScopedPayload = (): BulkSelectionPayload => (
     selectAllResults
-      ? { ...buildSelectAllPayload(), brand: categoryImageBrand || undefined }
-      : { ids: selectedIds, brand: categoryImageBrand || undefined }
+      ? { ...buildSelectAllPayload(), brand: effectiveBulkBrand }
+      : { ids: selectedIds, brand: effectiveBulkBrand }
   );
 
   const bulkApplyDefaultImages = () => {
@@ -382,7 +394,7 @@ function AdminProductsContent() {
         if (selectAllResults) {
           const snapshot = await ProductService.getAdminProductSelectionIds({
             ...buildSelectAllPayload(),
-            brand: categoryImageBrand || undefined,
+            brand: effectiveBulkBrand,
           });
           targetIds = snapshot.ids;
         }
@@ -440,7 +452,7 @@ function AdminProductsContent() {
 
           const result = await ProductService.bulkAutoCategorize({
             ids: batchIds,
-            brand: categoryImageBrand || undefined,
+            brand: effectiveBulkBrand,
             batch_size: batchIds.length,
           });
 
@@ -637,6 +649,14 @@ function AdminProductsContent() {
     updateURL({ category: value, page: 1 });
   };
 
+  const handleBrandChange = (value: string) => {
+    setSelectedBrand(value);
+    setCurrentPage(1);
+    setSelectedIds([]);
+    setSelectAllResults(false);
+    updateURL({ brand: value, page: 1 });
+  };
+
   const handleStatusChange = (value: string) => {
     setStatusFilter(value);
     setCurrentPage(1);
@@ -660,9 +680,10 @@ function AdminProductsContent() {
   const handleClearFilters = () => {
     setSearchQuery('');
     setSelectedCategory('');
+    setSelectedBrand('');
     setStatusFilter('all');
     setCurrentPage(1);
-    updateURL({ search: '', category: '', status: 'all', page: 1 });
+    updateURL({ search: '', category: '', brand: '', status: 'all', page: 1 });
   };
 
   const toggleSelectAllOnPage = (checked: boolean, current: Product[]) => {
@@ -1194,6 +1215,7 @@ function AdminProductsContent() {
                 <select
                   value={categoryImageBrand}
                   onChange={(e) => setCategoryImageBrand(e.target.value)}
+                  disabled={Boolean(selectedBrand)}
                   className="px-3 py-2 text-sm border border-gray-300 rounded-md"
                 >
                   <option value="fanuc">FANUC</option>
@@ -1202,6 +1224,13 @@ function AdminProductsContent() {
                   <option value="abb">ABB</option>
                 </select>
               </div>
+              {selectedBrand && (
+                <div className="text-sm text-blue-600">
+                  {locale === 'zh'
+                    ? `当前已按品牌 ${selectedBrand.toUpperCase()} 筛选，批量操作会自动沿用这个品牌范围`
+                    : `Brand filter ${selectedBrand.toUpperCase()} is active, and bulk actions will use that brand scope`}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">{t('products.bulk.imageMode', locale === 'zh' ? '换图模式' : 'Image mode')}</span>
                 <select
@@ -1360,7 +1389,7 @@ function AdminProductsContent() {
 
         {/* Filters */}
         <div className="bg-white shadow rounded-lg p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {/* Search */}
             <div>
                 <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
@@ -1398,6 +1427,24 @@ function AdminProductsContent() {
                     {category.name}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            <div>
+                <label htmlFor="brand" className="block text-sm font-medium text-gray-700 mb-1">
+				{t('products.import.brand', locale === 'zh' ? '品牌' : 'Brand')}
+                </label>
+              <select
+                id="brand"
+                value={selectedBrand}
+                onChange={(e) => handleBrandChange(e.target.value)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+				<option value="">{locale === 'zh' ? '全部品牌' : 'All Brands'}</option>
+				<option value="fanuc">FANUC</option>
+				<option value="mitsubishi">Mitsubishi</option>
+				<option value="siemens">Siemens</option>
+				<option value="abb">ABB</option>
               </select>
             </div>
 

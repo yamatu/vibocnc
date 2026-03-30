@@ -235,7 +235,7 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	}
 
 	if brand != "" {
-		query = query.Where("brand = ?", brand)
+		query = query.Where("LOWER(brand) = LOWER(?)", strings.TrimSpace(brand))
 	}
 
 	if search != "" {
