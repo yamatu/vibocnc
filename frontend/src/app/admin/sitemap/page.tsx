@@ -48,7 +48,8 @@ export default function SitemapManagementPage() {
   const baseUrl = getSiteUrl();
 
   const sitemapUrls = [
-    { name: 'Main Sitemap', url: `${baseUrl}/sitemap.xml`, description: 'Main pages' },
+    { name: 'Sitemap Index', url: `${baseUrl}/sitemap-index.xml`, description: 'Primary sitemap submission URL' },
+    { name: 'Main Sitemap', url: `${baseUrl}/sitemap.xml`, description: 'MetadataRoute summary sitemap' },
     { name: 'Static Pages', url: `${baseUrl}/sitemap-static.xml`, description: 'All static pages' },
     { name: 'Categories', url: `${baseUrl}/sitemap-categories.xml`, description: 'All category pages' },
     { name: 'Products Index', url: `${baseUrl}/sitemap-products-index.xml`, description: 'Product sitemap index' },
@@ -200,7 +201,7 @@ export default function SitemapManagementPage() {
                 <h3 className="text-sm font-medium text-blue-800">{t('sitemap.instructions.title', 'SEO Instructions')}</h3>
                 <div className="mt-2 text-sm text-blue-700">
                   <ul className="list-disc list-inside space-y-1">
-                    <li>{t('sitemap.instructions.1', 'Submit sitemap-index.xml to Google Search Console')}</li>
+                    <li>{t('sitemap.instructions.1', 'Submit sitemap-index.xml to Google Search Console and Bing Webmaster Tools')}</li>
                     <li>{t('sitemap.instructions.2', 'Sitemaps are automatically updated every 30 minutes')}</li>
                     <li>{t('sitemap.instructions.3', 'Each product sitemap contains up to 100 products')}</li>
                     <li>{t('sitemap.instructions.4', 'New products are automatically included in sitemaps')}</li>

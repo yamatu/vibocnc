@@ -3,6 +3,15 @@
 import { Product, Category } from '@/types';
 import { toProductPathId } from '@/lib/utils';
 
+type JsonLdValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | JsonLdValue[]
+  | { [key: string]: JsonLdValue };
+
 interface ProductSEOProps {
   product: Product;
   category?: Category;
@@ -32,13 +41,30 @@ function parseSpecs(raw?: string): Record<string, string> | null {
   return null;
 }
 
+function stripHtml(text?: string): string {
+  return String(text || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function toAbsoluteUrl(url: string | undefined, baseUrl: string): string {
+  const value = String(url || '').trim();
+  if (!value) return `${baseUrl}/images/default-product.svg`;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
+}
+
 export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'https://www.vcocncspare.com' }: ProductSEOProps) {
   const productUrl = `${baseUrl}/products/${toProductPathId(product.sku)}`;
+  const productId = `${productUrl}#product`;
+  const description = stripHtml(product.meta_description || product.short_description || product.description)
+    || `${product.name} industrial automation spare part from ${product.brand || 'FANUC'}.`;
 
   // Build image array
-  const imageUrls = product.images?.map(img => typeof img === 'string' ? img : img.url) ||
+  const imageUrls = (product.images?.map(img => typeof img === 'string' ? img : img.url) ||
     product.image_urls ||
-    [`${baseUrl}/images/default-product.jpg`];
+    [`${baseUrl}/images/default-product.jpg`]).map((url) => toAbsoluteUrl(url, baseUrl));
 
   // Reviews & aggregate rating
   const approvedReviews = product.reviews?.filter(r => r.is_approved) || [];
@@ -58,13 +84,15 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     : undefined;
 
   // Generate rich structured data for the product
-  const structuredData: Record<string, any> = {
+  const structuredData: { [key: string]: JsonLdValue } = {
     "@context": "https://schema.org",
     "@type": "Product",
+    "@id": productId,
     "name": product.name,
     "sku": product.sku,
     "mpn": product.part_number || product.sku,
-    "description": product.meta_description || product.description || product.short_description,
+    "productID": product.sku,
+    "description": description,
     "brand": {
       "@type": "Brand",
       "name": product.brand || "FANUC"
@@ -76,8 +104,16 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     "category": category?.name || "Industrial Automation",
     "image": imageUrls,
     "url": productUrl,
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": productUrl
+    },
+    "itemCondition": mapConditionType(product.condition_type),
+    "countryOfOrigin": product.origin_country || undefined,
+    "keywords": [product.sku, product.part_number, product.brand, category?.name].filter(Boolean).join(', '),
     "offers": {
       "@type": "Offer",
+      "url": productUrl,
       "price": product.price,
       "priceCurrency": "USD",
       "availability": product.stock_quantity > 0
@@ -88,6 +124,10 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
         "name": "Vcocnc",
         "url": baseUrl
       },
+      "eligibleQuantity": product.minimum_order_quantity ? {
+        "@type": "QuantitativeValue",
+        "minValue": product.minimum_order_quantity
+      } : undefined,
       "priceValidUntil": new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       "itemCondition": mapConditionType(product.condition_type),
       "hasMerchantReturnPolicy": {
@@ -182,7 +222,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
         "@type": "ListItem",
         "position": index + 3,
         "name": cat.name,
-         "item": `${baseUrl}/${(cat as any).path || cat.slug}`
+         "item": `${baseUrl}/categories/${cat.path || cat.slug}`
       })) || []),
       {
         "@type": "ListItem",

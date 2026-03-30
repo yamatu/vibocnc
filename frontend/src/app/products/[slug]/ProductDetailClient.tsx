@@ -6,37 +6,31 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ShoppingCartIcon,
-  HeartIcon,
-  ShareIcon,
   StarIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   CheckIcon,
   TruckIcon,
   ShieldCheckIcon,
   ArrowLeftIcon,
-  TagIcon,
-  BuildingOfficeIcon,
   GlobeAltIcon,
   ClockIcon,
   MagnifyingGlassIcon,
   ChevronDownIcon,
 } from '@heroicons/react/24/outline';
-import { HeartIcon as HeartIconSolid, StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import Layout from '@/components/layout/Layout';
 import ProductImageViewer from '@/components/product/ProductImageViewer';
 import ProductSEO from '@/components/seo/ProductSEO';
 import { ProductService, CategoryService, ShippingRateService } from '@/services';
 import type { ShippingRatePublic, ShippingQuote } from '@/services/shipping-rate.service';
-import type { ProductFAQ, ProductReview } from '@/types';
+import type { PaginationResponse, Product, ProductFAQ, ProductImage, ProductReview, Category } from '@/types';
 import { queryKeys } from '@/lib/react-query';
-import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, getProductImageUrlByIndex, toProductPathId } from '@/lib/utils';
+import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
 import { useRouter } from 'next/navigation';
 
 interface ProductDetailClientProps {
   productSku: string;
-  initialProduct?: any;
+  initialProduct?: Product;
 }
 
 function parseTechnicalSpecs(raw?: string): Record<string, string> | null {
@@ -48,6 +42,13 @@ function parseTechnicalSpecs(raw?: string): Record<string, string> | null {
     }
   } catch { /* ignore */ }
   return null;
+}
+
+function stripHtml(text?: string): string {
+  return String(text || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function FAQAccordionItem({ question, answer }: { question: string; answer: string }) {
@@ -75,8 +76,7 @@ function FAQAccordionItem({ question, answer }: { question: string; answer: stri
 
 export default function ProductDetailClient({ productSku, initialProduct }: ProductDetailClientProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [quantity, setQuantity] = useState(1);
-  const [isFavorite, setIsFavorite] = useState(false);
+  const [quantity] = useState(1);
 
   const [shippingCountry, setShippingCountry] = useState('');
   const [shippingCountries, setShippingCountries] = useState<ShippingRatePublic[]>([]);
@@ -122,7 +122,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
   });
 
   // Fetch related products
-  const { data: relatedProducts = { data: [] } as any } = useQuery({
+  const { data: relatedProducts = { data: [] } as PaginationResponse<Product> } = useQuery<PaginationResponse<Product>>({
     queryKey: queryKeys.products.list({ category: product?.category_id }),
     queryFn: () => ProductService.getProducts({
       category_id: product?.category_id,
@@ -139,10 +139,10 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
   });
 
   const resolveCategoryHref = () => {
-    const tree: any[] = Array.isArray(allCategories) ? (allCategories as any) : [];
+    const tree: Category[] = Array.isArray(allCategories) ? allCategories : [];
     const targetId = product?.category_id;
     if (!targetId) return null;
-    const findById = (nodes: any[]): any => {
+    const findById = (nodes: Category[]): Category | null => {
       for (const n of nodes) {
         if (Number(n.id) === Number(targetId)) return n;
         if (Array.isArray(n.children) && n.children.length > 0) {
@@ -283,7 +283,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
           <div className="min-h-screen flex items-center justify-center">
             <div className="text-center">
               <h1 className="text-2xl font-bold text-gray-900 mb-4">Product Not Found</h1>
-              <p className="text-gray-600 mb-8">The product you're looking for doesn't exist.</p>
+              <p className="text-gray-600 mb-8">The product you&apos;re looking for doesn&apos;t exist.</p>
               <Link
                 href="/products"
                 className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700"
@@ -309,26 +309,24 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
   // ... to keep patch minimal, we re-use exactly the same JSX
 
   // Normalize image arrays
-  const rawImages: any = (product as any).image_urls && (product as any).image_urls.length > 0
-    ? (product as any).image_urls
-    : (product as any).images || [];
+  const rawImages: string[] | ProductImage[] | string | ProductImage | null =
+    product.image_urls && product.image_urls.length > 0
+      ? product.image_urls
+      : (product.images || []);
 
-  const images: any[] = Array.isArray(rawImages)
+  const images: Array<string | ProductImage> = Array.isArray(rawImages)
     ? rawImages
     : (typeof rawImages === 'string'
-        ? ((): any[] => {
+        ? (() => {
             try {
               const parsed = JSON.parse(rawImages);
-              if (Array.isArray(parsed)) return parsed;
+              if (Array.isArray(parsed)) return parsed as Array<string | ProductImage>;
             } catch {}
             return rawImages ? [rawImages] : [];
           })()
         : (rawImages && typeof rawImages === 'object'
             ? [rawImages]
             : []));
-  const currentImage = images.length > 0
-    ? getProductImageUrlByIndex(images, selectedImageIndex)
-    : getDefaultProductImageWithSku(product.sku, '/images/default-product.jpg');
 
   const categoryName = product.category?.name || 'Part';
   const brandName = product.brand || '';
@@ -352,6 +350,42 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
   const descriptionToShow = product.description && product.description.trim().length > 0
     ? product.description
     : getFallbackDescription();
+  const plainDescription = stripHtml(descriptionToShow);
+  const categoryHref = resolveCategoryHref();
+  const specs = parseTechnicalSpecs(product.technical_specs);
+  const activeFaqs: Array<{ id?: number; question: string; answer: string }> =
+    product.faqs && product.faqs.filter((f: ProductFAQ) => f.is_active).length > 0
+      ? product.faqs.filter((f: ProductFAQ) => f.is_active)
+      : [
+          {
+            question: `What is ${product.sku} used for?`,
+            answer: `${computedHeading} is used in CNC and industrial automation systems for stable control, replacement, or maintenance needs.`,
+          },
+          {
+            question: `Is ${product.sku} in stock?`,
+            answer: product.stock_quantity > 0
+              ? `${product.sku} is currently in stock and ready for shipment.`
+              : `${product.sku} is available to order with ${product.lead_time || '3-7 days'} lead time.`,
+          },
+          {
+            question: `How can I confirm compatibility for ${product.sku}?`,
+            answer: product.compatibility_info
+              ? `${stripHtml(product.compatibility_info)} Contact sales@vcocncspare.com for final compatibility confirmation before ordering.`
+              : `Share your machine model or original part number with sales@vcocncspare.com and we will verify compatibility before shipment.`,
+          },
+        ];
+  const partHighlights = [
+    product.part_number && product.part_number !== product.sku ? `Part number: ${product.part_number}` : '',
+    categoryName ? `Category: ${categoryName}` : '',
+    product.condition_type ? `Condition: ${product.condition_type}` : 'Condition: new',
+    product.warranty_period ? `Warranty: ${product.warranty_period}` : 'Warranty: 12 months',
+    product.lead_time ? `Lead time: ${product.lead_time}` : 'Lead time: 3-7 days',
+    product.origin_country ? `Origin: ${product.origin_country}` : '',
+  ].filter(Boolean);
+  const resourceLinks = [
+    product.datasheet_url ? { href: product.datasheet_url, label: 'Datasheet' } : null,
+    product.manual_url ? { href: product.manual_url, label: 'Manual' } : null,
+  ].filter(Boolean) as Array<{ href: string; label: string }>;
 
   return (
     <Layout>
@@ -603,6 +637,29 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
 
           {/* Product Description — full width below the grid */}
           <div className="mt-12 space-y-8">
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">About This Part</h2>
+              <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
+                <p className="text-base text-gray-700 leading-relaxed">
+                  {computedHeading} is a {product.brand || 'FANUC'} {categoryName.toLowerCase()} supplied by Vcocnc for CNC maintenance, replacement, and industrial automation support.
+                  {' '}
+                  {product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}
+                </p>
+                {plainDescription && (
+                  <p className="text-base text-gray-700 leading-relaxed">
+                    {plainDescription}
+                  </p>
+                )}
+                {partHighlights.length > 0 && (
+                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                    {partHighlights.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+
             {/* Main Description */}
             <section>
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Product Description</h2>
@@ -614,27 +671,67 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             </section>
 
             {/* Technical Specifications */}
-            {(() => {
-              const specs = parseTechnicalSpecs(product.technical_specs);
-              if (!specs) return null;
-              return (
-                <section>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">Technical Specifications</h2>
-                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden product-specs">
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {Object.entries(specs).map(([key, value], idx) => (
-                          <tr key={key} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                            <td className="px-6 py-3 font-medium text-gray-900 w-1/3">{key}</td>
-                            <td className="px-6 py-3 text-gray-700">{String(value)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {specs && (
+              <section>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Technical Specifications</h2>
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden product-specs">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {Object.entries(specs).map(([key, value], idx) => (
+                        <tr key={key} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                          <td className="px-6 py-3 font-medium text-gray-900 w-1/3">{key}</td>
+                          <td className="px-6 py-3 text-gray-700">{String(value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Part Details</h2>
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-sm text-gray-500">SKU</dt>
+                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.sku}</dd>
                   </div>
-                </section>
-              );
-            })()}
+                  <div>
+                    <dt className="text-sm text-gray-500">Brand</dt>
+                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.brand || 'FANUC'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-gray-500">Part Number</dt>
+                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.part_number || product.sku}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-gray-500">Category</dt>
+                    <dd className="mt-1 text-sm font-medium text-gray-900">{categoryName}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-gray-500">Condition</dt>
+                    <dd className="mt-1 text-sm font-medium text-gray-900 capitalize">{product.condition_type || 'new'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-gray-500">Warranty</dt>
+                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.warranty_period || '12 months'}</dd>
+                  </div>
+                  {product.origin_country && (
+                    <div>
+                      <dt className="text-sm text-gray-500">Country of Origin</dt>
+                      <dd className="mt-1 text-sm font-medium text-gray-900">{product.origin_country}</dd>
+                    </div>
+                  )}
+                  {product.certifications && (
+                    <div>
+                      <dt className="text-sm text-gray-500">Certifications</dt>
+                      <dd className="mt-1 text-sm font-medium text-gray-900">{product.certifications}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            </section>
 
             {/* Compatibility Info */}
             {product.compatibility_info && (
@@ -666,17 +763,36 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
               </section>
             )}
 
-            {/* Product FAQ */}
-            {product.faqs && product.faqs.filter((f: ProductFAQ) => f.is_active).length > 0 && (
+            {resourceLinks.length > 0 && (
               <section>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Frequently Asked Questions</h2>
-                <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
-                  {product.faqs.filter((f: ProductFAQ) => f.is_active).map((faq: ProductFAQ) => (
-                    <FAQAccordionItem key={faq.id} question={faq.question} answer={faq.answer} />
-                  ))}
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Downloads and References</h2>
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <div className="flex flex-wrap gap-3">
+                    {resourceLinks.map((resource) => (
+                      <a
+                        key={resource.label}
+                        href={resource.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                      >
+                        {resource.label}
+                      </a>
+                    ))}
+                  </div>
                 </div>
               </section>
             )}
+
+            {/* Product FAQ */}
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Frequently Asked Questions</h2>
+              <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+                {activeFaqs.map((faq) => (
+                  <FAQAccordionItem key={faq.id || faq.question} question={faq.question} answer={faq.answer} />
+                ))}
+              </div>
+            </section>
 
             {/* Customer Reviews */}
             {product.reviews && product.reviews.filter((r: ProductReview) => r.is_approved).length > 0 && (
@@ -713,6 +829,34 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                 </div>
               </section>
             )}
+
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">Explore More Options</h2>
+              <div className="bg-white rounded-lg border border-gray-200 p-6 flex flex-wrap gap-3 text-sm">
+                <Link
+                  href="/products"
+                  className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                >
+                  Browse all products
+                </Link>
+                {categoryHref && (
+                  <Link
+                    href={categoryHref}
+                    className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                  >
+                    More {categoryName}
+                  </Link>
+                )}
+                {product.brand && (
+                  <Link
+                    href={`/products?search=${encodeURIComponent(product.brand)}`}
+                    className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                  >
+                    More {product.brand} parts
+                  </Link>
+                )}
+              </div>
+            </section>
           </div>
 
           {/* Related Products */}
@@ -720,7 +864,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             <div className="mt-12">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Related Products</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {relatedProducts.data.map((relatedProduct: any) => (
+                {relatedProducts.data.map((relatedProduct) => (
                   <div key={relatedProduct.id} className="bg-white rounded-lg shadow p-4">
                     <div className="aspect-w-1 aspect-h-1 w-full overflow-hidden rounded-md bg-gray-200">
                       <Image

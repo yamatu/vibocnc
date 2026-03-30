@@ -7,28 +7,25 @@ export const revalidate = 3600 // 1 hour
 // 完整的sitemap索引 - 包含所有sitemap文件
 export async function GET() {
   const baseUrl = await getRequestBaseUrl()
+  const lastmod = new Date().toISOString()
 
   const sitemapIndex = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap>
-    <loc>${baseUrl}/sitemap.xml</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-  </sitemap>
-  <sitemap>
     <loc>${baseUrl}/sitemap-static.xml</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
+    <lastmod>${lastmod}</lastmod>
   </sitemap>
   <sitemap>
     <loc>${baseUrl}/sitemap-categories.xml</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
+    <lastmod>${lastmod}</lastmod>
   </sitemap>
   <sitemap>
     <loc>${baseUrl}/sitemap-products-index.xml</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
+    <lastmod>${lastmod}</lastmod>
   </sitemap>
   <sitemap>
     <loc>${baseUrl}/sitemap-news.xml</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
+    <lastmod>${lastmod}</lastmod>
   </sitemap>
 </sitemapindex>`
 
@@ -39,4 +36,3 @@ export async function GET() {
     },
   })
 }
-

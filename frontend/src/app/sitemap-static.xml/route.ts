@@ -6,71 +6,96 @@ export const revalidate = 86400 // 24 hours
 
 export async function GET() {
   const baseUrl = await getRequestBaseUrl()
-  
+  const lastModified = new Date().toISOString()
+
   const staticPages = [
     {
       url: baseUrl,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'daily',
       priority: '1.0',
     },
     {
       url: `${baseUrl}/products`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'hourly',
       priority: '0.9',
     },
     {
+      url: `${baseUrl}/categories`,
+      lastModified,
+      changeFrequency: 'daily',
+      priority: '0.85',
+    },
+    {
       url: `${baseUrl}/news`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'daily',
       priority: '0.8',
     },
     {
       url: `${baseUrl}/about`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.8',
     },
     {
       url: `${baseUrl}/contact`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.8',
     },
     {
       url: `${baseUrl}/faq`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.6',
     },
     {
+      url: `${baseUrl}/privacy`,
+      lastModified,
+      changeFrequency: 'yearly',
+      priority: '0.4',
+    },
+    {
+      url: `${baseUrl}/terms`,
+      lastModified,
+      changeFrequency: 'yearly',
+      priority: '0.4',
+    },
+    {
+      url: `${baseUrl}/warranty`,
+      lastModified,
+      changeFrequency: 'monthly',
+      priority: '0.5',
+    },
+    {
       url: `${baseUrl}/warranty-policy`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.5',
     },
     {
       url: `${baseUrl}/shipping-policy`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.5',
     },
     {
       url: `${baseUrl}/technical-support`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.5',
     },
     {
       url: `${baseUrl}/returns`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.5',
     },
     {
       url: `${baseUrl}/docs`,
-      lastModified: new Date().toISOString(),
+      lastModified,
       changeFrequency: 'monthly',
       priority: '0.4',
     },
@@ -93,4 +118,3 @@ ${staticPages.map(page => `  <url>
     },
   })
 }
-
