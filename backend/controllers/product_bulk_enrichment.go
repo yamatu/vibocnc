@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -29,6 +30,11 @@ type bulkAutoCategorizeReq struct {
 	bulkProductScopeReq
 }
 
+type bulkCategorizeAndOptimizeReq struct {
+	bulkProductScopeReq
+	ForceUpdate bool `json:"force_update"`
+}
+
 type bulkSelectionIDsResp struct {
 	IDs   []uint `json:"ids"`
 	Total int64  `json:"total"`
@@ -50,6 +56,20 @@ type bulkAutoCategorizeItem struct {
 	PreviousCatID uint   `json:"previous_category_id"`
 	PartType      string `json:"part_type"`
 	MatchRule     string `json:"match_rule"`
+	Action        string `json:"action"`
+}
+
+type bulkCategorizeAndOptimizeItem struct {
+	ProductID     uint   `json:"product_id"`
+	SKU           string `json:"sku"`
+	Model         string `json:"model"`
+	Brand         string `json:"brand"`
+	CategorySlug  string `json:"category_slug"`
+	CategoryID    uint   `json:"category_id"`
+	PreviousCatID uint   `json:"previous_category_id"`
+	PartType      string `json:"part_type"`
+	MatchRule     string `json:"match_rule"`
+	SEOUpdated    bool   `json:"seo_updated"`
 	Action        string `json:"action"`
 }
 
@@ -86,6 +106,96 @@ func categorySlugMap(db *gorm.DB) map[string]uint {
 		}
 	}
 	return out
+}
+
+func ensureProductFAQ(db *gorm.DB, productID uint, question string, answer string, sortOrder int) error {
+	question = strings.TrimSpace(question)
+	answer = strings.TrimSpace(answer)
+	if question == "" || answer == "" {
+		return nil
+	}
+
+	var existing models.ProductFAQ
+	err := db.Where("product_id = ? AND question = ?", productID, question).First(&existing).Error
+	if err == nil {
+		updates := map[string]any{}
+		if strings.TrimSpace(existing.Answer) == "" {
+			updates["answer"] = answer
+		}
+		if !existing.IsActive {
+			updates["is_active"] = true
+		}
+		if existing.SortOrder == 0 && sortOrder > 0 {
+			updates["sort_order"] = sortOrder
+		}
+		if len(updates) > 0 {
+			return db.Model(&existing).Updates(updates).Error
+		}
+		return nil
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return err
+	}
+
+	return db.Create(&models.ProductFAQ{
+		ProductID: productID,
+		Question:  question,
+		Answer:    answer,
+		IsActive:  true,
+		SortOrder: sortOrder,
+	}).Error
+}
+
+func upsertGeneratedProductFAQs(db *gorm.DB, product *models.Product, partType string) error {
+	partType = strings.TrimSpace(partType)
+	if partType == "" {
+		partType = "spare part"
+	}
+
+	heading := strings.TrimSpace(product.Name)
+	if heading == "" {
+		heading = strings.TrimSpace(strings.Join([]string{product.Brand, product.SKU, partType}, " "))
+	}
+
+	stockAnswer := ""
+	if product.StockQuantity > 0 {
+		stockAnswer = fmt.Sprintf("%s is currently in stock and ready for worldwide shipment.", product.SKU)
+	} else {
+		stockAnswer = fmt.Sprintf("%s is available to order with %s lead time.", product.SKU, strings.TrimSpace(defaultString(product.LeadTime, "3-7 days")))
+	}
+
+	faqs := []struct {
+		Question string
+		Answer   string
+	}{
+		{
+			Question: fmt.Sprintf("What is %s used for?", product.SKU),
+			Answer:   fmt.Sprintf("%s is used for CNC repair, maintenance, replacement, and industrial automation support. Buyers usually match it by original part number, machine series, and cabinet configuration.", heading),
+		},
+		{
+			Question: fmt.Sprintf("How do I confirm compatibility for %s?", product.SKU),
+			Answer:   defaultString(strings.TrimSpace(product.CompatibilityInfo), fmt.Sprintf("Confirm compatibility for %s against your original part label, controller model, machine model, and option code before ordering.", product.SKU)),
+		},
+		{
+			Question: fmt.Sprintf("Is %s in stock and how fast can it ship?", product.SKU),
+			Answer:   stockAnswer,
+		},
+	}
+
+	for index, faq := range faqs {
+		if err := ensureProductFAQ(db, product.ID, faq.Question, faq.Answer, index+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func defaultString(value string, fallback string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+	return trimmed
 }
 
 // Admin: POST /api/v1/admin/products/selection-ids
@@ -271,6 +381,156 @@ func (pc *ProductController) BulkAutoCategorizeProducts(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Bulk auto categorization completed",
+		Data: gin.H{
+			"updated": updated,
+			"skipped": skipped,
+			"failed":  failed,
+			"items":   samples,
+		},
+	})
+}
+
+// Admin: PUT /api/v1/admin/products/bulk-categorize-optimize
+func (pc *ProductController) BulkCategorizeAndOptimizeProducts(c *gin.Context) {
+	var req bulkCategorizeAndOptimizeReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+
+	batchSize := req.BatchSize
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+
+	db := config.GetDB()
+	selector := buildBulkProductSelector(db, req.bulkProductScopeReq).Select(
+		"id", "sku", "model", "part_number", "brand", "category_id", "name",
+		"short_description", "description", "meta_title", "meta_description", "meta_keywords",
+		"compatibility_info", "installation_guide", "maintenance_tips", "warranty_period",
+		"manufacturer", "origin_country", "lead_time", "stock_quantity",
+	)
+	catBySlug := categorySlugMap(db)
+	var batch []models.Product
+	updated := int64(0)
+	skipped := int64(0)
+	failed := int64(0)
+	samples := make([]bulkCategorizeAndOptimizeItem, 0, 50)
+
+	err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
+		for _, p := range batch {
+			brand := p.Brand
+			if strings.TrimSpace(req.Brand) != "" {
+				brand = services.CanonicalBrandName(req.Brand)
+			}
+			if strings.TrimSpace(brand) == "" {
+				brand = "FANUC"
+			}
+
+			model := services.NormalizeProductModel(p.Model)
+			if model == "" {
+				model = services.NormalizeProductModel(p.PartNumber)
+			}
+			if model == "" {
+				model = services.NormalizeProductModel(p.SKU)
+			}
+
+			inference := services.InferProductCategory(brand, model)
+			categoryID := catBySlug[inference.CategorySlug]
+
+			needsUpdate := req.ForceUpdate ||
+				categoryID == 0 ||
+				p.CategoryID != categoryID ||
+				strings.TrimSpace(p.Brand) == "" ||
+				strings.TrimSpace(p.Model) == "" ||
+				strings.TrimSpace(p.PartNumber) == "" ||
+				len(strings.TrimSpace(p.ShortDescription)) < 50 ||
+				len(strings.TrimSpace(p.Description)) < 220 ||
+				len(strings.TrimSpace(p.MetaTitle)) < 20 ||
+				len(strings.TrimSpace(p.MetaDescription)) < 50 ||
+				len(strings.TrimSpace(p.MetaKeywords)) < 20 ||
+				len(strings.TrimSpace(p.CompatibilityInfo)) < 80 ||
+				len(strings.TrimSpace(p.InstallationGuide)) < 80 ||
+				len(strings.TrimSpace(p.MaintenanceTips)) < 80 ||
+				strings.TrimSpace(p.WarrantyPeriod) == "" ||
+				strings.TrimSpace(p.Manufacturer) == "" ||
+				strings.TrimSpace(p.OriginCountry) == "" ||
+				strings.TrimSpace(p.LeadTime) == ""
+
+			if !needsUpdate {
+				skipped++
+				if len(samples) < 50 {
+					samples = append(samples, bulkCategorizeAndOptimizeItem{
+						ProductID:     p.ID,
+						SKU:           p.SKU,
+						Model:         model,
+						Brand:         brand,
+						CategorySlug:  inference.CategorySlug,
+						CategoryID:    categoryID,
+						PreviousCatID: p.CategoryID,
+						PartType:      inference.PartType,
+						MatchRule:     inference.MatchRule,
+						SEOUpdated:    false,
+						Action:        "skipped",
+					})
+				}
+				continue
+			}
+
+			optResult, err := optimizeProductAfterSaveWithCategoryMap(db, p.ID, catBySlug, automaticProductOptimizationOptions{
+				ForceCategory: categoryID != 0,
+			})
+			if err != nil {
+				failed++
+				if len(samples) < 50 {
+					samples = append(samples, bulkCategorizeAndOptimizeItem{
+						ProductID:     p.ID,
+						SKU:           p.SKU,
+						Model:         model,
+						Brand:         brand,
+						CategorySlug:  inference.CategorySlug,
+						CategoryID:    categoryID,
+						PreviousCatID: p.CategoryID,
+						PartType:      inference.PartType,
+						MatchRule:     inference.MatchRule,
+						SEOUpdated:    false,
+						Action:        "failed",
+					})
+				}
+				continue
+			}
+
+			updated++
+			if len(samples) < 50 {
+				samples = append(samples, bulkCategorizeAndOptimizeItem{
+					ProductID:     p.ID,
+					SKU:           p.SKU,
+					Model:         model,
+					Brand:         brand,
+					CategorySlug:  inference.CategorySlug,
+					CategoryID:    categoryID,
+					PreviousCatID: p.CategoryID,
+					PartType:      inference.PartType,
+					MatchRule:     inference.MatchRule,
+					SEOUpdated:    optResult.ContentUpdated || optResult.FAQUpdated,
+					Action:        "updated",
+				})
+			}
+		}
+		return nil
+	}).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to categorize and optimize products", Error: err.Error()})
+		return
+	}
+
+	if updated > 0 {
+		go services.InvalidatePublicCaches(context.Background(), "product:bulk-categorize-optimize", nil)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Bulk categorization and optimization completed",
 		Data: gin.H{
 			"updated": updated,
 			"skipped": skipped,

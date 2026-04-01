@@ -51,6 +51,14 @@ function stripHtml(text?: string): string {
     .trim();
 }
 
+function normalizeComparisonText(text?: string): string {
+  return stripHtml(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function FAQAccordionItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -350,7 +358,10 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
   const descriptionToShow = product.description && product.description.trim().length > 0
     ? product.description
     : getFallbackDescription();
-  const plainDescription = stripHtml(descriptionToShow);
+  const introParagraph = `${computedHeading} is a ${product.brand || 'FANUC'} ${categoryName.toLowerCase()} supplied by Vcocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}`.replace(/\s+/g, ' ').trim();
+  const normalizedIntro = normalizeComparisonText(introParagraph);
+  const normalizedDescription = normalizeComparisonText(descriptionToShow);
+  const shouldRenderIntroParagraph = normalizedIntro !== '' && !normalizedDescription.includes(normalizedIntro);
   const categoryHref = resolveCategoryHref();
   const specs = parseTechnicalSpecs(product.technical_specs);
   const activeFaqs: Array<{ id?: number; question: string; answer: string }> =
@@ -386,6 +397,16 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
     product.datasheet_url ? { href: product.datasheet_url, label: 'Datasheet' } : null,
     product.manual_url ? { href: product.manual_url, label: 'Manual' } : null,
   ].filter(Boolean) as Array<{ href: string; label: string }>;
+  const productSummaryPoints = [
+    `${product.brand || 'FANUC'} ${product.sku} is supplied for CNC maintenance, replacement, and industrial automation support.`,
+    product.stock_quantity > 0
+      ? 'Current status: in stock and ready for worldwide shipment.'
+      : `Current status: available to order with ${product.lead_time || '3-7 days'} lead time.`,
+    `Standard supply terms: ${product.warranty_period || '12 months'} warranty and technical confirmation on request.`,
+    product.compatibility_info
+      ? 'Compatibility information is available for this part. Share your machine model or original part number for final confirmation before ordering.'
+      : `Compatibility should be checked against your original part number, controller model, and machine configuration before ordering.`,
+  ].filter(Boolean);
 
   return (
     <Layout>
@@ -640,14 +661,17 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             <section>
               <h2 className="text-xl font-semibold text-gray-900 mb-4">About This Part</h2>
               <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
-                <p className="text-base text-gray-700 leading-relaxed">
-                  {computedHeading} is a {product.brand || 'FANUC'} {categoryName.toLowerCase()} supplied by Vcocnc for CNC maintenance, replacement, and industrial automation support.
-                  {' '}
-                  {product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}
-                </p>
-                {plainDescription && (
+                <div className="product-summary rounded-lg bg-yellow-50 border border-yellow-100 p-4">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Quick Answer</h3>
+                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                    {productSummaryPoints.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                {shouldRenderIntroParagraph && (
                   <p className="text-base text-gray-700 leading-relaxed">
-                    {plainDescription}
+                    {introParagraph}
                   </p>
                 )}
                 {partHighlights.length > 0 && (

@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
+import { buildStaticPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Warranty Policy | Vcocnc',
-  description: '1-year in-service warranty coverage, claims process, and contact details for Vcocnc FANUC parts.',
-};
+export const metadata: Metadata = buildStaticPageMetadata(
+  '/warranty-policy',
+  'Warranty Policy | Vcocnc',
+  '1-year in-service warranty coverage, claims process, and contact details for Vcocnc FANUC parts.',
+  'warranty policy, FANUC parts warranty, CNC parts warranty, repair claims, Vcocnc warranty'
+);
 
 export default function WarrantyPolicyPage() {
   return (

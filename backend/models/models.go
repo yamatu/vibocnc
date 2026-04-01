@@ -50,26 +50,29 @@ type Product struct {
 	ImageURLs        string   `json:"image_urls" gorm:"type:json"`
 
 	// Enhanced fields for fanucworld.com compatibility
-	WarrantyPeriod       string     `json:"warranty_period" gorm:"size:50;default:'12 months'"`
-	ConditionType        string     `json:"condition_type" gorm:"type:enum('new','refurbished','used');default:'new'"`
-	OriginCountry        string     `json:"origin_country" gorm:"size:50;default:'China'"`
-	Manufacturer         string     `json:"manufacturer" gorm:"size:100;default:'FANUC'"`
-	LeadTime             string     `json:"lead_time" gorm:"size:50;default:'3-7 days'"`
-	MinimumOrderQuantity int        `json:"minimum_order_quantity" gorm:"default:1"`
-	PackagingInfo        string     `json:"packaging_info" gorm:"type:text"`
-	Certifications       string     `json:"certifications" gorm:"type:text"`
-	TechnicalSpecs       string     `json:"technical_specs" gorm:"type:json"`
-	CompatibilityInfo    string     `json:"compatibility_info" gorm:"type:text"`
-	InstallationGuide    string     `json:"installation_guide" gorm:"type:text"`
-	MaintenanceTips      string     `json:"maintenance_tips" gorm:"type:text"`
-	RelatedProducts      string     `json:"related_products" gorm:"type:json"`
-	VideoURLs            string     `json:"video_urls" gorm:"type:json"`
-	DatasheetURL         string     `json:"datasheet_url" gorm:"size:500"`
-	ManualURL            string     `json:"manual_url" gorm:"size:500"`
-	ViewCount            int        `json:"view_count" gorm:"default:0"`
-	PopularityScore      float64    `json:"popularity_score" gorm:"type:decimal(3,2);default:0.00"`
-	SEOScore             float64    `json:"seo_score" gorm:"type:decimal(3,2);default:0.00"`
-	LastOptimizedAt      *time.Time `json:"last_optimized_at"`
+	WarrantyPeriod          string     `json:"warranty_period" gorm:"size:50;default:'12 months'"`
+	ConditionType           string     `json:"condition_type" gorm:"type:enum('new','refurbished','used');default:'new'"`
+	OriginCountry           string     `json:"origin_country" gorm:"size:50;default:'China'"`
+	Manufacturer            string     `json:"manufacturer" gorm:"size:100;default:'FANUC'"`
+	LeadTime                string     `json:"lead_time" gorm:"size:50;default:'3-7 days'"`
+	MinimumOrderQuantity    int        `json:"minimum_order_quantity" gorm:"default:1"`
+	PackagingInfo           string     `json:"packaging_info" gorm:"type:text"`
+	Certifications          string     `json:"certifications" gorm:"type:text"`
+	TechnicalSpecs          string     `json:"technical_specs" gorm:"type:json"`
+	CompatibilityInfo       string     `json:"compatibility_info" gorm:"type:text"`
+	InstallationGuide       string     `json:"installation_guide" gorm:"type:text"`
+	MaintenanceTips         string     `json:"maintenance_tips" gorm:"type:text"`
+	RelatedProducts         string     `json:"related_products" gorm:"type:json"`
+	VideoURLs               string     `json:"video_urls" gorm:"type:json"`
+	DatasheetURL            string     `json:"datasheet_url" gorm:"size:500"`
+	ManualURL               string     `json:"manual_url" gorm:"size:500"`
+	ViewCount               int        `json:"view_count" gorm:"default:0"`
+	PopularityScore         float64    `json:"popularity_score" gorm:"type:decimal(3,2);default:0.00"`
+	SEOScore                float64    `json:"seo_score" gorm:"type:decimal(3,2);default:0.00"`
+	LastOptimizedAt         *time.Time `json:"last_optimized_at"`
+	IndexNowLastSubmittedAt *time.Time `json:"indexnow_last_submitted_at"`
+	IndexNowSubmitCount     int        `json:"indexnow_submit_count" gorm:"default:0"`
+	IndexNowLastSubmitCode  int        `json:"indexnow_last_submit_code" gorm:"default:0"`
 
 	CreatedAt     time.Time            `json:"created_at"`
 	UpdatedAt     time.Time            `json:"updated_at"`

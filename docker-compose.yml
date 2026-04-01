@@ -109,6 +109,48 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  backend_seo_optimize:
+    profiles: ["manual"]
+    build:
+      context: ./backend
+      args:
+        BASE_REGISTRY: ${BASE_REGISTRY:-docker.io}
+    environment:
+      GO_ENV: production
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: ${MYSQL_USER:-fanuc}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-change_me_db_password}
+      DB_NAME: ${MYSQL_DATABASE:-fanuc_sales}
+      DB_AUTO_MIGRATE: "true"
+      SEO_OPTIMIZER_BRAND: ${SEO_OPTIMIZER_BRAND:-FANUC}
+      SEO_OPTIMIZER_BATCH_SIZE: ${SEO_OPTIMIZER_BATCH_SIZE:-500}
+      SEO_OPTIMIZER_STATUS: ${SEO_OPTIMIZER_STATUS:-active}
+      SEO_OPTIMIZER_LIMIT: ${SEO_OPTIMIZER_LIMIT:-}
+      SEO_OPTIMIZER_SEARCH: ${SEO_OPTIMIZER_SEARCH:-}
+      SEO_OPTIMIZER_CATEGORY_ID: ${SEO_OPTIMIZER_CATEGORY_ID:-}
+      SEO_OPTIMIZER_FORCE: ${SEO_OPTIMIZER_FORCE:-0}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command:
+      - sh
+      - -lc
+      - >
+        set -eu;
+        CMD="/app/bulk-seo-optimize -brand \"$${SEO_OPTIMIZER_BRAND}\" -batch-size \"$${SEO_OPTIMIZER_BATCH_SIZE}\" -status \"$${SEO_OPTIMIZER_STATUS}\"";
+        if [ -n "$${SEO_OPTIMIZER_LIMIT}" ]; then CMD="$$CMD -limit \"$${SEO_OPTIMIZER_LIMIT}\""; fi;
+        if [ -n "$${SEO_OPTIMIZER_SEARCH}" ]; then CMD="$$CMD -search \"$${SEO_OPTIMIZER_SEARCH}\""; fi;
+        if [ -n "$${SEO_OPTIMIZER_CATEGORY_ID}" ]; then CMD="$$CMD -category-id \"$${SEO_OPTIMIZER_CATEGORY_ID}\""; fi;
+        if [ "$${SEO_OPTIMIZER_FORCE}" = "1" ] || [ "$${SEO_OPTIMIZER_FORCE}" = "true" ]; then CMD="$$CMD -force"; fi;
+        eval "$$CMD";
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   frontend:
     build:
       context: ./frontend
@@ -116,8 +158,8 @@ services:
         BASE_REGISTRY: ${BASE_REGISTRY:-docker.io}
         # SSR 端访问后端用 service 名；浏览器端走 /api/v1 相对路径（由“宿主机 Nginx”反代）
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://backend:8080}
-        # 对外站点 URL（宿主机 Nginx 的域名/端口）。本地不装 Nginx 时可先用 http://localhost:3000
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        # 对外站点 URL。生产默认应指向真实域名，避免 canonical / og:url 退回开发地址。
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://www.vcocncspare.com}
         NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-FANUC Parts Store}
         NEXT_PUBLIC_SITE_DESCRIPTION: ${NEXT_PUBLIC_SITE_DESCRIPTION:-Professional FANUC Parts and Equipment Sales}
         NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${NEXT_PUBLIC_PAYPAL_CLIENT_ID:-}
@@ -127,10 +169,10 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      SITE_URL: ${SITE_URL:-http://localhost:3000}
+      SITE_URL: ${SITE_URL:-https://www.vcocncspare.com}
       # Also pass these at runtime so dynamic routes (robots/sitemaps/SSR) can read them without rebuild.
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://backend:8080}
-      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://www.vcocncspare.com}
       NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-FANUC Parts Store}
       NEXT_PUBLIC_SITE_DESCRIPTION: ${NEXT_PUBLIC_SITE_DESCRIPTION:-Professional FANUC Parts and Equipment Sales}
       NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${NEXT_PUBLIC_PAYPAL_CLIENT_ID:-}

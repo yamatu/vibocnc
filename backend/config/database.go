@@ -122,6 +122,8 @@ func ConnectDatabase() {
 			&models.ProductImage{},
 			&models.ProductTranslation{},
 			&models.ProductAttribute{},
+			&models.ProductReview{},
+			&models.ProductFAQ{},
 			&models.PurchaseLink{},
 			&models.SEORedirect{},
 			&models.Customer{},
@@ -142,6 +144,7 @@ func ConnectDatabase() {
 			&models.HotlinkProtectionSetting{},
 			&models.PayPalSetting{},
 			&models.EmailSetting{},
+			&models.IndexNowSetting{},
 			&models.EmailVerificationCode{},
 			// Shipping (new template-based)
 			&models.ShippingTemplate{},

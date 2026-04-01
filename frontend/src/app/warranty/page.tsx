@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
+import { buildStaticPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Warranty | Vcocnc',
-  description: 'Warranty information for Vcocnc products and services.',
-};
+export const metadata: Metadata = buildStaticPageMetadata(
+  '/warranty',
+  'Warranty | Vcocnc',
+  'Warranty information for Vcocnc products and services.',
+  'warranty information, FANUC warranty, CNC parts support, Vcocnc'
+);
 
 export default function WarrantyPage() {
   return (
@@ -16,4 +19,3 @@ export default function WarrantyPage() {
     </PublicLayout>
   );
 }
-

@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
+import { buildStaticPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Shipping Policy | Vcocnc',
-  description: 'Shipping times, availability, destinations and packaging details for Vcocnc orders.',
-};
+export const metadata: Metadata = buildStaticPageMetadata(
+  '/shipping-policy',
+  'Shipping Policy | Vcocnc',
+  'Shipping times, availability, destinations and packaging details for Vcocnc orders.',
+  'shipping policy, FANUC parts shipping, CNC parts delivery, worldwide shipping, Vcocnc shipping'
+);
 
 export default function ShippingPolicyPage() {
   return (
@@ -42,4 +45,3 @@ export default function ShippingPolicyPage() {
     </PublicLayout>
   );
 }
-

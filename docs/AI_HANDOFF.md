@@ -199,6 +199,124 @@ curl -fsS http://localhost:3006/api/v1/public/homepage-content | head
 
 ## 2026-01-16：/categories 背景变黑修复 + 首页修改“立即生效”
 
+## 2026-03-31：Bing canonical 修复 + 单产品页重复描述收口
+
+### 问题
+
+- Bing 报告：大量页面指向同一个 canonical URL。
+- 单产品页存在“自动 SEO 文案 + 产品描述正文”重复输出的风险，尤其是在 `About This Part` 和 `Product Description` 同时显示长文本时。
+
+### 已处理
+
+- 收紧根布局元数据继承，避免静态页默认继承首页式 URL 信号：
+  - `frontend/src/app/layout.tsx`
+  - 去掉根级 `openGraph.url`
+  - 去掉根级 `alternates.languages`
+- 新增静态页 SEO 元数据辅助方法：
+  - `frontend/src/lib/seo.ts`
+  - 提供统一的 `canonical`、`og:url`、`twitter` 标题/描述生成
+- 为这些静态页补齐独立 canonical / OG URL：
+  - `frontend/src/app/docs/page.tsx`
+  - `frontend/src/app/returns/page.tsx`
+  - `frontend/src/app/shipping-policy/page.tsx`
+  - `frontend/src/app/technical-support/page.tsx`
+  - `frontend/src/app/warranty-policy/page.tsx`
+  - `frontend/src/app/warranty/page.tsx`
+- 单产品页内容去重：
+  - `frontend/src/app/products/[slug]/ProductDetailClient.tsx`
+  - `About This Part` 保留摘要、关键条目、必要时的简短引导段
+  - 不再在 `About This Part` 里重复输出完整 `description`
+  - 完整长描述只在 `Product Description` 区块输出一次
+  - 兼容性摘要改为简洁说明，避免把后台长兼容文本再次整段重复
+
+### 结果
+
+- 静态页现在会输出各自页面 URL 的 canonical，不再容易被 Bing 识别成“很多页面共用同一 canonical”。
+- 单产品页正文层级更清晰：
+  - 上半区是 answer-first 摘要
+  - 下半区是唯一的完整描述正文
+- 这更适合 Bing/Google 抓取，也减少自动优化文案和人工描述互相打架的问题。
+
+### 待验证
+
+- 由于当前环境访问 Docker daemon 需要提权，重新 `docker-compose build frontend && docker-compose up -d frontend` 需要在可访问 Docker 的终端执行或在后续提权后执行。
+- 上线后建议重点抽查：
+  - `/shipping-policy`
+  - `/technical-support`
+  - 任意 3-5 个 `/products/{sku}` 页面
+  - 查看 `<link rel="canonical">` 是否为当前页 URL
+  - 查看 `About This Part` 与 `Product Description` 是否仍有整段重复
+
+## 2026-03-31：后台接入 Bing / IndexNow
+
+### 目标
+
+- 后台直接管理 IndexNow key，而不是手动传服务器文本文件。
+- 网站根目录自动返回 `/{key}.txt`，满足 Bing/IndexNow 验证要求。
+- 后台支持手动提交单条/批量 URL。
+- 产品后台新增/编辑后自动向 IndexNow 提交产品 canonical URL。
+
+### 已实现
+
+- 后端新增 IndexNow 配置模型：
+  - `backend/models/indexnow_setting.go`
+- 后端新增 IndexNow 服务：
+  - `backend/services/indexnow.go`
+  - 负责：
+    - 读取/初始化设置
+    - 组装 `host` / `keyLocation`
+    - 向 `https://api.indexnow.org/IndexNow` 提交 URL 列表
+    - 保存最近一次提交状态码、数量、时间、返回说明
+- 后端新增控制器：
+  - `backend/controllers/indexnow.go`
+  - 提供接口：
+    - `GET /api/v1/admin/indexnow/settings`
+    - `PUT /api/v1/admin/indexnow/settings`
+    - `POST /api/v1/admin/indexnow/submit`
+    - `POST /api/v1/admin/indexnow/products/:id/submit`
+    - `GET /api/v1/public/indexnow/key`
+- 路由已注册：
+  - `backend/routes/routes.go`
+- 数据库迁移已接入：
+  - `backend/config/database.go`
+- 前端后台管理页：
+  - `frontend/src/app/admin/indexnow/page.tsx`
+  - 能配置：
+    - 是否启用
+    - key
+    - site_url
+    - 产品变更后自动提交
+  - 能手动提交：
+    - URL 列表
+    - 产品 ID 列表
+- 前端服务层：
+  - `frontend/src/services/indexnow.service.ts`
+- 后台导航已加入入口：
+  - `frontend/src/components/admin/AdminLayout.tsx`
+- 站点根目录自动输出 key 文件：
+  - `frontend/src/app/[key].txt/route.ts`
+  - 原理：
+    - 读取后端公开 key
+    - 当访问 `/{key}.txt` 时直接返回纯文本 key
+    - 不需要手工上传验证文件
+- 产品保存后自动推送：
+  - `backend/controllers/product.go`
+  - 创建/更新产品成功后，后台会 best-effort 异步提交产品 URL 到 IndexNow
+
+### 使用方式
+
+1. 后台打开 `/admin/indexnow`
+2. 填入 Bing 生成的 key，例如 `dcc05b47d6dc45bbb885d7ad69062c57`
+3. 确认 `site_url` 为真实域名 `https://www.vcocncspare.com`
+4. 保存后检查：
+   - `https://www.vcocncspare.com/{key}.txt`
+5. 再在后台手动提交一批 URL，或直接依赖产品保存后的自动提交
+
+### 注意事项
+
+- `site_url` 必须和提交 URL 的 host 完全一致，否则 IndexNow 会返回 `422`
+- key 是公开验证字符串，不属于需要加密隐藏的 secret；它本来就必须通过根目录文本文件公开访问
+
 ### 问题
 
 - `/categories` 在系统深色模式下背景变黑（全站 `prefers-color-scheme: dark` 覆盖了 body 背景色）
@@ -258,6 +376,271 @@ curl -fsS http://localhost:3006/api/v1/public/homepage-content | head
   - 前端：`frontend/src/app/admin/products/[id]/edit/page.tsx`
   - 前端：`frontend/src/app/admin/products/page.tsx`
   - 前端：`frontend/src/services/product.service.ts`
+
+## 2026-03-30：产品后台自动 SEO 优化接入 + 批量分类/SEO 面板补齐
+
+### 本次目标
+
+- 后台管理页直接提供批量 SEO 优化，而不是只靠 CLI。
+- 新建产品、编辑产品后自动补全分类、Meta、描述、FAQ，避免新产品上架后没有自动优化。
+- 保持之前已接好的 2 万 FANUC 产品批量优化工作流，同时把能力沉淀到后台日常运营里。
+
+### 已确认的现状
+
+- 已存在单产品 SEO 增强、批量 enrichment API、批量 CLI、以及 `docker-compose.yml` 中的 `backend_seo_optimize` 一次性任务。
+- 已完成一次全量生产跑批：
+  - 总量约 `24794`
+  - 更新 `24694`
+  - 跳过 `100`
+  - 失败 `0`
+- XLSX 导入链路本身已经会调用 `EnrichProductByBrand(...)` 自动补齐名称、描述、Meta、分类。
+- 但后台手工“新增产品 / 编辑产品”之前并不会自动跑 SEO 优化。
+- 后台产品列表页之前也没有把这些优化接口接成可操作 UI。
+
+### 本次代码变更
+
+- 后端新增统一自动优化 helper：
+  - 新增：`backend/controllers/product_auto_optimization.go`
+  - 作用：
+    - 读取产品 + 分类
+    - 按品牌/SKU/型号推断分类
+    - 自动补齐 `brand/model/part_number`
+    - 自动补齐 `short_description/description/meta_*`
+    - 自动补齐 `compatibility_info/installation_guide/maintenance_tips`
+    - 自动补齐 `warranty_period/manufacturer/origin_country/lead_time`
+    - 计算 `seo_score`
+    - 写入 `last_optimized_at`
+    - 自动生成 / 更新产品 FAQ
+- 后台手工保存链路接入自动优化：
+  - `backend/controllers/product.go`
+  - `CreateProduct` 在提交事务后立即执行自动优化
+  - `UpdateProduct` 在提交事务后立即执行自动优化
+- 批量“分类 + SEO 优化”接口统一复用自动优化 helper：
+  - `backend/controllers/product_bulk_enrichment.go`
+  - 现在不仅补分类，也会真正更新 SEO 字段与 FAQ
+  - 支持按推断结果纠正已有错误分类
+- 后台产品页新增 SEO 操作面板：
+  - `frontend/src/app/admin/products/page.tsx`
+  - 新增内容：
+    - 优化状态卡片（已优化、待优化、平均 SEO 分、自动优化状态）
+    - 批量按钮 `分类 + SEO 优化`
+    - 批量任务进度条
+    - 最近一次 SEO 优化结果表
+- 前端产品 service 新增后台 SEO API 封装：
+  - `frontend/src/services/product.service.ts`
+  - 新增：
+    - `getOptimizationStatus()`
+    - `optimizeProduct()`
+    - `bulkOptimizeProducts()`
+    - `bulkCategorizeOptimizeProducts()`
+
+### 当前行为说明
+
+- 以后后台新建一个产品：
+  - 保存后会自动尝试补全分类、标题、短描述、正文、Meta、FAQ、SEO 分数。
+- 以后后台编辑一个产品：
+  - 保存后也会再次自动补齐缺失 SEO 字段。
+- XLSX 导入：
+  - 依旧保留原本的自动 enrichment 行为。
+- 产品列表页：
+  - 可以按当前筛选范围批量触发“分类 + SEO 优化”。
+
+### 验证情况
+
+- 代码格式化：已执行 `gofmt`
+- 宿主机 `go test ./...`：
+  - 失败原因是宿主机 Go 版本过低
+  - 当前宿主机依然是 Go `1.19.x`
+  - 依赖要求至少 Go `1.20+`
+  - 生产 Docker backend builder 已是 `golang:1.21-alpine`
+- 本地 `next build`：
+  - 未出现明确 TS 代码错误
+  - 但构建进程被系统 `SIGKILL`
+  - 更像本机资源限制，不足以代表容器内生产构建失败
+- 因此最终验证应以 Docker 构建与容器启动结果为准
+
+### 建议的生产验证步骤
+
+```bash
+docker-compose build backend frontend
+docker-compose up -d backend frontend
+docker-compose ps
+```
+
+如需再次跑一次批量 SEO 任务：
+
+```bash
+docker-compose run --rm backend_seo_optimize
+```
+
+### 后续可继续做
+
+1. 在产品新增/编辑表单显式显示“保存后将自动优化 SEO”的提示，降低运营误解。
+2. 给后台再补一个“强制重跑 SEO”开关，允许覆盖已有 Meta/描述。
+3. 将 FAQ 生成日志降噪，避免大批量优化时出现大量 `record not found` 噪音日志。
+
+## 2026-03-30：FANUC SEO / GEO 批量优化、生产部署与 Docker Compose 跑批
+
+目标：把 2 万+ FANUC 产品的收录优化从“单页修补”升级为“可批量执行、可在生产 Docker Compose 环境中安全运行”的工作流。
+
+### 本次完成内容
+
+- 单产品页 SEO / GEO 强化：
+  - `frontend/src/app/products/[slug]/page.tsx`
+  - `frontend/src/app/products/[slug]/ProductDetailClient.tsx`
+  - `frontend/src/components/seo/ProductSEO.tsx`
+  - `frontend/src/app/robots.ts`
+- 后端 FANUC 文案模板增强：
+  - `backend/services/product_enrich_fanuc.go`
+  - `backend/services/product_enrich.go`
+  - `backend/controllers/product_optimization.go`
+- 新增批量分类 + SEO 优化能力：
+  - `backend/controllers/product_bulk_enrichment.go`
+  - `backend/routes/routes.go`
+  - `backend/config/database.go`
+- 新增批量命令行任务：
+  - `backend/cmd/bulk-seo-optimize/main.go`
+- 新增测试：
+  - `backend/services/product_enrich_fanuc_test.go`
+  - `backend/controllers/product_optimization_test.go`
+- 新增/更新说明文档：
+  - `docs/SEO_BULK_OPTIMIZATION.md`
+
+### 生产环境与版本结论
+
+- 生产部署使用的是 `docker-compose`（v1.29.2），不是 `docker compose`
+- 宿主机本地 `go` 仍然是 `1.19.8`
+- 但 Docker 构建链路已经是正确版本：
+  - 后端构建镜像：`golang:1.21-alpine`
+  - 前端构建镜像：`node:20-alpine`
+- 后端 `go.mod` 声明为 `go 1.21`
+
+结论：
+- 直接在宿主机跑完整后端测试会被本机旧版 Go 卡住
+- 通过 Docker Compose 部署运行生产服务没有这个问题
+
+### Docker Compose 改动
+
+- `backend/Dockerfile`
+  - 除了构建 `/app/server`，还额外构建 `/app/bulk-seo-optimize`
+- `docker-compose.yml`
+  - 新增一次性任务服务：`backend_seo_optimize`
+  - 该服务复用生产后端镜像和数据库环境，只负责执行一轮批量 SEO 优化然后退出
+
+### 生产部署执行记录
+
+已执行：
+
+```bash
+docker-compose build backend backend_seo_optimize frontend
+docker-compose up -d backend frontend
+```
+
+服务状态确认正常：
+
+- `fanuc_backend`：Up
+- `fanuc_frontend`：Up
+- `fanuc_mysql`：Up (healthy)
+- `fanuc_redis`：Up
+
+### 生产跑批执行记录
+
+先做样本验证：
+
+```bash
+docker-compose run --rm \
+  -e SEO_OPTIMIZER_BRAND=FANUC \
+  -e SEO_OPTIMIZER_BATCH_SIZE=100 \
+  -e SEO_OPTIMIZER_LIMIT=100 \
+  backend_seo_optimize
+```
+
+结果：
+
+- `updated=100`
+- `skipped=0`
+- `failed=0`
+
+然后执行全量 FANUC 跑批：
+
+```bash
+docker-compose run --rm \
+  -e DB_LOG_LEVEL=error \
+  -e SEO_OPTIMIZER_BRAND=FANUC \
+  -e SEO_OPTIMIZER_BATCH_SIZE=500 \
+  backend_seo_optimize
+```
+
+最终结果：
+
+- `total=24794`
+- `updated=24694`
+- `skipped=100`
+- `failed=0`
+
+说明：
+
+- 24794 条 FANUC 产品已经完成自动分类与 SEO 优化
+- 100 条 `skipped` 来自之前已被样本任务更新过的记录
+- 本次没有失败记录
+
+### 本次批量生成/更新了什么
+
+对匹配的 FANUC 产品，系统会自动补齐或更新：
+
+- SKU 分类归类
+- 产品名称
+- 短描述 `short_description`
+- 长描述 `description`
+- `meta_title`
+- `meta_description`
+- `meta_keywords`
+- `compatibility_info`
+- `installation_guide`
+- `maintenance_tips`
+- FAQ 记录（写入 `product_faqs`）
+- 兜底字段：`warranty_period`、`manufacturer`、`origin_country`、`lead_time`
+
+### 已知问题
+
+1. 跑批日志噪音很大
+
+原因：
+- FAQ 生成逻辑是“先查是否存在，不存在再创建”
+- GORM 把这个正常分支打印成大量 `record not found`
+
+影响：
+- 不影响最终结果
+- 只是生产日志可读性差
+
+后续建议：
+- 把 FAQ 查询改成静默查询，或把这段逻辑改为 `First` 时不输出 `record not found`
+
+2. 宿主机 Go 版本仍旧过低
+
+当前宿主机：
+- `go1.19.8`
+
+项目要求：
+- `go 1.21`
+
+影响：
+- 宿主机上做完整控制器层测试和编译验证不可靠
+- Docker 内生产构建不受影响
+
+后续建议：
+- 宿主机升级到 Go 1.21+
+
+### 下一步建议
+
+1. 抽样检查线上产品页
+   - 确认 meta、FAQ、schema、正文摘要已经真实反映到页面
+2. 降噪批量任务日志
+   - 去掉 `product_faqs` 的海量 `record not found`
+3. 继续做分类页 / 内链 / sitemap 强化
+   - 提升整站收录效率，而不只是单产品页
+4. 如果要重复跑批
+   - 直接复用 `backend_seo_optimize` 服务即可
   - 后端：`backend/routes/routes.go`（移除 `/api/v1/admin/products/:id/auto-seo` 与 `/api/v1/admin/seo/*`）
 - SEO/站点 URL 配置修复与简化
   - `NEXT_PUBLIC_SITE_URL` 的 docker 默认值修正为 `http://localhost:3006`

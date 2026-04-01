@@ -18,6 +18,7 @@ import { EmailService as EmailServiceDefault } from './email.service';
 import { ShippingRateService as ShippingRateServiceDefault } from './shipping-rate.service';
 import { AnalyticsService as AnalyticsServiceDefault } from './analytics.service';
 import { NewsService as NewsServiceDefault } from './news.service';
+import { IndexNowService as IndexNowServiceDefault } from './indexnow.service';
 
 // Export all services
 export const AuthService = AuthServiceDefault;
@@ -39,6 +40,7 @@ export const EmailService = EmailServiceDefault;
 export const ShippingRateService = ShippingRateServiceDefault;
 export const AnalyticsService = AnalyticsServiceDefault;
 export const NewsService = NewsServiceDefault;
+export const IndexNowService = IndexNowServiceDefault;
 
 // Export types
 export type { ProductFilters } from './product.service';
@@ -94,6 +96,7 @@ export class ApiService {
   static shippingRates = ShippingRateService;
   static analytics = AnalyticsService;
   static news = NewsService;
+  static indexnow = IndexNowService;
 }
 
 export default ApiService;

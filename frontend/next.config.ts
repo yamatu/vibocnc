@@ -19,24 +19,32 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
 
-    return [
-      // Serve /sitemap-products/:page.xml from an internal route without the ".xml" segment.
-      // This avoids Next route segment edge cases and keeps the public URL stable.
-      {
-        source: '/sitemap-products/:page.xml',
-        destination: '/sitemap-products/:page',
-      },
-      // When you run without an external Nginx (directly hitting Next on :3000),
-      // proxy /uploads/* to the backend so uploaded images keep working.
-      {
-        source: '/uploads/:path*',
-        destination: `${apiBase}/uploads/:path*`,
-      },
-      {
-        source: '/api/:path*',
-        destination: `${apiBase}/api/:path*`,
-      },
-    ];
+    return {
+      beforeFiles: [
+        {
+          source: '/:indexnowKey([A-Za-z0-9_-]{8,128}).txt',
+          destination: '/api/indexnow-key?key=:indexnowKey',
+        },
+      ],
+      afterFiles: [
+        // Serve /sitemap-products/:page.xml from an internal route without the ".xml" segment.
+        // This avoids Next route segment edge cases and keeps the public URL stable.
+        {
+          source: '/sitemap-products/:page.xml',
+          destination: '/sitemap-products/:page',
+        },
+        // When you run without an external Nginx (directly hitting Next on :3000),
+        // proxy /uploads/* to the backend so uploaded images keep working.
+        {
+          source: '/uploads/:path*',
+          destination: `${apiBase}/uploads/:path*`,
+        },
+        {
+          source: '/api/:path*',
+          destination: `${apiBase}/api/:path*`,
+        },
+      ],
+    };
   },
 
   eslint: {
@@ -62,6 +70,14 @@ const nextConfig: NextConfig = {
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
           { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+        ],
+      },
+      {
+        source: '/:indexnowKey([A-Za-z0-9_-]{8,128}).txt',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
         ],
       },
       // SEO-friendly caching for static assets

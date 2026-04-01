@@ -20,11 +20,48 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   ];
 
   return {
-    rules: {
-      userAgent: '*',
-      allow: '/',
-      disallow: privatePaths,
-    },
+    rules: [
+      {
+        userAgent: '*',
+        allow: '/',
+        disallow: privatePaths,
+      },
+      {
+        userAgent: 'Googlebot',
+        allow: '/',
+        disallow: privatePaths,
+      },
+      {
+        userAgent: 'Bingbot',
+        allow: '/',
+        disallow: privatePaths,
+      },
+      {
+        userAgent: 'GPTBot',
+        allow: '/',
+        disallow: privatePaths,
+      },
+      {
+        userAgent: 'ChatGPT-User',
+        allow: '/',
+        disallow: privatePaths,
+      },
+      {
+        userAgent: 'PerplexityBot',
+        allow: '/',
+        disallow: privatePaths,
+      },
+      {
+        userAgent: 'ClaudeBot',
+        allow: '/',
+        disallow: privatePaths,
+      },
+      {
+        userAgent: 'anthropic-ai',
+        allow: '/',
+        disallow: privatePaths,
+      },
+    ],
     host: site,
     sitemap: `${site}/sitemap-index.xml`,
   };

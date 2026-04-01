@@ -34,10 +34,69 @@ function isSearchEngineCrawler(userAgent: string): boolean {
   return SEARCH_ENGINE_BOTS.some(bot => ua.includes(bot));
 }
 
-export function middleware(request: NextRequest) {
+function getBackendBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://backend:8080').replace(/\/+$/, '');
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth_token')?.value;
   const userAgent = request.headers.get('user-agent') || '';
+
+  const indexNowKeyMatch = pathname.match(/^\/([A-Za-z0-9_-]{8,128})\.txt$/);
+  if (indexNowKeyMatch) {
+    const requestedKey = indexNowKeyMatch[1];
+    try {
+      const res = await fetch(`${getBackendBaseUrl()}/api/v1/public/indexnow/key`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        return new NextResponse('Not Found', {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        });
+      }
+
+      const json = await res.json();
+      const configuredKey = String(json?.data?.key || '').trim();
+      if (!configuredKey || configuredKey !== requestedKey) {
+        return new NextResponse('Not Found', {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        });
+      }
+
+      return new NextResponse(configuredKey, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      });
+    } catch {
+      return new NextResponse('Not Found', {
+        status: 404,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      });
+    }
+  }
 
   // Redirect legacy product sitemap URLs:
   // /sitemap-products-1.xml -> /sitemap-products/1.xml

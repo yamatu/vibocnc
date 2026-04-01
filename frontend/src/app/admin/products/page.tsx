@@ -24,7 +24,13 @@ import AdminLayout from '@/components/admin/AdminLayout';
 import Pagination from '@/components/common/Pagination';
 import MediaPickerModal from '@/components/admin/MediaPickerModal';
 import { ProductService, CategoryService } from '@/services';
-import type { BulkAutoCategorizeResult, ProductImportResult, ProductImportTaskSnapshot } from '@/services/product.service';
+import type {
+  BulkAutoCategorizeResult,
+  BulkCategorizeOptimizeResult,
+  ProductImportResult,
+  ProductImportTaskSnapshot,
+  ProductOptimizationStatus,
+} from '@/services/product.service';
 import type { MediaAsset } from '@/services/media.service';
 import type { Product } from '@/types';
 import { queryKeys } from '@/lib/react-query';
@@ -89,6 +95,7 @@ function AdminProductsContent() {
   const [categoryImageBrand, setCategoryImageBrand] = useState('fanuc');
   const [categoryImageMode, setCategoryImageMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
   const [lastAutoCategorizeResult, setLastAutoCategorizeResult] = useState<BulkAutoCategorizeResult | null>(null);
+  const [lastCategorizeOptimizeResult, setLastCategorizeOptimizeResult] = useState<BulkCategorizeOptimizeResult | null>(null);
   const [autoCategorizeProgress, setAutoCategorizeProgress] = useState<AutoCategorizeProgress>({
     status: 'idle',
     processed: 0,
@@ -101,6 +108,17 @@ function AdminProductsContent() {
     message: '',
   });
   const [bulkUpdateProgress, setBulkUpdateProgress] = useState<AutoCategorizeProgress>({
+    status: 'idle',
+    processed: 0,
+    total: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    currentBatch: 0,
+    totalBatches: 0,
+    message: '',
+  });
+  const [optimizeProgress, setOptimizeProgress] = useState<AutoCategorizeProgress>({
     status: 'idle',
     processed: 0,
     total: 0,
@@ -250,6 +268,12 @@ function AdminProductsContent() {
   const { data: categoriesData = [] } = useQuery({
     queryKey: queryKeys.categories.lists(),
     queryFn: () => CategoryService.getAdminCategories(),
+  });
+
+  const { data: optimizationStatus, refetch: refetchOptimizationStatus } = useQuery<ProductOptimizationStatus>({
+    queryKey: ['admin', 'products', 'optimization-status'],
+    queryFn: () => ProductService.getOptimizationStatus(),
+    staleTime: 30_000,
   });
 
   const categories = Array.isArray(categoriesData) ? categoriesData : [];
@@ -505,6 +529,147 @@ function AdminProductsContent() {
           message: getErrorMessage(error, t('products.bulk.autoCategorizeFailed', locale === 'zh' ? '自动分类失败' : 'Failed to auto categorize')),
         }));
         toast.error(getErrorMessage(error, t('products.bulk.autoCategorizeFailed', locale === 'zh' ? '自动分类失败' : 'Failed to auto categorize')));
+      }
+    };
+
+    void run();
+  };
+
+  const bulkCategorizeAndOptimize = () => {
+    if (!selectAllResults && selectedIds.length === 0) {
+      toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
+      return;
+    }
+
+    const run = async () => {
+      try {
+        setLastCategorizeOptimizeResult(null);
+        setOptimizeProgress({
+          status: 'preparing',
+          processed: 0,
+          total: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          currentBatch: 0,
+          totalBatches: 0,
+          message: locale === 'zh' ? '正在准备批量 SEO 优化任务...' : 'Preparing bulk SEO optimization...',
+        });
+
+        let targetIds = [...selectedIds];
+        if (selectAllResults) {
+          const snapshot = await ProductService.getAdminProductSelectionIds({
+            ...buildSelectAllPayload(),
+            brand: effectiveBulkBrand,
+          });
+          targetIds = snapshot.ids;
+        }
+
+        if (targetIds.length === 0) {
+          setOptimizeProgress({
+            status: 'idle',
+            processed: 0,
+            total: 0,
+            updated: 0,
+            skipped: 0,
+            failed: 0,
+            currentBatch: 0,
+            totalBatches: 0,
+            message: '',
+          });
+          toast.error(t('products.bulk.noProducts', locale === 'zh' ? '没有可处理的产品' : 'No products to process'));
+          return;
+        }
+
+        const total = targetIds.length;
+        const totalBatches = Math.ceil(total / AUTO_CATEGORIZE_BATCH_SIZE);
+        const aggregate: BulkCategorizeOptimizeResult = {
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          items: [],
+        };
+
+        setOptimizeProgress({
+          status: 'running',
+          processed: 0,
+          total,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          currentBatch: 0,
+          totalBatches,
+          message: locale === 'zh' ? `共 ${total} 个产品，开始分类并优化 SEO` : `Categorizing and optimizing ${total} products`,
+        });
+
+        for (let start = 0; start < total; start += AUTO_CATEGORIZE_BATCH_SIZE) {
+          const batchIds = targetIds.slice(start, start + AUTO_CATEGORIZE_BATCH_SIZE);
+          const batchIndex = Math.floor(start / AUTO_CATEGORIZE_BATCH_SIZE) + 1;
+
+          setOptimizeProgress((prev) => ({
+            ...prev,
+            status: 'running',
+            currentBatch: batchIndex,
+            totalBatches,
+            message: locale === 'zh'
+              ? `正在处理第 ${batchIndex}/${totalBatches} 批 SEO 优化`
+              : `Processing SEO batch ${batchIndex}/${totalBatches}`,
+          }));
+
+          const result = await ProductService.bulkCategorizeOptimizeProducts({
+            ids: batchIds,
+            brand: effectiveBulkBrand,
+            batch_size: batchIds.length,
+            force_update: false,
+          });
+
+          aggregate.updated += result.updated;
+          aggregate.skipped += result.skipped;
+          aggregate.failed += result.failed;
+          if (aggregate.items.length < 50 && result.items?.length) {
+            aggregate.items = aggregate.items.concat(result.items).slice(0, 50);
+          }
+
+          const processed = Math.min(start + batchIds.length, total);
+          setOptimizeProgress({
+            status: 'running',
+            processed,
+            total,
+            updated: aggregate.updated,
+            skipped: aggregate.skipped,
+            failed: aggregate.failed,
+            currentBatch: batchIndex,
+            totalBatches,
+            message: locale === 'zh'
+              ? `已完成 ${processed}/${total} 个产品的分类与 SEO 优化`
+              : `${processed}/${total} products categorized and optimized`,
+          });
+        }
+
+        setLastCategorizeOptimizeResult(aggregate);
+        setOptimizeProgress((prev) => ({
+          ...prev,
+          status: 'completed',
+          processed: total,
+          total,
+          currentBatch: totalBatches,
+          totalBatches,
+          message: locale === 'zh' ? '分类和 SEO 优化已全部完成' : 'Categorization and SEO optimization completed',
+        }));
+        queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+        void refetchOptimizationStatus();
+        toast.success(
+          locale === 'zh'
+            ? `SEO 优化完成：更新 ${aggregate.updated}，跳过 ${aggregate.skipped}，失败 ${aggregate.failed}`
+            : `SEO optimization completed: ${aggregate.updated} updated, ${aggregate.skipped} skipped, ${aggregate.failed} failed`
+        );
+      } catch (error: unknown) {
+        setOptimizeProgress((prev) => ({
+          ...prev,
+          status: 'failed',
+          message: getErrorMessage(error, locale === 'zh' ? '批量 SEO 优化失败' : 'Bulk SEO optimization failed'),
+        }));
+        toast.error(getErrorMessage(error, locale === 'zh' ? '批量 SEO 优化失败' : 'Bulk SEO optimization failed'));
       }
     };
 
@@ -1049,6 +1214,43 @@ function AdminProductsContent() {
           </div>
         )}
 
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+            <div className="text-sm text-emerald-800">{locale === 'zh' ? '已优化产品' : 'Optimized Products'}</div>
+            <div className="mt-2 text-2xl font-semibold text-emerald-950">{optimizationStatus?.optimized_products ?? '-'}</div>
+            <div className="mt-1 text-xs text-emerald-700">
+              {locale === 'zh' ? '近 30 天内自动或手动优化过' : 'Optimized within the last 30 days'}
+            </div>
+          </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="text-sm text-amber-800">{locale === 'zh' ? '待优化产品' : 'Needs Optimization'}</div>
+            <div className="mt-2 text-2xl font-semibold text-amber-950">{optimizationStatus?.needs_optimization ?? '-'}</div>
+            <div className="mt-1 text-xs text-amber-700">
+              {locale === 'zh' ? '缺少 SEO 字段或长期未刷新' : 'Missing SEO fields or stale optimization'}
+            </div>
+          </div>
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-4">
+            <div className="text-sm text-sky-800">{locale === 'zh' ? '平均 SEO 分' : 'Average SEO Score'}</div>
+            <div className="mt-2 text-2xl font-semibold text-sky-950">
+              {typeof optimizationStatus?.average_seo_score === 'number' ? optimizationStatus.average_seo_score.toFixed(2) : '-'}
+            </div>
+            <div className="mt-1 text-xs text-sky-700">
+              {locale === 'zh' ? '按后台内容完整度自动计算' : 'Calculated from product content completeness'}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm text-slate-800">{locale === 'zh' ? '自动优化状态' : 'Auto Optimization'}</div>
+            <div className="mt-2 text-base font-semibold text-slate-950">
+              {locale === 'zh' ? '已启用' : 'Enabled'}
+            </div>
+            <div className="mt-1 text-xs text-slate-700">
+              {locale === 'zh'
+                ? '后台新建/编辑产品后会自动补分类、SEO 字段与 FAQ'
+                : 'New and edited products now auto-fill category, SEO fields, and FAQs'}
+            </div>
+          </div>
+        </div>
+
         {/* Bulk actions and Page Size Selector */}
         <div className="bg-white shadow rounded-lg border border-gray-200">
           {/* Top Row - Page Size and Bulk Actions Header */}
@@ -1163,6 +1365,18 @@ function AdminProductsContent() {
 				{autoCategorizeProgress.status === 'preparing' || autoCategorizeProgress.status === 'running'
 				  ? (locale === 'zh' ? '自动分类进行中...' : 'Auto Categorizing...')
 				  : t('products.bulk.autoCategorize', locale === 'zh' ? '自动分类' : 'Auto Categorize')}
+              </button>
+
+              <button
+                onClick={bulkCategorizeAndOptimize}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={optimizeProgress.status === 'preparing' || optimizeProgress.status === 'running' || (!selectAllResults && selectedIds.length === 0)}
+				title={locale === 'zh' ? '批量自动分类并补全 SEO 描述、Meta、FAQ 等字段' : 'Bulk categorize and complete SEO descriptions, meta fields, and FAQs'}
+              >
+                <SparklesIcon className="h-4 w-4 mr-2" />
+                {optimizeProgress.status === 'preparing' || optimizeProgress.status === 'running'
+                  ? (locale === 'zh' ? 'SEO 优化进行中...' : 'Optimizing SEO...')
+                  : (locale === 'zh' ? '分类 + SEO 优化' : 'Categorize + SEO')}
               </button>
 
               <button
@@ -1348,6 +1562,55 @@ function AdminProductsContent() {
                 </div>
               </div>
             )}
+            {optimizeProgress.status !== 'idle' && (
+              <div className={`mt-4 rounded-lg border p-4 ${
+                optimizeProgress.status === 'failed'
+                  ? 'border-rose-200 bg-rose-50'
+                  : optimizeProgress.status === 'completed'
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-blue-200 bg-blue-50'
+              }`}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {locale === 'zh' ? 'SEO 优化进度' : 'SEO optimization progress'}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-700">{optimizeProgress.message}</div>
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    {optimizeProgress.total > 0
+                      ? `${optimizeProgress.processed}/${optimizeProgress.total}`
+                      : (locale === 'zh' ? '准备中' : 'Preparing')}
+                  </div>
+                </div>
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/80">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      optimizeProgress.status === 'failed'
+                        ? 'bg-rose-500'
+                        : optimizeProgress.status === 'completed'
+                          ? 'bg-emerald-500'
+                          : 'bg-blue-500'
+                    }`}
+                    style={{
+                      width: `${optimizeProgress.total > 0
+                        ? Math.min(100, Math.round((optimizeProgress.processed / optimizeProgress.total) * 100))
+                        : 8}%`
+                    }}
+                  />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-3 text-sm text-gray-700">
+                  <span>{locale === 'zh' ? '已更新' : 'Updated'}: {optimizeProgress.updated}</span>
+                  <span>{locale === 'zh' ? '已跳过' : 'Skipped'}: {optimizeProgress.skipped}</span>
+                  <span>{locale === 'zh' ? '失败' : 'Failed'}: {optimizeProgress.failed}</span>
+                  {optimizeProgress.totalBatches > 0 && (
+                    <span>
+                      {locale === 'zh' ? '批次' : 'Batch'}: {optimizeProgress.currentBatch}/{optimizeProgress.totalBatches}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
             {lastAutoCategorizeResult && (
               <div className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 p-3">
                 <div className="text-sm font-medium text-cyan-900">
@@ -1375,6 +1638,42 @@ function AdminProductsContent() {
                             <td className="px-3 py-2 font-mono text-gray-900">{item.sku}</td>
                             <td className="px-3 py-2 text-gray-700">{item.category_slug}</td>
                             <td className="px-3 py-2 text-gray-500">{item.match_rule}</td>
+                            <td className="px-3 py-2 text-gray-700">{item.action}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            {lastCategorizeOptimizeResult && (
+              <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <div className="text-sm font-medium text-blue-900">
+                  {locale === 'zh' ? '最近一次 SEO 优化结果' : 'Last SEO optimization result'}
+                </div>
+                <div className="mt-1 text-sm text-blue-800">
+                  {locale === 'zh'
+                    ? `更新 ${lastCategorizeOptimizeResult.updated}，跳过 ${lastCategorizeOptimizeResult.skipped}，失败 ${lastCategorizeOptimizeResult.failed}`
+                    : `${lastCategorizeOptimizeResult.updated} updated, ${lastCategorizeOptimizeResult.skipped} skipped, ${lastCategorizeOptimizeResult.failed} failed`}
+                </div>
+                {lastCategorizeOptimizeResult.items?.length > 0 && (
+                  <div className="mt-3 max-h-48 overflow-auto rounded border border-blue-100 bg-white">
+                    <table className="min-w-full text-xs">
+                      <thead className="sticky top-0 bg-blue-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">SKU</th>
+                          <th className="px-3 py-2 text-left">{locale === 'zh' ? '分类' : 'Category'}</th>
+                          <th className="px-3 py-2 text-left">SEO</th>
+                          <th className="px-3 py-2 text-left">{locale === 'zh' ? '结果' : 'Result'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lastCategorizeOptimizeResult.items.map((item) => (
+                          <tr key={`${item.product_id}-${item.sku}`} className="border-t">
+                            <td className="px-3 py-2 font-mono text-gray-900">{item.sku}</td>
+                            <td className="px-3 py-2 text-gray-700">{item.category_slug}</td>
+                            <td className="px-3 py-2 text-gray-500">{item.seo_updated ? (locale === 'zh' ? '已更新' : 'Updated') : (locale === 'zh' ? '未变更' : 'No change')}</td>
                             <td className="px-3 py-2 text-gray-700">{item.action}</td>
                           </tr>
                         ))}

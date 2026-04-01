@@ -43,6 +43,8 @@ func SetupRoutes(r *gin.Engine) {
 	payPalController := &controllers.PayPalController{}
 	analyticsController := &controllers.AnalyticsController{}
 	newsController := &controllers.NewsController{}
+	productOptimizationController := &controllers.ProductOptimizationController{}
+	indexNowController := &controllers.IndexNowController{}
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -106,6 +108,7 @@ func SetupRoutes(r *gin.Engine) {
 			// Email (public)
 			public.GET("/email/config", emailController.GetPublicConfig)
 			public.POST("/email/send-code", emailController.SendCode)
+			public.GET("/indexnow/key", indexNowController.GetPublicKey)
 
 			// News / Articles (public read access)
 			public.GET("/news", newsController.GetPublicArticles)
@@ -170,6 +173,10 @@ func SetupRoutes(r *gin.Engine) {
 				products.PUT("/bulk-update", productController.BulkUpdateProducts)
 				products.POST("/selection-ids", productController.GetBulkProductSelectionIDs)
 				products.PUT("/bulk-auto-categorize", productController.BulkAutoCategorizeProducts)
+				products.PUT("/bulk-categorize-optimize", productController.BulkCategorizeAndOptimizeProducts)
+				products.GET("/optimization-status", productOptimizationController.GetOptimizationStatus)
+				products.POST("/optimize", productOptimizationController.OptimizeProduct)
+				products.POST("/bulk-optimize", productOptimizationController.BulkOptimizeProducts)
 
 				// Bulk: apply/remove default watermark image URL
 				products.PUT("/bulk-default-image/apply", productController.BulkApplyDefaultImage)
@@ -300,6 +307,20 @@ func SetupRoutes(r *gin.Engine) {
 			{
 				paypal.GET("/settings", payPalController.GetSettings)
 				paypal.PUT("/settings", payPalController.UpdateSettings)
+			}
+
+			// IndexNow / Bing (admin only)
+			indexnow := admin.Group("/indexnow")
+			indexnow.Use(middleware.AdminOnly())
+			{
+				indexnow.GET("/settings", indexNowController.GetSettings)
+				indexnow.GET("/product-status", indexNowController.GetProductStatus)
+				indexnow.GET("/verify-key", indexNowController.VerifyKey)
+				indexnow.PUT("/settings", indexNowController.UpdateSettings)
+				indexnow.POST("/submit", indexNowController.Submit)
+				indexnow.POST("/submit-products", indexNowController.SubmitProducts)
+				indexnow.POST("/submit-sample", indexNowController.SubmitSampleProduct)
+				indexnow.POST("/products/:id/submit", indexNowController.SubmitProductByID)
 			}
 
 			// Visitor Analytics (editor/admin for reads, admin-only for cleanup)

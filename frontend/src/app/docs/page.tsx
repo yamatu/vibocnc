@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
+import { buildStaticPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Documentation | Vcocnc',
-  description: 'Documentation and technical resources for Vcocnc products.',
-};
+export const metadata: Metadata = buildStaticPageMetadata(
+  '/docs',
+  'Documentation | Vcocnc',
+  'Documentation and technical resources for Vcocnc products.',
+  'documentation, FANUC manuals, CNC technical resources, product documents, Vcocnc docs'
+);
 
 export default function DocsPage() {
   return (
@@ -16,4 +19,3 @@ export default function DocsPage() {
     </PublicLayout>
   );
 }
-

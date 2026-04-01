@@ -78,6 +78,34 @@ export interface BulkAutoCategorizeResult {
   items: BulkAutoCategorizeResultItem[];
 }
 
+export interface BulkCategorizeOptimizeResultItem extends BulkAutoCategorizeResultItem {
+  seo_updated: boolean;
+}
+
+export interface BulkCategorizeOptimizeResult {
+  updated: number;
+  skipped: number;
+  failed: number;
+  items: BulkCategorizeOptimizeResultItem[];
+}
+
+export interface ProductOptimizationStatus {
+  total_products: number;
+  optimized_products: number;
+  needs_optimization: number;
+  average_seo_score: number;
+}
+
+export interface ProductOptimizationResponse {
+  product_id: number;
+  sku: string;
+  optimization_status: string;
+  content_updated: boolean;
+  seo_score_before: number;
+  seo_score_after: number;
+  message: string;
+}
+
 export interface BulkSelectionIdsResult {
   ids: number[];
   total: number;
@@ -507,6 +535,49 @@ export class ProductService {
     const response = await apiClient.put<APIResponse<BulkAutoCategorizeResult>>('/admin/products/bulk-auto-categorize', payload);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to auto categorize products');
+  }
+
+  static async getOptimizationStatus(): Promise<ProductOptimizationStatus> {
+    const response = await apiClient.get<APIResponse<ProductOptimizationStatus>>('/admin/products/optimization-status');
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to fetch optimization status');
+  }
+
+  static async optimizeProduct(productId: number, forceUpdate = false): Promise<ProductOptimizationResponse> {
+    const response = await apiClient.post<APIResponse<ProductOptimizationResponse>>('/admin/products/optimize', {
+      product_id: productId,
+      force_update: forceUpdate,
+    });
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to optimize product');
+  }
+
+  static async bulkOptimizeProducts(payload: {
+    product_ids?: number[];
+    category_id?: number;
+    limit?: number;
+    force_update?: boolean;
+  }): Promise<ProductOptimizationResponse[]> {
+    const response = await apiClient.post<APIResponse<ProductOptimizationResponse[]>>('/admin/products/bulk-optimize', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to bulk optimize products');
+  }
+
+  static async bulkCategorizeOptimizeProducts(payload: {
+    ids?: number[];
+    skus?: string[];
+    search?: string;
+    category_id?: string;
+    include_descendants?: boolean;
+    status?: 'active' | 'inactive' | 'all' | '';
+    featured?: 'true' | 'false' | '';
+    brand?: string;
+    batch_size?: number;
+    force_update?: boolean;
+  }): Promise<BulkCategorizeOptimizeResult> {
+    const response = await apiClient.put<APIResponse<BulkCategorizeOptimizeResult>>('/admin/products/bulk-categorize-optimize', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to categorize and optimize products');
   }
 
   static async getAdminProductSelectionIds(payload: {

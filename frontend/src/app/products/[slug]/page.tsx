@@ -32,11 +32,54 @@ function trimToLength(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength - 1).trim()}…`;
 }
 
+function normalizeWhitespace(text?: string): string {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function trimMetaTitle(text: string, maxLength: number): string {
+  const value = normalizeWhitespace(text);
+  if (!value) return '';
+  if (value.length <= maxLength) return value;
+  const cut = value.slice(0, maxLength);
+  const idx = cut.lastIndexOf(' ');
+  return normalizeWhitespace(idx >= 24 ? cut.slice(0, idx) : cut);
+}
+
+function trimMetaDescription(text: string, maxLength: number): string {
+  const value = normalizeWhitespace(text);
+  if (!value) return '';
+  if (value.length <= maxLength) return value;
+  const cut = value.slice(0, maxLength);
+  const idx = cut.lastIndexOf(' ');
+  const trimmed = normalizeWhitespace(idx >= 60 ? cut.slice(0, idx) : cut);
+  if (!trimmed) return '';
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 function toAbsoluteUrl(url: string | undefined, baseUrl: string): string {
   const value = String(url || '').trim();
   if (!value) return `${baseUrl}/images/default-product.svg`;
   if (/^https?:\/\//i.test(value)) return value;
   return `${baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
+}
+
+function buildMetadataTitle(product: Product): string {
+  const explicit = trimMetaTitle(product.meta_title || '', 69);
+  if (explicit) return explicit;
+
+  const parts = [
+    product.brand || 'FANUC',
+    product.sku,
+    product.category?.name || '',
+  ].filter(Boolean);
+  let title = parts.join(' ');
+  if (!title) title = product.name || 'Product';
+  if (title.length > 58) {
+    title = [product.brand || 'FANUC', product.sku].filter(Boolean).join(' ');
+  }
+  return trimMetaTitle(`${title} | Vcocnc`, 69);
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -92,12 +135,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       product.compatibility_info ? 'Compatibility guidance available on the product page.' : '',
       'Source from Vcocnc, professional FANUC parts supplier since 2005.',
     ].filter(Boolean).join(' ');
-    const enhancedDescription = trimToLength(`${baseDescription} ${availabilityText} ${supportingText}`.replace(/\s+/g, ' ').trim(), 165);
+    const enhancedDescription = trimMetaDescription(`${baseDescription} ${availabilityText} ${supportingText}`, 160);
 
-    const metaTitle = (product.meta_title || '').trim();
-    const metaDescription = (product.meta_description || '').trim();
+    const metaDescription = trimMetaDescription(product.meta_description || '', 160);
     const metaKeywords = (product.meta_keywords || '').trim();
-    const title = metaTitle || `${product.sku} ${product.name}`.trim();
+    const title = buildMetadataTitle(product);
 
     return {
       title,

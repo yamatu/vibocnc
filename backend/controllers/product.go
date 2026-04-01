@@ -13,6 +13,7 @@ import (
 	neturl "net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -998,6 +999,15 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 	// Commit transaction
 	tx.Commit()
 
+	if _, err := optimizeProductAfterSave(db, product.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Product created but automatic SEO optimization failed",
+			Error:   err.Error(),
+		})
+		return
+	}
+
 	productPath := services.BuildProductPublicPath(product.SKU)
 
 	// Invalidate caches (Redis + optional Cloudflare)
@@ -1005,6 +1015,12 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 
 	// Trigger Next.js ISR revalidation
 	services.TriggerNextRevalidate([]string{product.SKU}, []string{productPath}, true)
+
+	go func(sku string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		services.SubmitProductURLBestEffort(ctx, db, sku)
+	}(product.SKU)
 
 	// Load created product with relations (select only known columns)
 	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").
@@ -1214,6 +1230,15 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	// Commit transaction
 	tx.Commit()
 
+	if _, err := optimizeProductAfterSave(db, product.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Product updated but automatic SEO optimization failed",
+			Error:   err.Error(),
+		})
+		return
+	}
+
 	newPath := services.BuildProductPublicPath(product.SKU)
 
 	// Invalidate caches (Redis + optional Cloudflare)
@@ -1221,6 +1246,12 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 
 	// Trigger Next.js ISR revalidation
 	services.TriggerNextRevalidate([]string{oldSKU, product.SKU}, []string{oldPath, newPath}, true)
+
+	go func(sku string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		services.SubmitProductURLBestEffort(ctx, db, sku)
+	}(product.SKU)
 
 	// Load updated product with relations (select only known columns)
 	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").

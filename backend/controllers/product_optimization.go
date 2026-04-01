@@ -8,6 +8,7 @@ import (
 
 	"fanuc-backend/config"
 	"fanuc-backend/models"
+	"fanuc-backend/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -71,9 +72,9 @@ func (poc *ProductOptimizationController) OptimizeProduct(c *gin.Context) {
 
 	// Update product with optimization timestamp and score
 	updateData := map[string]interface{}{
-		"seo_score":          seoScore,
-		"last_optimized_at":  &now,
-		"updated_at":         now,
+		"seo_score":         seoScore,
+		"last_optimized_at": &now,
+		"updated_at":        now,
 	}
 
 	// Enhance content if needed
@@ -211,10 +212,10 @@ func (poc *ProductOptimizationController) GetOptimizationStatus(c *gin.Context) 
 	}
 
 	var stats struct {
-		TotalProducts      int64 `json:"total_products"`
-		OptimizedProducts  int64 `json:"optimized_products"`
-		NeedsOptimization  int64 `json:"needs_optimization"`
-		AverageSEOScore    float64 `json:"average_seo_score"`
+		TotalProducts     int64   `json:"total_products"`
+		OptimizedProducts int64   `json:"optimized_products"`
+		NeedsOptimization int64   `json:"needs_optimization"`
+		AverageSEOScore   float64 `json:"average_seo_score"`
 	}
 
 	// Total products
@@ -312,95 +313,122 @@ func (poc *ProductOptimizationController) calculateSEOScore(product *models.Prod
 func (poc *ProductOptimizationController) enhanceProductContent(product *models.Product, updateData map[string]interface{}) bool {
 	contentUpdated := false
 	categoryName := strings.ToLower(product.Category.Name)
+	brand := strings.TrimSpace(product.Brand)
+	if brand == "" {
+		brand = "FANUC"
+	}
+	model := services.NormalizeProductModel(product.Model)
+	if model == "" {
+		model = services.NormalizeProductModel(product.PartNumber)
+	}
+	if model == "" {
+		model = services.NormalizeProductModel(product.SKU)
+	}
+	if model == "" {
+		model = product.SKU
+	}
 
 	// Category-aware keyword phrases for meta content
 	categoryKeyword := poc.getCategoryKeyword(categoryName)
 	categoryBenefit := poc.getCategoryBenefit(categoryName)
+	enriched, _ := services.EnrichProductByBrand(brand, model)
+	if categoryKeyword == "CNC Spare Part" && strings.TrimSpace(enriched.PartType) != "" {
+		categoryKeyword = enriched.PartType
+	}
 
 	// Enhance meta title if missing or too short (target: 50-60 chars)
-	if len(product.MetaTitle) < 20 {
+	if len(strings.TrimSpace(product.MetaTitle)) < services.MetaTitleMinLength || len(strings.TrimSpace(product.MetaTitle)) > services.MetaTitleMaxLength {
 		stockTag := "In Stock"
 		if product.StockQuantity <= 0 {
 			stockTag = "Available"
 		}
-		// Format: "{SKU} {CategoryKeyword} - {StockTag} | Vcocnc"
-		metaTitle := fmt.Sprintf("%s %s - %s | Vcocnc FANUC Parts", product.SKU, categoryKeyword, stockTag)
-		if len(metaTitle) > 60 {
-			metaTitle = fmt.Sprintf("%s %s - %s | Vcocnc", product.SKU, categoryKeyword, stockTag)
-		}
-		if len(metaTitle) > 60 {
-			metaTitle = fmt.Sprintf("%s - %s | Vcocnc", product.SKU, stockTag)
-		}
+		metaTitle := services.BuildSafeMetaTitle(
+			strings.TrimSpace(enriched.MetaTitle),
+			fmt.Sprintf("%s %s - %s | Vcocnc", product.SKU, categoryKeyword, stockTag),
+			fmt.Sprintf("%s %s | Vcocnc", brand, product.SKU),
+			fmt.Sprintf("%s %s", brand, product.SKU),
+		)
 		updateData["meta_title"] = metaTitle
 		contentUpdated = true
 	}
 
 	// Enhance meta description if missing or too short (target: 145-158 chars)
-	if len(product.MetaDescription) < 50 {
-		stockPhrase := "In stock & ready to ship."
+	if len(strings.TrimSpace(product.MetaDescription)) < services.MetaDescriptionMinLength || len(strings.TrimSpace(product.MetaDescription)) > services.MetaDescriptionMaxLength {
+		stockPhrase := "In stock and ready to ship."
 		if product.StockQuantity <= 0 {
 			stockPhrase = "Available to order."
 		}
-		brand := product.Brand
-		if brand == "" {
-			brand = "FANUC"
-		}
-		// Format: "{Brand} {SKU} {categoryKeyword} for {benefit}. {stockPhrase} Tested, 12-month warranty, fast worldwide shipping. Order now at Vcocnc."
-		metaDesc := fmt.Sprintf(
-			"%s %s %s for %s. %s Tested, 12-month warranty, fast worldwide shipping. Order now at Vcocnc.",
-			brand, product.SKU, categoryKeyword, categoryBenefit, stockPhrase,
+		metaDesc := services.BuildSafeMetaDescription(
+			strings.TrimSpace(enriched.MetaDescription),
+			fmt.Sprintf(
+				"%s %s %s for %s. %s Compatibility support, 12-month warranty, and fast worldwide shipping.",
+				brand, product.SKU, categoryKeyword, categoryBenefit, stockPhrase,
+			),
+			fmt.Sprintf("%s %s %s for CNC repair and replacement. %s", brand, product.SKU, categoryKeyword, stockPhrase),
 		)
-		if len(metaDesc) > 160 {
-			metaDesc = fmt.Sprintf(
-				"%s %s %s — %s %s 12-month warranty, fast shipping. Order at Vcocnc.",
-				brand, product.SKU, categoryKeyword, stockPhrase, categoryBenefit+".",
-			)
-		}
-		if len(metaDesc) > 160 {
-			metaDesc = metaDesc[:157] + "..."
-		}
 		updateData["meta_description"] = metaDesc
 		contentUpdated = true
 	}
 
 	// Enhance meta keywords if missing
 	if len(product.MetaKeywords) < 20 {
-		keywords := []string{
-			product.SKU,
-			product.Name,
-			"FANUC " + categoryKeyword,
-			"FANUC parts",
-			"CNC spare parts",
+		metaKeywords := strings.TrimSpace(enriched.MetaKeywords)
+		if metaKeywords == "" {
+			keywords := []string{
+				product.SKU,
+				product.Name,
+				brand + " " + categoryKeyword,
+				brand + " parts",
+				"CNC spare parts",
+				"industrial automation",
+				"Vcocnc",
+			}
+			if model != "" {
+				keywords = append(keywords, model)
+			}
+			metaKeywords = strings.Join(keywords, ", ")
 		}
-		if product.Brand != "" {
-			keywords = append(keywords, product.Brand+" parts")
-		}
-		if product.Model != "" {
-			keywords = append(keywords, product.Model)
-		}
-		keywords = append(keywords, "industrial automation", "Vcocnc", "buy FANUC parts online")
-		updateData["meta_keywords"] = strings.Join(keywords, ", ")
+		updateData["meta_keywords"] = metaKeywords
 		contentUpdated = true
 	}
 
 	// Enhance short description if missing (category-aware)
 	if len(product.ShortDescription) < 50 {
-		brand := product.Brand
-		if brand == "" {
-			brand = "FANUC"
+		shortDesc := strings.TrimSpace(enriched.ShortDescription)
+		if shortDesc == "" {
+			stockText := "In stock and ready to ship."
+			if product.StockQuantity <= 0 {
+				stockText = "Available for order with fast handling."
+			}
+			shortDesc = fmt.Sprintf(
+				"%s %s %s for %s. %s Quality tested with 12-month warranty.",
+				brand, product.SKU, categoryKeyword, categoryBenefit, stockText,
+			)
 		}
-		stockText := "In stock and ready to ship."
-		if product.StockQuantity <= 0 {
-			stockText = "Available for order with fast handling."
-		}
-		shortDesc := fmt.Sprintf(
-			"%s %s %s for %s. %s Quality tested with 12-month warranty.",
-			brand, product.SKU, categoryKeyword, categoryBenefit, stockText,
-		)
 		if len(shortDesc) > 200 {
 			shortDesc = shortDesc[:197] + "..."
 		}
 		updateData["short_description"] = shortDesc
+		contentUpdated = true
+	}
+
+	if len(strings.TrimSpace(product.Description)) < 220 && strings.TrimSpace(enriched.Description) != "" {
+		updateData["description"] = enriched.Description
+		contentUpdated = true
+	}
+
+	if len(strings.TrimSpace(product.CompatibilityInfo)) < 80 && strings.TrimSpace(enriched.CompatibilityInfo) != "" {
+		updateData["compatibility_info"] = enriched.CompatibilityInfo
+		contentUpdated = true
+	}
+
+	if len(strings.TrimSpace(product.InstallationGuide)) < 80 && strings.TrimSpace(enriched.InstallationGuide) != "" {
+		updateData["installation_guide"] = enriched.InstallationGuide
+		contentUpdated = true
+	}
+
+	if len(strings.TrimSpace(product.MaintenanceTips)) < 80 && strings.TrimSpace(enriched.MaintenanceTips) != "" {
+		updateData["maintenance_tips"] = enriched.MaintenanceTips
 		contentUpdated = true
 	}
 
@@ -411,7 +439,7 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	}
 
 	if product.Manufacturer == "" {
-		updateData["manufacturer"] = "FANUC"
+		updateData["manufacturer"] = services.CanonicalBrandName(brand)
 		contentUpdated = true
 	}
 
@@ -431,28 +459,28 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 // getCategoryKeyword returns a descriptive keyword phrase for the product category
 func (poc *ProductOptimizationController) getCategoryKeyword(categoryName string) string {
 	categoryKeywords := map[string]string{
-		"servo":          "Servo Drive Unit",
-		"motor":          "Servo Motor",
-		"pcb":            "Control PCB Board",
-		"board":          "Circuit Board",
-		"power supply":   "Power Supply Module",
-		"power":          "Power Supply Unit",
-		"i/o":            "I/O Module",
-		"interface":      "Interface Board",
-		"encoder":        "Encoder Unit",
-		"sensor":         "Sensor Module",
-		"cable":          "Connection Cable",
-		"connector":      "Connector Part",
-		"display":        "Display Unit",
-		"keypad":         "Keypad Panel",
-		"spindle":        "Spindle Drive",
-		"amplifier":      "Servo Amplifier",
-		"controller":     "CNC Controller",
-		"teach pendant":  "Teach Pendant",
-		"robot":          "Robot Controller",
-		"battery":        "Battery Unit",
-		"fan":            "Cooling Fan Unit",
-		"membrane":       "Membrane Keysheet",
+		"servo":         "Servo Drive Unit",
+		"motor":         "Servo Motor",
+		"pcb":           "Control PCB Board",
+		"board":         "Circuit Board",
+		"power supply":  "Power Supply Module",
+		"power":         "Power Supply Unit",
+		"i/o":           "I/O Module",
+		"interface":     "Interface Board",
+		"encoder":       "Encoder Unit",
+		"sensor":        "Sensor Module",
+		"cable":         "Connection Cable",
+		"connector":     "Connector Part",
+		"display":       "Display Unit",
+		"keypad":        "Keypad Panel",
+		"spindle":       "Spindle Drive",
+		"amplifier":     "Servo Amplifier",
+		"controller":    "CNC Controller",
+		"teach pendant": "Teach Pendant",
+		"robot":         "Robot Controller",
+		"battery":       "Battery Unit",
+		"fan":           "Cooling Fan Unit",
+		"membrane":      "Membrane Keysheet",
 	}
 
 	for key, keyword := range categoryKeywords {

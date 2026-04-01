@@ -52,6 +52,7 @@ const navigation = [
   { key: 'nav.backup', name: 'Backup & Restore', href: '/admin/backup', icon: ArrowDownTrayIcon },
   { key: 'nav.cache', name: 'Cache & CDN', href: '/admin/cache', icon: ArrowPathIcon },
   { key: 'nav.paypal', name: 'PayPal', href: '/admin/paypal', icon: CreditCardIcon },
+  { key: 'nav.indexnow', name: 'IndexNow / Bing', href: '/admin/indexnow', icon: BellIcon },
   { key: 'nav.analytics', name: 'Visitor Analytics', href: '/admin/analytics', icon: ChartBarIcon },
   { key: 'nav.homepage', name: 'Homepage Content', href: '/admin/homepage', icon: DocumentTextIcon },
   { key: 'nav.news', name: 'News & Articles', href: '/admin/news', icon: NewspaperIcon },

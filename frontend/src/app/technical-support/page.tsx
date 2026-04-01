@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
+import { buildStaticPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Technical Support | Vcocnc',
-  description: 'Product consultation, troubleshooting, and remote diagnostics for FANUC parts.',
-};
+export const metadata: Metadata = buildStaticPageMetadata(
+  '/technical-support',
+  'Technical Support | Vcocnc',
+  'Product consultation, troubleshooting, and remote diagnostics for FANUC parts.',
+  'technical support, FANUC troubleshooting, CNC support, industrial automation diagnostics, Vcocnc support'
+);
 
 export default function TechnicalSupportPage() {
   return (

@@ -55,11 +55,25 @@ function toAbsoluteUrl(url: string | undefined, baseUrl: string): string {
   return `${baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
 }
 
+function buildAnswerFirstSummary(product: Product, category?: Category): string {
+  const brand = product.brand || 'FANUC';
+  const categoryName = category?.name || product.category?.name || 'industrial automation part';
+  const stockText = product.stock_quantity > 0
+    ? 'The item is in stock and ready for shipment.'
+    : `The item is available to order with ${product.lead_time || '3-7 days'} lead time.`;
+  const warrantyText = product.warranty_period
+    ? `Standard supply includes a ${product.warranty_period} warranty.`
+    : 'Standard supply includes a 12-month warranty.';
+
+  return `${brand} ${product.sku} is a ${categoryName.toLowerCase()} used for CNC repair, replacement, and industrial automation maintenance. ${stockText} ${warrantyText}`;
+}
+
 export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'https://www.vcocncspare.com' }: ProductSEOProps) {
   const productUrl = `${baseUrl}/products/${toProductPathId(product.sku)}`;
   const productId = `${productUrl}#product`;
   const description = stripHtml(product.meta_description || product.short_description || product.description)
     || `${product.name} industrial automation spare part from ${product.brand || 'FANUC'}.`;
+  const answerFirstSummary = buildAnswerFirstSummary(product, category);
 
   // Build image array
   const imageUrls = (product.images?.map(img => typeof img === 'string' ? img : img.url) ||
@@ -75,13 +89,19 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
 
   // Technical specs as additionalProperty
   const specs = parseSpecs(product.technical_specs);
-  const additionalProperties = specs
+  const specProperties = specs
     ? Object.entries(specs).map(([name, value]) => ({
         "@type": "PropertyValue",
         "name": name,
         "value": String(value),
       }))
-    : undefined;
+    : [];
+  const attributeProperties = product.attributes?.map((attribute) => ({
+    "@type": "PropertyValue",
+    "name": attribute.attribute_name,
+    "value": String(attribute.attribute_value),
+  })) || [];
+  const additionalProperties = [...specProperties, ...attributeProperties];
 
   // Generate rich structured data for the product
   const structuredData: { [key: string]: JsonLdValue } = {
@@ -93,6 +113,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     "mpn": product.part_number || product.sku,
     "productID": product.sku,
     "description": description,
+    "disambiguatingDescription": answerFirstSummary,
     "brand": {
       "@type": "Brand",
       "name": product.brand || "FANUC"
@@ -111,6 +132,10 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     "itemCondition": mapConditionType(product.condition_type),
     "countryOfOrigin": product.origin_country || undefined,
     "keywords": [product.sku, product.part_number, product.brand, category?.name].filter(Boolean).join(', '),
+    "audience": {
+      "@type": "Audience",
+      "audienceType": "CNC maintenance buyers and industrial automation service teams"
+    },
     "offers": {
       "@type": "Offer",
       "url": productUrl,
@@ -195,10 +220,27 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     structuredData.additionalProperty = additionalProperties;
   }
 
+  const subjectOf = [
+    product.datasheet_url ? {
+      "@type": "DigitalDocument",
+      "name": `${product.sku} datasheet`,
+      "url": product.datasheet_url,
+    } : null,
+    product.manual_url ? {
+      "@type": "DigitalDocument",
+      "name": `${product.sku} manual`,
+      "url": product.manual_url,
+    } : null,
+  ].filter(Boolean);
+
+  if (subjectOf.length > 0) {
+    structuredData.subjectOf = subjectOf as JsonLdValue[];
+  }
+
   // Speakable for AI search engines
   structuredData.speakable = {
     "@type": "SpeakableSpecification",
-    "cssSelector": ["h1", ".product-description", ".product-specs"]
+    "cssSelector": ["h1", ".product-summary", ".product-description", ".product-specs"]
   };
 
   // Generate breadcrumb structured data
@@ -287,6 +329,29 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     "mainEntity": faqEntities
   };
 
+  const webPageData = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${productUrl}#webpage`,
+    "url": productUrl,
+    "name": product.name,
+    "description": description,
+    "dateModified": product.updated_at,
+    "inLanguage": "en",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Vcocnc FANUC Parts",
+      "url": baseUrl,
+    },
+    "about": {
+      "@id": productId,
+    },
+    "speakable": {
+      "@type": "SpeakableSpecification",
+      "cssSelector": ["h1", ".product-summary", ".product-description", ".product-specs"]
+    }
+  };
+
   return (
     <>
       {/* Product Structured Data */}
@@ -310,6 +375,13 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(faqData)
+        }}
+      />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(webPageData)
         }}
       />
     </>

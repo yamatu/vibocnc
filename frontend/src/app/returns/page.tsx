@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
+import { buildStaticPageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Returns | Vcocnc',
-  description: 'Returns policy and process for Vcocnc products.',
-};
+export const metadata: Metadata = buildStaticPageMetadata(
+  '/returns',
+  'Returns | Vcocnc',
+  'Returns policy and process for Vcocnc products.',
+  'returns policy, FANUC parts returns, CNC parts refund, Vcocnc returns'
+);
 
 export default function ReturnsPage() {
   return (
@@ -16,4 +19,3 @@ export default function ReturnsPage() {
     </PublicLayout>
   );
 }
-

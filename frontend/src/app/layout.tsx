@@ -51,7 +51,6 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       type: "website",
       locale: "en_US",
-      url: siteUrl,
       siteName: "Vcocnc FANUC Parts",
       title: "FANUC Parts & Industrial Automation Components | Vcocnc",
       description:
@@ -73,12 +72,6 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     verification: {
       google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
-    },
-    alternates: {
-      languages: {
-        'x-default': siteUrl,
-        'en': siteUrl,
-      },
     },
   };
 }

@@ -220,13 +220,20 @@ func StartProductImportTask(ctx context.Context, db *gorm.DB, src io.Reader, fil
 	productImportTasks.add(task)
 	cleanupOnError = false
 
-	go runProductImportTask(context.WithoutCancel(ctx), db, taskID, opts)
+	go runProductImportTask(detachContext(ctx), db, taskID, opts)
 
 	return task.snapshot(), nil
 }
 
 func GetProductImportTaskSnapshot(taskID string) (ProductImportTaskSnapshot, bool) {
 	return productImportTasks.getSnapshot(taskID)
+}
+
+func detachContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.Background()
 }
 
 func ImportProductsFromXLSX(ctx context.Context, db *gorm.DB, r io.Reader, opts ProductImportOptions) (ProductImportResult, error) {

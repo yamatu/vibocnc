@@ -19,6 +19,7 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/server .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/bulk-seo-optimize ./cmd/bulk-seo-optimize
 
 ARG BASE_REGISTRY=docker.io
 FROM ${BASE_REGISTRY}/library/alpine:3.19 AS runner
@@ -28,6 +29,7 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata mariadb-client
 
 COPY --from=builder /out/server /app/server
+COPY --from=builder /out/bulk-seo-optimize /app/bulk-seo-optimize
 
 # 上传目录（建议用 volume 挂载）
 RUN mkdir -p /app/uploads
