@@ -873,7 +873,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                 )}
                 {product.brand && (
                   <Link
-                    href={`/products?search=${encodeURIComponent(product.brand)}`}
+                    href={categoryHref || '/products'}
                     className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
                   >
                     More {product.brand} parts

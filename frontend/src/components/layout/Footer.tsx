@@ -2,20 +2,21 @@
 
 import Link from 'next/link';
 import { getSiteUrl } from '@/lib/url';
-import { 
-  PhoneIcon, 
-  EnvelopeIcon, 
+import {
+  PhoneIcon,
+  EnvelopeIcon,
   MapPinIcon,
-  ClockIcon
+  ClockIcon,
 } from '@heroicons/react/24/outline';
+import { useState } from 'react';
 
 const footerNavigation = {
   products: [
-    { name: 'FANUC Amplifiers', href: '/products?search=amplifier' },
-    { name: 'Servo Motors', href: '/products?search=servo%20motor' },
-    { name: 'Encoders', href: '/products?search=encoder' },
-    { name: 'PLC Modules', href: '/products?search=plc' },
-    { name: 'CNC Inverters', href: '/products?search=inverter' },
+    { name: 'FANUC Amplifiers', href: '/categories/servo-motors' },
+    { name: 'Servo Motors', href: '/categories/servo-motors' },
+    { name: 'Encoders', href: '/categories/servo-motors' },
+    { name: 'PLC Modules', href: '/categories/io-modules' },
+    { name: 'CNC Inverters', href: '/categories/power-supplies' },
   ],
   services: [
     { name: 'FANUC Parts Sales', href: '/about' },
@@ -48,8 +49,6 @@ const footerNavigation = {
   ],
 };
 
-import { useState } from 'react';
-
 export function Footer() {
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const siteUrl = getSiteUrl();
@@ -63,7 +62,7 @@ export function Footer() {
         url.searchParams.set('email', newsletterEmail.trim());
       }
       window.location.href = url.toString();
-    } catch (_) {
+    } catch {
       // Fallback to relative navigation
       const qs = newsletterEmail && newsletterEmail.trim() ? `?email=${encodeURIComponent(newsletterEmail.trim())}` : '';
       window.location.href = `/contact${qs}`;
@@ -227,7 +226,7 @@ export function Footer() {
             <div className="text-gray-400 text-sm">
               © 2024 Vcocnc. All rights reserved.
             </div>
-            
+
             <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 md:mt-0">
               <Link
                 href="/privacy"
