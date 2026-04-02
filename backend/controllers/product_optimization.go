@@ -64,6 +64,10 @@ func (poc *ProductOptimizationController) OptimizeProduct(c *gin.Context) {
 		}
 	}
 
+	if override := services.CanonicalBrandName(request.Brand); override != "" {
+		product.Brand = override
+	}
+
 	seoBefore := product.SEOScore
 
 	// Calculate SEO score and update product
@@ -75,6 +79,9 @@ func (poc *ProductOptimizationController) OptimizeProduct(c *gin.Context) {
 		"seo_score":         seoScore,
 		"last_optimized_at": &now,
 		"updated_at":        now,
+	}
+	if override := services.CanonicalBrandName(request.Brand); override != "" {
+		updateData["brand"] = override
 	}
 
 	// Enhance content if needed
@@ -124,6 +131,8 @@ func (poc *ProductOptimizationController) BulkOptimizeProducts(c *gin.Context) {
 	var products []models.Product
 	query := db.Preload("Category").Where("is_active = ?", true)
 
+	canonicalBrand := services.CanonicalBrandName(request.Brand)
+
 	// Apply filters
 	if len(request.ProductIDs) > 0 {
 		query = query.Where("id IN ?", request.ProductIDs)
@@ -131,6 +140,10 @@ func (poc *ProductOptimizationController) BulkOptimizeProducts(c *gin.Context) {
 
 	if request.CategoryID != nil {
 		query = query.Where("category_id = ?", *request.CategoryID)
+	}
+
+	if canonicalBrand != "" {
+		query = query.Where("LOWER(brand) = LOWER(?) OR brand = '' OR brand IS NULL", canonicalBrand)
 	}
 
 	if !request.ForceUpdate {
@@ -158,14 +171,20 @@ func (poc *ProductOptimizationController) BulkOptimizeProducts(c *gin.Context) {
 	results := make([]models.ProductOptimizationResponse, 0, len(products))
 
 	for _, product := range products {
+		if canonicalBrand != "" {
+			product.Brand = canonicalBrand
+		}
 		seoBefore := product.SEOScore
 		seoScore := poc.calculateSEOScore(&product)
 		now := time.Now()
 
 		updateData := map[string]interface{}{
+			"updated_at":        now,
 			"seo_score":         seoScore,
 			"last_optimized_at": &now,
-			"updated_at":        now,
+		}
+		if canonicalBrand != "" {
+			updateData["brand"] = canonicalBrand
 		}
 
 		contentUpdated := poc.enhanceProductContent(&product, updateData)

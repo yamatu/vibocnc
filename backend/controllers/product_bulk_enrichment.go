@@ -476,6 +476,7 @@ func (pc *ProductController) BulkCategorizeAndOptimizeProducts(c *gin.Context) {
 
 			optResult, err := optimizeProductAfterSaveWithCategoryMap(db, p.ID, catBySlug, automaticProductOptimizationOptions{
 				ForceCategory: categoryID != 0,
+				BrandOverride: req.Brand,
 			})
 			if err != nil {
 				failed++

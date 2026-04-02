@@ -455,8 +455,9 @@ type EnhancedProductCreateRequest struct {
 
 // Product optimization request
 type ProductOptimizationRequest struct {
-	ProductID   int  `json:"product_id" binding:"required"`
-	ForceUpdate bool `json:"force_update"`
+	ProductID   int    `json:"product_id" binding:"required"`
+	ForceUpdate bool   `json:"force_update"`
+	Brand       string `json:"brand"`
 }
 
 // Product optimization response
@@ -472,10 +473,11 @@ type ProductOptimizationResponse struct {
 
 // Bulk optimization request
 type BulkOptimizationRequest struct {
-	ProductIDs  []int `json:"product_ids"`
-	CategoryID  *int  `json:"category_id"`
-	Limit       int   `json:"limit"`
-	ForceUpdate bool  `json:"force_update"`
+	ProductIDs  []int  `json:"product_ids"`
+	CategoryID  *int   `json:"category_id"`
+	Limit       int    `json:"limit"`
+	ForceUpdate bool   `json:"force_update"`
+	Brand       string `json:"brand"`
 }
 
 // ---------------------------------------------------------------------------

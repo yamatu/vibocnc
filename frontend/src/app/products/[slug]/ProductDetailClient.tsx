@@ -337,7 +337,8 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             : []));
 
   const categoryName = product.category?.name || 'Part';
-  const brandName = product.brand || '';
+  const brandName = (product.brand || '').trim();
+  const brandLabel = brandName || 'industrial automation';
   const computedHeading = product.name || `${brandName} ${product.sku || ''} ${categoryName}`.trim();
 
   const getFallbackDescription = () => {
@@ -358,7 +359,8 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
   const descriptionToShow = product.description && product.description.trim().length > 0
     ? product.description
     : getFallbackDescription();
-  const introParagraph = `${computedHeading} is a ${product.brand || 'FANUC'} ${categoryName.toLowerCase()} supplied by Vcocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}`.replace(/\s+/g, ' ').trim();
+  const introBrandPrefix = brandName ? `${brandName} ` : '';
+  const introParagraph = `${computedHeading} is a ${introBrandPrefix}${categoryName.toLowerCase()} supplied by Vcocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}`.replace(/\s+/g, ' ').trim();
   const normalizedIntro = normalizeComparisonText(introParagraph);
   const normalizedDescription = normalizeComparisonText(descriptionToShow);
   const shouldRenderIntroParagraph = normalizedIntro !== '' && !normalizedDescription.includes(normalizedIntro);
@@ -397,8 +399,9 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
     product.datasheet_url ? { href: product.datasheet_url, label: 'Datasheet' } : null,
     product.manual_url ? { href: product.manual_url, label: 'Manual' } : null,
   ].filter(Boolean) as Array<{ href: string; label: string }>;
+  const productSummarySubject = brandName ? `${brandName} ${product.sku}` : product.sku;
   const productSummaryPoints = [
-    `${product.brand || 'FANUC'} ${product.sku} is supplied for CNC maintenance, replacement, and industrial automation support.`,
+    `${productSummarySubject} is supplied for CNC maintenance, replacement, and industrial automation support.`,
     product.stock_quantity > 0
       ? 'Current status: in stock and ready for worldwide shipment.'
       : `Current status: available to order with ${product.lead_time || '3-7 days'} lead time.`,
@@ -505,7 +508,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
               <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-gray-200 bg-white p-4">
                 <div className="text-sm">
                   <div className="text-xs text-gray-500">Brand</div>
-                  <div className="font-medium text-gray-900">{product.brand || brandName || '-'}</div>
+                  <div className="font-medium text-gray-900">{brandName || '-'}</div>
                 </div>
                 <div className="text-sm">
                   <div className="text-xs text-gray-500">Part No.</div>
@@ -723,7 +726,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                   </div>
                   <div>
                     <dt className="text-sm text-gray-500">Brand</dt>
-                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.brand || 'FANUC'}</dd>
+                    <dd className="mt-1 text-sm font-medium text-gray-900">{brandName || '-'}</dd>
                   </div>
                   <div>
                     <dt className="text-sm text-gray-500">Part Number</dt>

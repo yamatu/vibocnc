@@ -543,10 +543,11 @@ export class ProductService {
     throw new Error(response.data.message || 'Failed to fetch optimization status');
   }
 
-  static async optimizeProduct(productId: number, forceUpdate = false): Promise<ProductOptimizationResponse> {
+  static async optimizeProduct(productId: number, forceUpdate = false, brand?: string): Promise<ProductOptimizationResponse> {
     const response = await apiClient.post<APIResponse<ProductOptimizationResponse>>('/admin/products/optimize', {
       product_id: productId,
       force_update: forceUpdate,
+      brand,
     });
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to optimize product');
@@ -557,6 +558,7 @@ export class ProductService {
     category_id?: number;
     limit?: number;
     force_update?: boolean;
+    brand?: string;
   }): Promise<ProductOptimizationResponse[]> {
     const response = await apiClient.post<APIResponse<ProductOptimizationResponse[]>>('/admin/products/bulk-optimize', payload);
     if (response.data.success && response.data.data) return response.data.data;

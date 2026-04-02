@@ -18,6 +18,7 @@ type automaticProductOptimizationResult struct {
 
 type automaticProductOptimizationOptions struct {
 	ForceCategory bool
+	BrandOverride string
 }
 
 func optimizeProductAfterSave(db *gorm.DB, productID uint) (automaticProductOptimizationResult, error) {
@@ -36,6 +37,9 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	}
 
 	brandInput := strings.TrimSpace(product.Brand)
+	if override := services.CanonicalBrandName(opts.BrandOverride); override != "" {
+		brandInput = override
+	}
 	brandName := services.CanonicalBrandName(brandInput)
 
 	model := services.NormalizeProductModel(product.Model)
@@ -52,7 +56,7 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	inference := services.InferProductCategory(brandInput, model)
 	updateData := map[string]any{}
 
-	if strings.TrimSpace(product.Brand) == "" && brandName != "" {
+	if brandName != "" && (strings.TrimSpace(product.Brand) == "" || strings.TrimSpace(opts.BrandOverride) != "") {
 		updateData["brand"] = brandName
 		product.Brand = brandName
 	}

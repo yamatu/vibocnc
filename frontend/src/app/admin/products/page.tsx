@@ -1376,7 +1376,7 @@ function AdminProductsContent() {
                 onClick={bulkCategorizeAndOptimize}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={optimizeProgress.status === 'preparing' || optimizeProgress.status === 'running' || (!selectAllResults && selectedIds.length === 0)}
-				title={locale === 'zh' ? '批量自动分类并补全 SEO 描述、Meta、FAQ 等字段' : 'Bulk categorize and complete SEO descriptions, meta fields, and FAQs'}
+				title={locale === 'zh' ? '按当前批量品牌设置，批量自动分类并重写 SEO 描述、Meta、FAQ 等字段' : 'Bulk categorize and rewrite SEO descriptions, meta fields, and FAQs using the selected bulk brand'}
               >
                 <SparklesIcon className="h-4 w-4 mr-2" />
                 {optimizeProgress.status === 'preparing' || optimizeProgress.status === 'running'
@@ -1430,11 +1430,10 @@ function AdminProductsContent() {
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">{t('products.import.brand', locale === 'zh' ? '品牌' : 'Brand')}</span>
+                <span className="text-sm text-gray-600">{locale === 'zh' ? '批量品牌 / SEO 品牌' : 'Bulk Brand / SEO Brand'}</span>
                 <select
                   value={categoryImageBrand}
                   onChange={(e) => setCategoryImageBrand(e.target.value)}
-                  disabled={Boolean(selectedBrand)}
                   className="px-3 py-2 text-sm border border-gray-300 rounded-md"
                 >
                   <option value="">{locale === 'zh' ? '自动 / 当前筛选' : 'Auto / Current Filters'}</option>
@@ -1447,8 +1446,8 @@ function AdminProductsContent() {
               {selectedBrand && (
                 <div className="text-sm text-blue-600">
                   {locale === 'zh'
-                    ? `当前已按品牌 ${selectedBrand.toUpperCase()} 筛选，批量操作会自动沿用这个品牌范围`
-                    : `Brand filter ${selectedBrand.toUpperCase()} is active, and bulk actions will use that brand scope`}
+                    ? `当前已按品牌 ${selectedBrand.toUpperCase()} 筛选；你也可以在这里选择另一品牌来批量重写 SEO`
+                    : `Brand filter ${selectedBrand.toUpperCase()} is active; you can still choose another brand here to bulk rewrite SEO content`}
                 </div>
               )}
               <div className="flex items-center gap-2">
@@ -1468,7 +1467,7 @@ function AdminProductsContent() {
                 </div>
               ) : (
                 <div className="text-sm text-amber-600">
-                  {t('products.bulk.categoryScopedHint', locale === 'zh' ? '未选分类时会作用于当前筛选结果；如指定品牌，则按该品牌范围执行' : 'Without a category filter, this applies to the current filtered results and respects any selected brand scope')}
+                  {t('products.bulk.categoryScopedHint', locale === 'zh' ? '未选分类时会作用于当前筛选结果；这里选择的品牌会同时用于批量分类、SEO 重写和分类图批量处理' : 'Without a category filter, this applies to the current filtered results; the brand chosen here is also used for bulk categorization, SEO rewriting, and category image actions')}
                 </div>
               )}
             </div>
