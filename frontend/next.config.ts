@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -6,8 +7,8 @@ const nextConfig: NextConfig = {
   generateEtags: true,
 
   // Silence workspace root inference warning when monorepo-like structure exists
-  // @ts-ignore - supported by Next runtime, may not be in TS types
-  outputFileTracingRoot: require('path').join(__dirname, '..'),
+  // @ts-expect-error - supported by Next runtime, may not be in TS types
+  outputFileTracingRoot: path.join(__dirname, '..'),
 
   // 确保环境变量正确注入
   env: {
@@ -106,14 +107,6 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/sitemap-index.xml',
-        headers: [
-          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
-          { key: 'Pragma', value: 'no-cache' },
-          { key: 'Expires', value: '0' },
-        ],
-      },
-      {
         source: '/sitemap-static.xml',
         headers: [
           { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
@@ -139,6 +132,14 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/sitemap-products/:page.xml',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+        ],
+      },
+      {
+        source: '/sitemap-news.xml',
         headers: [
           { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, proxy-revalidate' },
           { key: 'Pragma', value: 'no-cache' },

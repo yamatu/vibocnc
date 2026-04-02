@@ -63,6 +63,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
       },
     ],
     host: site,
-    sitemap: `${site}/sitemap-index.xml`,
+    sitemap: `${site}/sitemap.xml`,
   };
 }

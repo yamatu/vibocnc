@@ -17,7 +17,7 @@
 - 基于产品型号模式生成技术规格
 
 ### 3. SEO结构增强
-- XML sitemap优化（xmlsitemap.php端点）
+- XML sitemap优化（以 `/sitemap.xml` 为主入口）
 - 产品URL SEO友好化：`/products/[sku]-[slug]`
 - 结构化数据（Schema.org）增强
 - robots.txt优化

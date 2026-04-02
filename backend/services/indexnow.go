@@ -301,7 +301,6 @@ func BuildDefaultIndexNowURLs(siteURL string) []string {
 		base + "/privacy",
 		base + "/terms",
 		base + "/sitemap.xml",
-		base + "/sitemap-index.xml",
 		base + "/sitemap-static.xml",
 		base + "/sitemap-products-index.xml",
 		base + "/sitemap-categories.xml",

@@ -28,7 +28,6 @@ func SetupRoutes(r *gin.Engine) {
 	companyProfileController := controllers.NewCompanyProfileController(companyProfileService)
 	dashboardController := controllers.NewDashboardController()
 	contactHandler := handlers.NewContactHandler(db)
-	sitemapController := &controllers.SitemapController{}
 	couponController := &controllers.CouponController{}
 	customerController := &controllers.CustomerController{}
 	emailController := &controllers.EmailController{}
@@ -53,9 +52,6 @@ func SetupRoutes(r *gin.Engine) {
 			"message": "FANUC Backend API is running",
 		})
 	})
-
-	// SEO: dynamic sitemap index and sections (compatible with competitor)
-	r.GET("/xmlsitemap.php", sitemapController.GetXMLSitemap)
 
 	// API v1 routes
 	v1 := r.Group("/api/v1")

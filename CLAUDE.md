@@ -115,7 +115,7 @@ backend/
 ### Frontend SEO Implementation
 - **Structured Data**: JSON-LD for products, company, breadcrumbs
 - **Meta Tags**: Dynamic meta titles, descriptions, Open Graph
-- **Sitemap**: Auto-generated at `/xmlsitemap.php` (competitor compatibility)
+- **Sitemap**: Primary submission entry at `/sitemap.xml`, which serves the Next.js sitemap index and discovers child sitemaps automatically
 - **Image Optimization**: Next.js Image component with lazy loading
 
 ### Error Handling Strategy

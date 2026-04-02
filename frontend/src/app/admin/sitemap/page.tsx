@@ -48,12 +48,11 @@ export default function SitemapManagementPage() {
   const baseUrl = getSiteUrl();
 
   const sitemapUrls = [
-    { name: 'Sitemap Index', url: `${baseUrl}/sitemap-index.xml`, description: 'Primary sitemap submission URL' },
-    { name: 'Main Sitemap', url: `${baseUrl}/sitemap.xml`, description: 'MetadataRoute summary sitemap' },
-    { name: 'Static Pages', url: `${baseUrl}/sitemap-static.xml`, description: 'All static pages' },
-    { name: 'Categories', url: `${baseUrl}/sitemap-categories.xml`, description: 'All category pages' },
-    { name: 'Products Index', url: `${baseUrl}/sitemap-products-index.xml`, description: 'Product sitemap index' },
-    { name: 'News & Articles', url: `${baseUrl}/sitemap-news.xml`, description: 'All published articles' },
+    { name: 'Primary Sitemap', url: `${baseUrl}/sitemap.xml`, description: 'Primary sitemap submission URL', status: 'Primary' },
+    { name: 'Static Pages', url: `${baseUrl}/sitemap-static.xml`, description: 'All static pages', status: 'Child' },
+    { name: 'Categories', url: `${baseUrl}/sitemap-categories.xml`, description: 'All category pages', status: 'Child' },
+    { name: 'Products Index', url: `${baseUrl}/sitemap-products-index.xml`, description: 'Product sitemap index', status: 'Child' },
+    { name: 'News & Articles', url: `${baseUrl}/sitemap-news.xml`, description: 'All published articles', status: 'Child' },
   ];
 
   return (
@@ -164,7 +163,18 @@ export default function SitemapManagementPage() {
                         </div>
                       </div>
                       <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">{sitemap.name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-gray-900">{sitemap.name}</div>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              sitemap.status === 'Primary'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {sitemap.status}
+                          </span>
+                        </div>
                         <div className="text-sm text-gray-500">{sitemap.description}</div>
                       </div>
                     </div>
@@ -201,7 +211,7 @@ export default function SitemapManagementPage() {
                 <h3 className="text-sm font-medium text-blue-800">{t('sitemap.instructions.title', 'SEO Instructions')}</h3>
                 <div className="mt-2 text-sm text-blue-700">
                   <ul className="list-disc list-inside space-y-1">
-                    <li>{t('sitemap.instructions.1', 'Submit sitemap-index.xml to Google Search Console and Bing Webmaster Tools')}</li>
+                    <li>{t('sitemap.instructions.1', 'Submit sitemap.xml to Google Search Console and Bing Webmaster Tools')}</li>
                     <li>{t('sitemap.instructions.2', 'Sitemaps are automatically updated every 30 minutes')}</li>
                     <li>{t('sitemap.instructions.3', 'Each product sitemap contains up to 100 products')}</li>
                     <li>{t('sitemap.instructions.4', 'New products are automatically included in sitemaps')}</li>
