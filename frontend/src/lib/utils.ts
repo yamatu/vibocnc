@@ -310,10 +310,17 @@ export function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '');
 }
 
-// Convert a SKU to a URL-safe single-path segment (avoid '/')
+// Convert a SKU to a canonical URL-safe single-path segment (avoid '/')
 export function toProductPathId(sku: string): string {
   if (!sku) return '';
-  return sku.replace(/[\\/]+/g, '-').replace(/\s+/g, '-');
+  const normalized = sku
+    .trim()
+    .replace(/[\\/]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return normalized.replace(/^FANUC-/i, '');
 }
 
 // Get file extension

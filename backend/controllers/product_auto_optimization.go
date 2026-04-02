@@ -36,9 +36,6 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	}
 
 	brandInput := strings.TrimSpace(product.Brand)
-	if brandInput == "" {
-		brandInput = "fanuc"
-	}
 	brandName := services.CanonicalBrandName(brandInput)
 
 	model := services.NormalizeProductModel(product.Model)
@@ -55,7 +52,7 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	inference := services.InferProductCategory(brandInput, model)
 	updateData := map[string]any{}
 
-	if strings.TrimSpace(product.Brand) == "" {
+	if strings.TrimSpace(product.Brand) == "" && brandName != "" {
 		updateData["brand"] = brandName
 		product.Brand = brandName
 	}

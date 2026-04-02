@@ -37,7 +37,7 @@ type Product struct {
 	MinStockLevel    int      `json:"min_stock_level" gorm:"default:0"`
 	Weight           *float64 `json:"weight" gorm:"type:decimal(8,2)"`
 	Dimensions       string   `json:"dimensions" gorm:"size:100"`
-	Brand            string   `json:"brand" gorm:"size:100;default:'FANUC';index"`
+	Brand            string   `json:"brand" gorm:"size:100;index"`
 	Model            string   `json:"model" gorm:"size:100;index"`
 	PartNumber       string   `json:"part_number" gorm:"size:100;index"`
 	CategoryID       uint     `json:"category_id" gorm:"not null;index"`
@@ -53,7 +53,7 @@ type Product struct {
 	WarrantyPeriod          string     `json:"warranty_period" gorm:"size:50;default:'12 months'"`
 	ConditionType           string     `json:"condition_type" gorm:"type:enum('new','refurbished','used');default:'new'"`
 	OriginCountry           string     `json:"origin_country" gorm:"size:50;default:'China'"`
-	Manufacturer            string     `json:"manufacturer" gorm:"size:100;default:'FANUC'"`
+	Manufacturer            string     `json:"manufacturer" gorm:"size:100"`
 	LeadTime                string     `json:"lead_time" gorm:"size:50;default:'3-7 days'"`
 	MinimumOrderQuantity    int        `json:"minimum_order_quantity" gorm:"default:1"`
 	PackagingInfo           string     `json:"packaging_info" gorm:"type:text"`

@@ -615,9 +615,10 @@ export class ProductService {
   }
 
   // Admin: Download XLSX import template
-  static async downloadImportTemplate(brand: string = 'fanuc'): Promise<Blob> {
+  static async downloadImportTemplate(brand?: string): Promise<Blob> {
+    const query = brand ? `?brand=${encodeURIComponent(brand)}` : '';
     const response = await apiClient.get(
-      `/admin/products/import/template?brand=${encodeURIComponent(brand)}`,
+      `/admin/products/import/template${query}`,
       { responseType: 'blob' }
     );
     return response.data as Blob;
@@ -631,7 +632,7 @@ export class ProductService {
   ): Promise<ProductImportTaskSnapshot> {
     const form = new FormData();
     form.append('file', file);
-    form.append('brand', String(opts?.brand || 'fanuc'));
+    if (opts?.brand) form.append('brand', String(opts.brand));
     if (typeof opts?.overwrite === 'boolean') form.append('overwrite', String(opts.overwrite));
     if (typeof opts?.create_missing === 'boolean') form.append('create_missing', String(opts.create_missing));
 

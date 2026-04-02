@@ -25,7 +25,7 @@ type optimizeStats struct {
 
 func main() {
 	var (
-		brand        = flag.String("brand", "FANUC", "Brand to optimize")
+		brand        = flag.String("brand", "", "Optional brand to optimize")
 		categoryID   = flag.Uint("category-id", 0, "Optional category id filter")
 		search       = flag.String("search", "", "Optional search filter")
 		batchSize    = flag.Int("batch-size", 500, "Batch size for processing")
@@ -155,9 +155,6 @@ func (bo bulkOptimizer) optimizeProduct(p models.Product, fallbackBrand string) 
 	if brand == "" {
 		brand = strings.TrimSpace(fallbackBrand)
 	}
-	if brand == "" {
-		brand = "FANUC"
-	}
 
 	model := services.NormalizeProductModel(p.Model)
 	if model == "" {
@@ -175,7 +172,9 @@ func (bo bulkOptimizer) optimizeProduct(p models.Product, fallbackBrand string) 
 		updates["category_id"] = categoryID
 	}
 	if strings.TrimSpace(p.Brand) == "" {
-		updates["brand"] = services.CanonicalBrandName(brand)
+		if canonicalBrand := services.CanonicalBrandName(brand); canonicalBrand != "" {
+			updates["brand"] = canonicalBrand
+		}
 	}
 	if strings.TrimSpace(p.Model) == "" && model != "" {
 		updates["model"] = model
@@ -240,7 +239,9 @@ func (bo bulkOptimizer) buildSEOUpdates(p models.Product, brand string, model st
 		updates["warranty_period"] = "12 months"
 	}
 	if bo.forceUpdate || strings.TrimSpace(p.Manufacturer) == "" {
-		updates["manufacturer"] = services.CanonicalBrandName(brand)
+		if canonicalManufacturer := services.CanonicalBrandName(brand); canonicalManufacturer != "" {
+			updates["manufacturer"] = canonicalManufacturer
+		}
 	}
 	if bo.forceUpdate || strings.TrimSpace(p.OriginCountry) == "" {
 		updates["origin_country"] = "China"

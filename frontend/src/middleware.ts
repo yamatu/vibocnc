@@ -123,10 +123,10 @@ export async function middleware(request: NextRequest) {
     // For now, let the route handler deal with it to avoid complexity here
   }
 
-  // Canonicalize product URLs: strip common brand prefix in path
-  if (pathname.startsWith('/products/FANUC-')) {
+  // Canonicalize legacy FANUC-prefixed product URLs to the shared product slug rule.
+  if (/^\/products\/FANUC-/i.test(pathname)) {
     const url = request.nextUrl.clone();
-    url.pathname = pathname.replace('/products/FANUC-', '/products/');
+    url.pathname = pathname.replace(/^\/products\/FANUC-/i, '/products/');
     return NextResponse.redirect(url, 301);
   }
 

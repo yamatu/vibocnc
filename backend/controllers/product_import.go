@@ -12,19 +12,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Admin: GET /api/v1/admin/products/import/template?brand=fanuc
+// Admin: GET /api/v1/admin/products/import/template
 func (pc *ProductController) DownloadImportTemplate(c *gin.Context) {
-	brand := strings.TrimSpace(c.Query("brand"))
-	if brand == "" {
-		brand = "fanuc"
-	}
+	brand := services.NormalizeBrandKey(strings.TrimSpace(c.Query("brand")))
 	b, err := services.GenerateProductImportTemplateXLSX(brand)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to generate template", Error: err.Error()})
 		return
 	}
 
-	filename := fmt.Sprintf("product-import-template-%s.xlsx", strings.ToLower(brand))
+	filenameBrand := strings.ToLower(brand)
+	if filenameBrand == "" {
+		filenameBrand = "generic"
+	}
+	filename := fmt.Sprintf("product-import-template-%s.xlsx", filenameBrand)
 	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", b)
@@ -33,16 +34,13 @@ func (pc *ProductController) DownloadImportTemplate(c *gin.Context) {
 // Admin: POST /api/v1/admin/products/import/xlsx
 // multipart form fields:
 // - file: .xlsx
-// - brand: fanuc (optional)
+// - brand: optional
 // - overwrite: true/false (optional)
 // - create_missing: true/false (optional, default true)
 func (pc *ProductController) ImportProductsXLSX(c *gin.Context) {
-	brand := strings.TrimSpace(c.PostForm("brand"))
+	brand := services.NormalizeBrandKey(strings.TrimSpace(c.PostForm("brand")))
 	if brand == "" {
-		brand = strings.TrimSpace(c.Query("brand"))
-	}
-	if brand == "" {
-		brand = "fanuc"
+		brand = services.NormalizeBrandKey(strings.TrimSpace(c.Query("brand")))
 	}
 	overwrite := strings.ToLower(strings.TrimSpace(c.PostForm("overwrite"))) == "true"
 	createMissing := true

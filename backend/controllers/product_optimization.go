@@ -314,9 +314,6 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	contentUpdated := false
 	categoryName := strings.ToLower(product.Category.Name)
 	brand := strings.TrimSpace(product.Brand)
-	if brand == "" {
-		brand = "FANUC"
-	}
 	model := services.NormalizeProductModel(product.Model)
 	if model == "" {
 		model = services.NormalizeProductModel(product.PartNumber)
@@ -326,6 +323,14 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	}
 	if model == "" {
 		model = product.SKU
+	}
+	brandDisplay := services.CanonicalBrandName(brand)
+	if brandDisplay == "" {
+		brandDisplay = "Industrial Automation"
+	}
+	brandPartsLabel := services.CanonicalBrandName(brand)
+	if brandPartsLabel == "" {
+		brandPartsLabel = "industrial automation"
 	}
 
 	// Category-aware keyword phrases for meta content
@@ -345,8 +350,8 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 		metaTitle := services.BuildSafeMetaTitle(
 			strings.TrimSpace(enriched.MetaTitle),
 			fmt.Sprintf("%s %s - %s | Vcocnc", product.SKU, categoryKeyword, stockTag),
-			fmt.Sprintf("%s %s | Vcocnc", brand, product.SKU),
-			fmt.Sprintf("%s %s", brand, product.SKU),
+			fmt.Sprintf("%s %s | Vcocnc", brandDisplay, product.SKU),
+			fmt.Sprintf("%s %s", brandDisplay, product.SKU),
 		)
 		updateData["meta_title"] = metaTitle
 		contentUpdated = true
@@ -362,9 +367,9 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 			strings.TrimSpace(enriched.MetaDescription),
 			fmt.Sprintf(
 				"%s %s %s for %s. %s Compatibility support, 12-month warranty, and fast worldwide shipping.",
-				brand, product.SKU, categoryKeyword, categoryBenefit, stockPhrase,
+				brandDisplay, product.SKU, categoryKeyword, categoryBenefit, stockPhrase,
 			),
-			fmt.Sprintf("%s %s %s for CNC repair and replacement. %s", brand, product.SKU, categoryKeyword, stockPhrase),
+			fmt.Sprintf("%s %s %s for CNC repair and replacement. %s", brandDisplay, product.SKU, categoryKeyword, stockPhrase),
 		)
 		updateData["meta_description"] = metaDesc
 		contentUpdated = true
@@ -377,8 +382,8 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 			keywords := []string{
 				product.SKU,
 				product.Name,
-				brand + " " + categoryKeyword,
-				brand + " parts",
+				brandDisplay + " " + categoryKeyword,
+				brandPartsLabel + " parts",
 				"CNC spare parts",
 				"industrial automation",
 				"Vcocnc",
@@ -402,7 +407,7 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 			}
 			shortDesc = fmt.Sprintf(
 				"%s %s %s for %s. %s Quality tested with 12-month warranty.",
-				brand, product.SKU, categoryKeyword, categoryBenefit, stockText,
+				brandDisplay, product.SKU, categoryKeyword, categoryBenefit, stockText,
 			)
 		}
 		if len(shortDesc) > 200 {
@@ -439,8 +444,10 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	}
 
 	if product.Manufacturer == "" {
-		updateData["manufacturer"] = services.CanonicalBrandName(brand)
-		contentUpdated = true
+		if canonicalManufacturer := services.CanonicalBrandName(brand); canonicalManufacturer != "" {
+			updateData["manufacturer"] = canonicalManufacturer
+			contentUpdated = true
+		}
 	}
 
 	if product.OriginCountry == "" {

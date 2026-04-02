@@ -125,9 +125,6 @@ var productImportTasks = &ProductImportManager{
 
 func GenerateProductImportTemplateXLSX(brand string) ([]byte, error) {
 	brand = NormalizeBrandKey(brand)
-	if brand == "" {
-		brand = "fanuc"
-	}
 
 	f := excelize.NewFile()
 	sheet := "Products"
@@ -168,11 +165,7 @@ func StartProductImportTask(ctx context.Context, db *gorm.DB, src io.Reader, fil
 		return ProductImportTaskSnapshot{}, errors.New("db is nil")
 	}
 
-	brand := strings.ToLower(strings.TrimSpace(opts.Brand))
-	if brand == "" {
-		brand = "fanuc"
-	}
-	brand = NormalizeBrandKey(brand)
+	brand := NormalizeBrandKey(opts.Brand)
 
 	tempDir := filepath.Join(os.TempDir(), productImportTempDirName)
 	if err := os.MkdirAll(tempDir, 0o755); err != nil {
@@ -311,11 +304,7 @@ func runProductImportTask(ctx context.Context, db *gorm.DB, taskID string, opts 
 }
 
 func processProductImportFile(ctx context.Context, db *gorm.DB, filePath string, opts ProductImportOptions, task *productImportTask) (ProductImportResult, error) {
-	brand := strings.ToLower(strings.TrimSpace(opts.Brand))
-	if brand == "" {
-		brand = "fanuc"
-	}
-	brand = NormalizeBrandKey(brand)
+	brand := NormalizeBrandKey(opts.Brand)
 
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
@@ -556,7 +545,9 @@ func applyImportBatch(ctx context.Context, db *gorm.DB, batch []ProductImportRow
 					updates["meta_keywords"] = enr.MetaKeywords
 				}
 				if strings.TrimSpace(product.Brand) == "" {
-					updates["brand"] = CanonicalBrandName(opts.Brand)
+					if canonicalBrand := CanonicalBrandName(opts.Brand); canonicalBrand != "" {
+						updates["brand"] = canonicalBrand
+					}
 				}
 				if strings.TrimSpace(product.Model) == "" {
 					updates["model"] = model

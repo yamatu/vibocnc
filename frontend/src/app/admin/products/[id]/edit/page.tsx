@@ -489,7 +489,7 @@ export default function EditProductPage() {
                       {...register('name', { required: t('products.validation.nameRequired', locale === 'zh' ? '请输入产品名称' : 'Product name is required') })}
                       type="text"
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder={t('products.placeholder.name', locale === 'zh' ? '例如：FANUC A02B-0120-C041' : 'e.g., FANUC A02B-0120-C041')}
+                      placeholder={t('products.placeholder.name', locale === 'zh' ? '例如：Siemens 6SN1123-1AA00-0CA1' : 'e.g., Siemens 6SN1123-1AA00-0CA1')}
                     />
                     {errors.name && (
                       <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -599,7 +599,7 @@ export default function EditProductPage() {
 						{...register('brand' as any)}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder={locale === 'zh' ? '例如：FANUC, Allen-Bradley, Siemens' : 'e.g., FANUC, Allen-Bradley, Siemens'}
+						placeholder={locale === 'zh' ? '例如：FANUC、Allen-Bradley、Siemens' : 'e.g., FANUC, Allen-Bradley, Siemens'}
 					/>
 				  </div>
 
@@ -674,7 +674,7 @@ export default function EditProductPage() {
                   type="text"
                   maxLength={70}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder={t('products.seo.metaTitlePh', locale === 'zh' ? '例如：FANUC A16B-2202-0420 电源 | 现货' : 'e.g., FANUC A16B-2202-0420 Power Supply | In Stock')}
+                  placeholder={t('products.seo.metaTitlePh', locale === 'zh' ? '例如：Siemens 6SN1123-1AA00-0CA1 驱动模块 | 现货' : 'e.g., Siemens 6SN1123-1AA00-0CA1 Drive Module | In Stock')}
                 />
                 <p className="mt-1 text-xs text-gray-500">{t('products.seo.metaTitleHint', locale === 'zh' ? '建议 50–60 字符，包含 SKU 和分类。' : 'Recommended 50–60 characters. Include SKU and category.')}</p>
               </div>
@@ -688,7 +688,7 @@ export default function EditProductPage() {
                   rows={3}
                   maxLength={180}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder={t('products.seo.metaDescPh', locale === 'zh' ? '例如：FANUC A16B-2202-0420 24V 电源，现货，1 年质保，全球快速发货。' : 'e.g., FANUC A16B-2202-0420 24V Power Supply, USD $506, In Stock, 1-Year Warranty, Fast Global Shipping.')}
+                  placeholder={t('products.seo.metaDescPh', locale === 'zh' ? '例如：Siemens 6SN1123-1AA00-0CA1 驱动模块，现货，1 年质保，全球快速发货。' : 'e.g., Siemens 6SN1123-1AA00-0CA1 drive module, in stock, 1-year warranty, fast global shipping.')}
                 />
                 <p className="mt-1 text-xs text-gray-500">{t('products.seo.metaDescHint', locale === 'zh' ? '建议 150–160 字符，包含价格、库存、质保、运费等信息。' : 'Recommended 150–160 characters. Mention price, availability, warranty, shipping.')}</p>
               </div>

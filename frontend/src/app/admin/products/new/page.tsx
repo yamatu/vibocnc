@@ -46,7 +46,7 @@ export default function NewProductPage() {
       is_active: true,
       is_featured: false,
       stock_quantity: 0,
-		brand: 'FANUC',
+      brand: '',
     }
   });
 
@@ -125,7 +125,7 @@ export default function NewProductPage() {
         stock_quantity: Number(data.stock_quantity),
         weight: data.weight ? Number(data.weight) : undefined,
         dimensions: data.dimensions || '',
-		brand: (data.brand || 'FANUC').trim(),
+		brand: (data.brand || '').trim(),
 		model: (data.model || data.sku).trim(),
 		part_number: (data.part_number || data.sku).trim(),
         category_id: catId,
@@ -161,7 +161,7 @@ export default function NewProductPage() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{t('products.new.title', locale === 'zh' ? '新增产品' : 'Add New Product')}</h1>
               <p className="mt-1 text-sm text-gray-500">
-                {t('products.new.subtitle', locale === 'zh' ? '创建一个新的 FANUC 产品' : 'Create a new FANUC product listing')}
+                {t('products.new.subtitle', locale === 'zh' ? '创建新的工业自动化产品条目' : 'Create a new industrial automation product listing')}
               </p>
             </div>
           </div>
@@ -185,7 +185,7 @@ export default function NewProductPage() {
                       {...register('name', { required: t('products.validation.nameRequired', locale === 'zh' ? '请输入产品名称' : 'Product name is required') })}
                       type="text"
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder={t('products.placeholder.name', locale === 'zh' ? '例如：FANUC A02B-0120-C041' : 'e.g., FANUC A02B-0120-C041')}
+                      placeholder={t('products.placeholder.name', locale === 'zh' ? '例如：Mitsubishi MR-J2S-200B' : 'e.g., Mitsubishi MR-J2S-200B')}
                     />
                     {errors.name && (
                       <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
@@ -259,7 +259,7 @@ export default function NewProductPage() {
                       {t('products.field.stock', locale === 'zh' ? '库存数量' : 'Stock Quantity')}
                     </label>
                     <input
-                      {...register('stock_quantity', { 
+                      {...register('stock_quantity', {
                         min: { value: 0, message: t('products.validation.stockPositive', locale === 'zh' ? '库存必须大于等于 0' : 'Stock quantity must be positive') }
                       })}
                       type="number"
@@ -269,6 +269,42 @@ export default function NewProductPage() {
                     {errors.stock_quantity && (
                       <p className="mt-1 text-sm text-red-600">{errors.stock_quantity.message}</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="brand" className="block text-sm font-medium text-gray-700 mb-1">
+                      {locale === 'zh' ? '品牌' : 'Brand'}
+                    </label>
+                    <input
+                      {...register('brand')}
+                      type="text"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={locale === 'zh' ? '例如：Mitsubishi、Siemens、ABB' : 'e.g., Mitsubishi, Siemens, ABB'}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="model" className="block text-sm font-medium text-gray-700 mb-1">
+                      {locale === 'zh' ? '型号' : 'Model'}
+                    </label>
+                    <input
+                      {...register('model')}
+                      type="text"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={locale === 'zh' ? '例如：MR-J2S-200B' : 'e.g., MR-J2S-200B'}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="part_number" className="block text-sm font-medium text-gray-700 mb-1">
+                      {locale === 'zh' ? '零件号' : 'Part Number'}
+                    </label>
+                    <input
+                      {...register('part_number')}
+                      type="text"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={locale === 'zh' ? '例如：MR-J2S-200B' : 'e.g., MR-J2S-200B'}
+                    />
                   </div>
 
 				  <div>
@@ -322,7 +358,7 @@ export default function NewProductPage() {
                       type="text"
                       maxLength={70}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder={t('products.seo.metaTitlePh', locale === 'zh' ? '例如：FANUC A16B-2202-0420 电源 | 现货' : 'e.g., FANUC A16B-2202-0420 Power Supply | In Stock')}
+                      placeholder={t('products.seo.metaTitlePh', locale === 'zh' ? '例如：Mitsubishi MR-J2S-200B 伺服驱动器 | 现货' : 'e.g., Mitsubishi MR-J2S-200B Servo Drive | In Stock')}
                     />
                     <p className="mt-1 text-xs text-gray-500">{t('products.seo.metaTitleHint', locale === 'zh' ? '建议 50–60 字符，包含 SKU 和分类。' : 'Recommended 50–60 characters. Include SKU and category.')}</p>
                   </div>
@@ -336,7 +372,7 @@ export default function NewProductPage() {
                       rows={3}
                       maxLength={180}
                       className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder={t('products.seo.metaDescPh', locale === 'zh' ? '例如：FANUC A16B-2202-0420 24V 电源，现货，1 年质保，全球快速发货。' : 'e.g., FANUC A16B-2202-0420 24V Power Supply, USD $506, In Stock, 1-Year Warranty, Fast Global Shipping.')}
+                      placeholder={t('products.seo.metaDescPh', locale === 'zh' ? '例如：Mitsubishi MR-J2S-200B 伺服驱动器，现货，1 年质保，全球快速发货。' : 'e.g., Mitsubishi MR-J2S-200B servo drive, in stock, 1-year warranty, fast global shipping.')}
                     />
                     <p className="mt-1 text-xs text-gray-500">{t('products.seo.metaDescHint', locale === 'zh' ? '建议 150–160 字符，包含价格、库存、质保、运费等信息。' : 'Recommended 150–160 characters. Mention price, availability, warranty, shipping.')}</p>
                   </div>

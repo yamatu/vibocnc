@@ -50,7 +50,9 @@ func NormalizeBrandKey(brand string) string {
 	key := strings.ToLower(strings.TrimSpace(brand))
 	key = strings.NewReplacer(" ", "", "-", "", "_", "").Replace(key)
 	switch key {
-	case "", "fanuc":
+	case "":
+		return ""
+	case "fanuc":
 		return "fanuc"
 	case "mitsubishi", "melsec":
 		return "mitsubishi"
@@ -67,6 +69,8 @@ func NormalizeBrandKey(brand string) string {
 
 func CanonicalBrandName(brand string) string {
 	switch NormalizeBrandKey(brand) {
+	case "":
+		return ""
 	case "fanuc":
 		return "FANUC"
 	case "mitsubishi":
@@ -78,11 +82,7 @@ func CanonicalBrandName(brand string) string {
 	case "allen-bradley":
 		return "Allen-Bradley"
 	default:
-		b := strings.TrimSpace(brand)
-		if b == "" {
-			return "FANUC"
-		}
-		return b
+		return strings.TrimSpace(brand)
 	}
 }
 

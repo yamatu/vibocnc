@@ -257,7 +257,7 @@ func (pc *ProductController) BulkAutoCategorizeProducts(c *gin.Context) {
 
 	err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
 		for _, p := range batch {
-			brand := p.Brand
+			brand := strings.TrimSpace(p.Brand)
 			if strings.TrimSpace(req.Brand) != "" {
 				brand = services.CanonicalBrandName(req.Brand)
 			}
@@ -294,7 +294,7 @@ func (pc *ProductController) BulkAutoCategorizeProducts(c *gin.Context) {
 			if p.CategoryID != categoryID {
 				updates["category_id"] = categoryID
 			}
-			if strings.TrimSpace(p.Brand) == "" || strings.TrimSpace(req.Brand) != "" {
+			if (strings.TrimSpace(p.Brand) == "" || strings.TrimSpace(req.Brand) != "") && services.CanonicalBrandName(brand) != "" {
 				updates["brand"] = services.CanonicalBrandName(brand)
 			}
 			if strings.TrimSpace(p.Model) == "" && model != "" {
@@ -419,12 +419,9 @@ func (pc *ProductController) BulkCategorizeAndOptimizeProducts(c *gin.Context) {
 
 	err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
 		for _, p := range batch {
-			brand := p.Brand
+			brand := strings.TrimSpace(p.Brand)
 			if strings.TrimSpace(req.Brand) != "" {
 				brand = services.CanonicalBrandName(req.Brand)
-			}
-			if strings.TrimSpace(brand) == "" {
-				brand = "FANUC"
 			}
 
 			model := services.NormalizeProductModel(p.Model)

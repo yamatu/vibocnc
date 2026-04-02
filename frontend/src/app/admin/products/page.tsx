@@ -84,7 +84,7 @@ function AdminProductsContent() {
   // XLSX import modal
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importBrand, setImportBrand] = useState<string>('fanuc');
+  const [importBrand, setImportBrand] = useState<string>('');
   const [importOverwrite, setImportOverwrite] = useState<boolean>(false);
   const [importCreateMissing, setImportCreateMissing] = useState<boolean>(true);
   const [importResult, setImportResult] = useState<ProductImportResult | null>(null);
@@ -92,7 +92,7 @@ function AdminProductsContent() {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const importPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showCategoryImagePicker, setShowCategoryImagePicker] = useState(false);
-  const [categoryImageBrand, setCategoryImageBrand] = useState('fanuc');
+  const [categoryImageBrand, setCategoryImageBrand] = useState('');
   const [categoryImageMode, setCategoryImageMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
   const [lastAutoCategorizeResult, setLastAutoCategorizeResult] = useState<BulkAutoCategorizeResult | null>(null);
   const [lastCategorizeOptimizeResult, setLastCategorizeOptimizeResult] = useState<BulkCategorizeOptimizeResult | null>(null);
@@ -790,7 +790,8 @@ function AdminProductsContent() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `product-import-template-${importBrand}.xlsx`;
+      const templateBrand = importBrand || 'generic';
+      a.download = `product-import-template-${templateBrand}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1005,7 +1006,7 @@ function AdminProductsContent() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{t('nav.products', 'Products')}</h1>
             <p className="mt-1 text-sm text-gray-500">
-				{t('products.page.subtitle', locale === 'zh' ? '管理 FANUC 产品库存' : 'Manage your FANUC product inventory')}
+				{t('products.page.subtitle', locale === 'zh' ? '管理工业自动化产品库存' : 'Manage your industrial automation product inventory')}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1061,9 +1062,13 @@ function AdminProductsContent() {
                       onChange={(e) => setImportBrand(e.target.value)}
                       className="w-full sm:w-48 px-3 py-2 border border-gray-300 rounded-md text-sm"
                     >
+                      <option value="">{locale === 'zh' ? '自动 / 通用' : 'Auto / Generic'}</option>
                       <option value="fanuc">FANUC</option>
+                      <option value="mitsubishi">Mitsubishi</option>
+                      <option value="siemens">Siemens</option>
+                      <option value="abb">ABB</option>
                     </select>
-					<p className="mt-1 text-xs text-gray-500">{t('products.import.brandHint', locale === 'zh' ? '后续可以再增加更多品牌。' : 'More brands can be added later.')}</p>
+					<p className="mt-1 text-xs text-gray-500">{t('products.import.brandHint', locale === 'zh' ? '留空时按通用工业自动化模板处理；选择品牌时会按对应品牌补全。' : 'Leave blank for generic industrial automation handling, or choose a brand-specific template.')}</p>
                   </div>
                   <button
                     onClick={downloadTemplate}
@@ -1432,6 +1437,7 @@ function AdminProductsContent() {
                   disabled={Boolean(selectedBrand)}
                   className="px-3 py-2 text-sm border border-gray-300 rounded-md"
                 >
+                  <option value="">{locale === 'zh' ? '自动 / 当前筛选' : 'Auto / Current Filters'}</option>
                   <option value="fanuc">FANUC</option>
                   <option value="mitsubishi">Mitsubishi</option>
                   <option value="siemens">Siemens</option>
@@ -1462,7 +1468,7 @@ function AdminProductsContent() {
                 </div>
               ) : (
                 <div className="text-sm text-amber-600">
-                  {t('products.bulk.categoryScopedHint', locale === 'zh' ? '未选分类时会作用于当前品牌下的全部筛选结果' : 'Without a category filter, this applies to all current results for the selected brand')}
+                  {t('products.bulk.categoryScopedHint', locale === 'zh' ? '未选分类时会作用于当前筛选结果；如指定品牌，则按该品牌范围执行' : 'Without a category filter, this applies to the current filtered results and respects any selected brand scope')}
                 </div>
               )}
             </div>

@@ -3,6 +3,10 @@
 import { Product, Category } from '@/types';
 import { toProductPathId } from '@/lib/utils';
 
+const DEFAULT_SITE_NAME = 'Vcocnc';
+const GENERIC_BRAND_LABEL = 'industrial automation';
+const GENERIC_MANUFACTURER_LABEL = 'industrial automation parts manufacturer';
+
 type JsonLdValue =
   | string
   | number
@@ -55,8 +59,24 @@ function toAbsoluteUrl(url: string | undefined, baseUrl: string): string {
   return `${baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
 }
 
+function normalizeText(value?: string): string {
+  return String(value || '').trim();
+}
+
+function getBrandName(product: Product): string {
+  return normalizeText(product.brand);
+}
+
+function getBrandLabel(product: Product): string {
+  return getBrandName(product) || GENERIC_BRAND_LABEL;
+}
+
+function getManufacturerName(product: Product): string {
+  return normalizeText(product.manufacturer) || getBrandName(product) || GENERIC_MANUFACTURER_LABEL;
+}
+
 function buildAnswerFirstSummary(product: Product, category?: Category): string {
-  const brand = product.brand || 'FANUC';
+  const brandLabel = getBrandLabel(product);
   const categoryName = category?.name || product.category?.name || 'industrial automation part';
   const stockText = product.stock_quantity > 0
     ? 'The item is in stock and ready for shipment.'
@@ -65,14 +85,16 @@ function buildAnswerFirstSummary(product: Product, category?: Category): string 
     ? `Standard supply includes a ${product.warranty_period} warranty.`
     : 'Standard supply includes a 12-month warranty.';
 
-  return `${brand} ${product.sku} is a ${categoryName.toLowerCase()} used for CNC repair, replacement, and industrial automation maintenance. ${stockText} ${warrantyText}`;
+  return `${brandLabel} ${product.sku} is a ${categoryName.toLowerCase()} used for CNC repair, replacement, and industrial automation maintenance. ${stockText} ${warrantyText}`;
 }
 
 export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'https://www.vcocncspare.com' }: ProductSEOProps) {
   const productUrl = `${baseUrl}/products/${toProductPathId(product.sku)}`;
   const productId = `${productUrl}#product`;
+  const brandLabel = getBrandLabel(product);
+  const manufacturerName = getManufacturerName(product);
   const description = stripHtml(product.meta_description || product.short_description || product.description)
-    || `${product.name} industrial automation spare part from ${product.brand || 'FANUC'}.`;
+    || `${product.name} industrial automation spare part from ${brandLabel}.`;
   const answerFirstSummary = buildAnswerFirstSummary(product, category);
 
   // Build image array
@@ -116,11 +138,11 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     "disambiguatingDescription": answerFirstSummary,
     "brand": {
       "@type": "Brand",
-      "name": product.brand || "FANUC"
+      "name": brandLabel
     },
     "manufacturer": {
       "@type": "Organization",
-      "name": product.manufacturer || product.brand || "FANUC"
+      "name": manufacturerName
     },
     "category": category?.name || "Industrial Automation",
     "image": imageUrls,
@@ -292,7 +314,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
           "name": `What is the ${product.sku} used for?`,
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": `The ${product.name} (${product.sku}) is a ${product.brand || 'FANUC'} industrial automation component used in CNC machines and robotic systems for precise control and operation.`
+            "text": `The ${product.name} (${product.sku}) is a ${brandLabel} industrial automation component used in CNC machines, control cabinets, and related automation systems.`
           }
         },
         {
@@ -302,7 +324,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
             "@type": "Answer",
             "text": product.compatibility_info
               ? `${product.compatibility_info} Contact our technical team at sales@vcocncspare.com for further compatibility verification.`
-              : `The ${product.name} is designed to be compatible with major ${product.brand || 'FANUC'} CNC systems and industrial automation equipment. Contact our technical team at sales@vcocncspare.com for compatibility verification.`
+              : `The ${product.name} should be matched against the original machine, controller, and option configuration before ordering. Contact our technical team at sales@vcocncspare.com for compatibility verification.`
           }
         },
         {
@@ -340,7 +362,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
     "inLanguage": "en",
     "isPartOf": {
       "@type": "WebSite",
-      "name": "Vcocnc FANUC Parts",
+      "name": DEFAULT_SITE_NAME,
       "url": baseUrl,
     },
     "about": {

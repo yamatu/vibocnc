@@ -7,6 +7,10 @@ import type { Product, ProductImage } from '@/types';
 import ProductDetailClient from './ProductDetailClient';
 import { redirect, notFound } from 'next/navigation';
 
+const DEFAULT_SITE_NAME = 'Vcocnc';
+const GENERIC_BRAND_LABEL = 'industrial automation';
+const GENERIC_SUPPLIER_LABEL = 'industrial automation parts supplier';
+
 export const revalidate = 3600; // ISR: revalidate every hour
 
 function slugToSku(slug: string): string {
@@ -27,9 +31,22 @@ function stripHtml(text?: string): string {
     .trim();
 }
 
-function trimToLength(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1).trim()}…`;
+function getProductBrand(product: Product): string {
+  return normalizeWhitespace(product.brand);
+}
+
+function getProductBrandLabel(product: Product): string {
+  return getProductBrand(product) || GENERIC_BRAND_LABEL;
+}
+
+function getSupplierLabel(product: Product): string {
+  return getProductBrand(product)
+    ? `${getProductBrand(product)} parts supplier`
+    : GENERIC_SUPPLIER_LABEL;
+}
+
+function getCanonicalProductSlug(product: Product, fallback = ''): string {
+  return toProductPathId(product.sku || fallback);
 }
 
 function normalizeWhitespace(text?: string): string {
@@ -69,15 +86,19 @@ function buildMetadataTitle(product: Product): string {
   const explicit = trimMetaTitle(product.meta_title || '', 69);
   if (explicit) return explicit;
 
+  const brand = getProductBrand(product);
   const parts = [
-    product.brand || 'FANUC',
+    brand,
     product.sku,
     product.category?.name || '',
   ].filter(Boolean);
   let title = parts.join(' ');
   if (!title) title = product.name || 'Product';
   if (title.length > 58) {
-    title = [product.brand || 'FANUC', product.sku].filter(Boolean).join(' ');
+    title = [brand, product.sku].filter(Boolean).join(' ');
+  }
+  if (!title) {
+    title = [product.sku, product.category?.name || 'industrial automation part'].filter(Boolean).join(' ');
   }
   return trimMetaTitle(`${title} | Vcocnc`, 69);
 }
@@ -111,7 +132,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     }
 
     const baseUrl = getSiteUrl();
-    const canonicalUrl = `${baseUrl}/products/${toProductPathId(product.sku || slug)}`;
+    const canonicalUrl = `${baseUrl}/products/${getCanonicalProductSlug(product, slug)}`;
 
     const productImages: Array<string | ProductImage> =
       product.image_urls && product.image_urls.length > 0
@@ -124,8 +145,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       alt: `${product.name} - ${product.sku} Part Image`,
     }));
 
+    const brandLabel = getProductBrandLabel(product);
+    const supplierLabel = getSupplierLabel(product);
     const baseDescription = stripHtml(product.meta_description || product.short_description || product.description)
-      || `${product.name} (${product.sku}) industrial automation spare part.`;
+      || `${product.name} (${product.sku}) ${brandLabel} spare part.`;
     const availabilityText = product.stock_quantity > 0
       ? 'In stock and ready for worldwide shipping.'
       : `Available to order with ${product.lead_time || '3-7 days'} lead time.`;
@@ -133,7 +156,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       product.part_number && product.part_number !== product.sku ? `Part number ${product.part_number}.` : '',
       product.category?.name ? `${product.category.name} for CNC and industrial automation systems.` : 'Industrial automation component.',
       product.compatibility_info ? 'Compatibility guidance available on the product page.' : '',
-      'Source from Vcocnc, professional FANUC parts supplier since 2005.',
+      `Source from Vcocnc, professional ${supplierLabel} since 2005.`,
     ].filter(Boolean).join(' ');
     const enhancedDescription = trimMetaDescription(`${baseDescription} ${availabilityText} ${supportingText}`, 160);
 
@@ -162,7 +185,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         description: metaDescription || enhancedDescription,
         type: 'website',
         url: canonicalUrl,
-        siteName: 'Vcocnc FANUC Parts',
+        siteName: DEFAULT_SITE_NAME,
         images,
       },
       alternates: { canonical: canonicalUrl },
@@ -217,8 +240,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     notFound();
   }
 
-  // Canonical redirect to SKU-only URL (keep product URLs short)
-  const canonicalId = toProductPathId(initialProduct?.sku || sku || '');
+  // Canonical redirect to the normalized product slug shared with sitemap and links.
+  const canonicalId = getCanonicalProductSlug(initialProduct, sku || '');
   if (canonicalId && canonicalId !== slug) {
     redirect(`/products/${canonicalId}`);
   }
