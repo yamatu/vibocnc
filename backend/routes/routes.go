@@ -170,6 +170,7 @@ func SetupRoutes(r *gin.Engine) {
 				products.POST("/selection-ids", productController.GetBulkProductSelectionIDs)
 				products.PUT("/bulk-auto-categorize", productController.BulkAutoCategorizeProducts)
 				products.PUT("/bulk-categorize-optimize", productController.BulkCategorizeAndOptimizeProducts)
+				products.PUT("/bulk-disable-auto-seo", productController.BulkDisableAutoSEO)
 				products.GET("/optimization-status", productOptimizationController.GetOptimizationStatus)
 				products.POST("/optimize", productOptimizationController.OptimizeProduct)
 				products.POST("/bulk-optimize", productOptimizationController.BulkOptimizeProducts)

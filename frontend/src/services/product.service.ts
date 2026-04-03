@@ -89,6 +89,23 @@ export interface BulkCategorizeOptimizeResult {
   items: BulkCategorizeOptimizeResultItem[];
 }
 
+export interface BulkDisableAutoSEOResultItem {
+  product_id: number;
+  sku: string;
+  brand: string;
+  action: string;
+  seo_updated: boolean;
+  faq_updated: boolean;
+  disable_auto_seo: boolean;
+}
+
+export interface BulkDisableAutoSEOResult {
+  updated: number;
+  skipped: number;
+  failed: number;
+  items: BulkDisableAutoSEOResultItem[];
+}
+
 export interface ProductOptimizationStatus {
   total_products: number;
   optimized_products: number;
@@ -580,6 +597,22 @@ export class ProductService {
     const response = await apiClient.put<APIResponse<BulkCategorizeOptimizeResult>>('/admin/products/bulk-categorize-optimize', payload);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to categorize and optimize products');
+  }
+
+  static async bulkDisableAutoSEO(payload: {
+    ids?: number[];
+    skus?: string[];
+    search?: string;
+    category_id?: string;
+    include_descendants?: boolean;
+    status?: 'active' | 'inactive' | 'all' | '';
+    featured?: 'true' | 'false' | '';
+    brand?: string;
+    batch_size?: number;
+  }): Promise<BulkDisableAutoSEOResult> {
+    const response = await apiClient.put<APIResponse<BulkDisableAutoSEOResult>>('/admin/products/bulk-disable-auto-seo', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to disable automatic SEO');
   }
 
   static async getAdminProductSelectionIds(payload: {
