@@ -7,6 +7,7 @@ import (
 	"fanuc-backend/models"
 	"fanuc-backend/utils"
 	"log"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -105,7 +106,7 @@ func BuildProductPublicPath(sku string) string {
 	}
 	sku = productPathSlashRe.ReplaceAllString(sku, "-")
 	sku = productPathSpaceRe.ReplaceAllString(sku, "-")
-	return "/products/" + sku
+	return "/products/" + url.PathEscape(sku)
 }
 
 // ClearRedisByPrefixes deletes keys matching prefix* for each prefix.

@@ -320,7 +320,7 @@ export function toProductPathId(sku: string): string {
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
 
-  return normalized.replace(/^FANUC-/i, '');
+  return encodeURIComponent(normalized.replace(/^FANUC-/i, ''));
 }
 
 // Get file extension
