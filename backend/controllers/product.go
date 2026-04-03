@@ -932,6 +932,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 		MetaTitle:        req.MetaTitle,
 		MetaDescription:  req.MetaDescription,
 		MetaKeywords:     req.MetaKeywords,
+		DisableAutoSEO:   req.DisableAutoSEO,
 		ImageURLs:        imageURLsJSON,
 	}
 
@@ -939,7 +940,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 	tx := db.Begin()
 
 	// Create product (only known DB columns)
-	if err := tx.Select("SKU", "Name", "Slug", "ShortDescription", "Description", "Price", "ComparePrice", "StockQuantity", "Weight", "Dimensions", "Brand", "Model", "PartNumber", "CategoryID", "IsActive", "IsFeatured", "MetaTitle", "MetaDescription", "MetaKeywords", "ImageURLs").Create(&product).Error; err != nil {
+	if err := tx.Select("SKU", "Name", "Slug", "ShortDescription", "Description", "Price", "ComparePrice", "StockQuantity", "Weight", "Dimensions", "Brand", "Model", "PartNumber", "CategoryID", "IsActive", "IsFeatured", "MetaTitle", "MetaDescription", "MetaKeywords", "DisableAutoSEO", "ImageURLs").Create(&product).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -1023,7 +1024,7 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 	}(product.SKU)
 
 	// Load created product with relations (select only known columns)
-	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").
+	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,disable_auto_seo,image_urls,created_at,updated_at").
 		Preload("Category").
 		First(&product, product.ID)
 
@@ -1153,6 +1154,7 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	product.MetaTitle = req.MetaTitle
 	product.MetaDescription = req.MetaDescription
 	product.MetaKeywords = req.MetaKeywords
+	product.DisableAutoSEO = req.DisableAutoSEO
 	product.ImageURLs = imageURLsJSON
 
 	// Start transaction
@@ -1162,11 +1164,11 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	// Perform explicit update to avoid referencing non-existent columns on legacy DBs
 	rawSQL := `UPDATE products SET
         sku=?, name=?, slug=?, short_description=?, description=?, price=?, compare_price=?, stock_quantity=?, weight=?, dimensions=?,
-        brand=?, model=?, part_number=?, warranty_period=?, lead_time=?, category_id=?, is_active=?, is_featured=?, meta_title=?, meta_description=?, meta_keywords=?, image_urls=?
+        brand=?, model=?, part_number=?, warranty_period=?, lead_time=?, category_id=?, is_active=?, is_featured=?, meta_title=?, meta_description=?, meta_keywords=?, disable_auto_seo=?, image_urls=?
         WHERE id=?`
 	if err := tx.Exec(rawSQL,
 		product.SKU, product.Name, product.Slug, product.ShortDescription, product.Description, product.Price, product.ComparePrice, product.StockQuantity, product.Weight, product.Dimensions,
-		product.Brand, product.Model, product.PartNumber, product.WarrantyPeriod, product.LeadTime, product.CategoryID, product.IsActive, product.IsFeatured, product.MetaTitle, product.MetaDescription, product.MetaKeywords, product.ImageURLs,
+		product.Brand, product.Model, product.PartNumber, product.WarrantyPeriod, product.LeadTime, product.CategoryID, product.IsActive, product.IsFeatured, product.MetaTitle, product.MetaDescription, product.MetaKeywords, product.DisableAutoSEO, product.ImageURLs,
 		product.ID,
 	).Error; err != nil {
 		tx.Rollback()
@@ -1254,7 +1256,7 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	}(product.SKU)
 
 	// Load updated product with relations (select only known columns)
-	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,image_urls,created_at,updated_at").
+	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,disable_auto_seo,image_urls,created_at,updated_at").
 		Preload("Category").
 		First(&product, product.ID)
 

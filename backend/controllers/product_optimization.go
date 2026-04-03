@@ -330,6 +330,10 @@ func (poc *ProductOptimizationController) calculateSEOScore(product *models.Prod
 
 // enhanceProductContent enhances product content with category-aware SEO optimization
 func (poc *ProductOptimizationController) enhanceProductContent(product *models.Product, updateData map[string]interface{}) bool {
+	if product == nil || product.DisableAutoSEO {
+		return false
+	}
+
 	contentUpdated := false
 	categoryName := strings.ToLower(product.Category.Name)
 	brand := strings.TrimSpace(product.Brand)

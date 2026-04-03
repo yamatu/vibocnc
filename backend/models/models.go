@@ -47,6 +47,7 @@ type Product struct {
 	MetaTitle        string   `json:"meta_title" gorm:"size:255"`
 	MetaDescription  string   `json:"meta_description" gorm:"type:text"`
 	MetaKeywords     string   `json:"meta_keywords" gorm:"type:text"`
+	DisableAutoSEO   bool     `json:"disable_auto_seo" gorm:"default:false;index"`
 	ImageURLs        string   `json:"image_urls" gorm:"type:json"`
 
 	// Enhanced fields for fanucworld.com compatibility
@@ -225,6 +226,7 @@ type ProductCreateRequest struct {
 	MetaTitle        string                  `json:"meta_title"`
 	MetaDescription  string                  `json:"meta_description"`
 	MetaKeywords     string                  `json:"meta_keywords"`
+	DisableAutoSEO   bool                    `json:"disable_auto_seo"`
 	Images           []ImageReq              `json:"images"`
 	Attributes       []ProductAttributeReq   `json:"attributes"`
 	Translations     []ProductTranslationReq `json:"translations"`
