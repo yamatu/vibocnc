@@ -83,6 +83,7 @@ export interface Product {
   meta_title: string;
   meta_description: string;
   meta_keywords: string;
+  disable_auto_seo?: boolean;
   image_urls: string[];
   // Enhanced fields
   warranty_period?: string;
@@ -390,6 +391,7 @@ export interface ProductCreateRequest {
   meta_title: string;
   meta_description: string;
   meta_keywords: string;
+  disable_auto_seo?: boolean;
   images: ImageReq[];
   attributes: ProductAttributeReq[];
   translations: ProductTranslationReq[];

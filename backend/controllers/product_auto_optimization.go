@@ -92,6 +92,23 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	}
 
 	optimizer := &ProductOptimizationController{}
+
+	if product.DisableAutoSEO {
+		seoScore := optimizer.calculateSEOScore(&product)
+		now := time.Now()
+		updateData["seo_score"] = seoScore
+		updateData["last_optimized_at"] = &now
+		updateData["updated_at"] = now
+
+		if err := db.Model(&models.Product{}).Where("id = ?", product.ID).Updates(updateData).Error; err != nil {
+			return result, err
+		}
+
+		applyProductUpdateData(&product, updateData)
+		result.SEOScore = seoScore
+		return result, nil
+	}
+
 	result.ContentUpdated = optimizer.enhanceProductContent(&product, updateData)
 	applyProductUpdateData(&product, updateData)
 
