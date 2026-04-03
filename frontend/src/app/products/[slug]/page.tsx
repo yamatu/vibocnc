@@ -17,6 +17,9 @@ function slugToSku(slug: string): string {
   if (!slug) return '';
   // Remove common brand prefix and sanitize
   let s = slug.trim();
+  try {
+    s = decodeURIComponent(s);
+  } catch {}
   s = s.replace(/^fanuc[\-\s]*/i, '');
   s = s.replace(/[\\/]+/g, '-');
   s = s.replace(/\s+/g, '-');
