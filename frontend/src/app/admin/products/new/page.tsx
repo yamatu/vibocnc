@@ -26,6 +26,78 @@ interface ProductFormData extends Omit<ProductCreateRequest, 'images'> {
   images: FileList | null;
 }
 
+function normalizeWhitespace(value?: string): string {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function trimMetaTitle(value: string, maxLength = 69): string {
+  const text = normalizeWhitespace(value);
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  const cut = text.slice(0, maxLength);
+  const idx = cut.lastIndexOf(' ');
+  return normalizeWhitespace(idx >= 24 ? cut.slice(0, idx) : cut);
+}
+
+function trimMetaDescription(value: string, maxLength = 160): string {
+  const text = normalizeWhitespace(value);
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  const cut = text.slice(0, maxLength);
+  const idx = cut.lastIndexOf(' ');
+  const trimmed = normalizeWhitespace(idx >= 60 ? cut.slice(0, idx) : cut);
+  if (!trimmed) return '';
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function normalizeModel(value?: string): string {
+  let text = normalizeWhitespace(value);
+  if (!text) return '';
+  text = text.replace(/[\\/]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toUpperCase();
+  if (text.startsWith('FANUC-')) text = text.slice(6);
+  if (text.startsWith('FANUC ')) text = text.slice(6).trim();
+  return text;
+}
+
+function toBooleanFlag(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function buildDefaultSeoValues(input: {
+  name?: string;
+  sku?: string;
+  brand?: string;
+  partNumber?: string;
+  categoryName?: string;
+}) {
+  const brand = normalizeWhitespace(input.brand);
+  const sku = normalizeModel(input.sku);
+  const partNumber = normalizeModel(input.partNumber);
+  const model = sku || partNumber || normalizeWhitespace(input.name);
+  const categoryName = normalizeWhitespace(input.categoryName) || 'Industrial Automation Part';
+  const titleBase = [brand, model, categoryName].filter(Boolean).join(' ') || normalizeWhitespace(input.name) || 'Product';
+  const metaTitle = trimMetaTitle(`${titleBase} | Vcocnc`);
+  const subject = [brand, model].filter(Boolean).join(' ') || model || normalizeWhitespace(input.name) || 'This product';
+  const metaDescription = trimMetaDescription(
+    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, 12-month warranty, and fast worldwide shipping from Vcocnc.`
+  );
+  const metaKeywords = [
+    normalizeWhitespace(input.sku),
+    partNumber,
+    normalizeWhitespace(input.name),
+    [brand, categoryName].filter(Boolean).join(' '),
+    brand ? `${brand} parts` : 'industrial automation parts',
+    'CNC replacement parts',
+    'Vcocnc',
+  ]
+    .map(normalizeWhitespace)
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.indexOf(value) === index)
+    .join(', ');
+
+  return { metaTitle, metaDescription, metaKeywords };
+}
+
 export default function NewProductPage() {
   const { locale, t } = useAdminI18n();
   const router = useRouter();
@@ -47,6 +119,7 @@ export default function NewProductPage() {
       is_featured: false,
       stock_quantity: 0,
       brand: '',
+      disable_auto_seo: false,
     }
   });
 
@@ -134,6 +207,7 @@ export default function NewProductPage() {
         meta_title: data.meta_title || '',
         meta_description: data.meta_description || '',
         meta_keywords: data.meta_keywords || '',
+        disable_auto_seo: toBooleanFlag((data as any).disable_auto_seo),
         images: images, // Add images to the request
         attributes: [],
         translations: [],
@@ -143,6 +217,23 @@ export default function NewProductPage() {
     } catch (error) {
       console.error('Error creating product:', error);
     }
+  };
+
+  const handleResetSeoToDefault = () => {
+    const categoryName = categories.find((item: any) => Number(item.id) === Number(watch('category_id')))?.name || '';
+    const defaults = buildDefaultSeoValues({
+      name: watch('name'),
+      sku: watch('sku'),
+      brand: watch('brand'),
+      partNumber: watch('part_number'),
+      categoryName,
+    });
+
+    setValue('meta_title', defaults.metaTitle, { shouldDirty: true });
+    setValue('meta_description', defaults.metaDescription, { shouldDirty: true });
+    setValue('meta_keywords', defaults.metaKeywords, { shouldDirty: true });
+    setValue('disable_auto_seo', true, { shouldDirty: true });
+    toast.success(locale === 'zh' ? '已恢复默认 SEO，并关闭自动品牌 SEO 覆盖' : 'Default SEO restored and automatic brand SEO disabled');
   };
 
   return (
@@ -345,8 +436,32 @@ export default function NewProductPage() {
 
               {/* SEO Basic Information */}
               <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">{t('products.seo.title', locale === 'zh' ? 'SEO 基础信息' : 'SEO Basic Information')}</h3>
+                <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <h3 className="text-lg font-medium text-gray-900">{t('products.seo.title', locale === 'zh' ? 'SEO 基础信息' : 'SEO Basic Information')}</h3>
+                  <button
+                    type="button"
+                    onClick={handleResetSeoToDefault}
+                    className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    {locale === 'zh' ? '恢复默认 SEO 并关闭自动优化' : 'Restore default SEO and disable auto SEO'}
+                  </button>
+                </div>
                 <p className="text-sm text-gray-500 mb-4">{t('products.seo.subtitle', locale === 'zh' ? '这些字段用于控制产品在搜索引擎与社交预览中的展示。' : 'These fields control how your product appears in search engines and social previews.')}</p>
+                <input type="hidden" {...register('disable_auto_seo')} />
+                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {watch('disable_auto_seo')
+                    ? (locale === 'zh' ? '新产品已关闭自动品牌 SEO 覆盖，创建后不会再自动写入 FANUC 风格的 SEO/兼容性说明。' : 'Automatic brand SEO override is disabled for this new product. Creation will not inject FANUC-style SEO or compatibility content.')
+                    : (locale === 'zh' ? '新产品默认仍允许自动 SEO 覆盖。若这是非 FANUC 产品，建议关闭。' : 'Automatic SEO override is still enabled by default. Disable it for non-FANUC products.')}
+                </div>
+                <label className="mb-4 flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={toBooleanFlag(watch('disable_auto_seo'))}
+                    onChange={(e) => setValue('disable_auto_seo', e.target.checked, { shouldDirty: true })}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>{locale === 'zh' ? '关闭该产品的自动 SEO 覆盖' : 'Disable automatic SEO override for this product'}</span>
+                </label>
 
                 <div className="grid grid-cols-1 gap-4">
                   <div>

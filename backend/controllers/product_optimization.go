@@ -328,6 +328,63 @@ func (poc *ProductOptimizationController) calculateSEOScore(product *models.Prod
 	return (score / maxScore) * 5.0 // Scale to 0-5
 }
 
+func shouldRefreshBrandSpecificContent(current string, brand string, minLen int) bool {
+	current = strings.TrimSpace(current)
+	if len(current) < minLen {
+		return true
+	}
+
+	if services.CanonicalBrandName(brand) == "FANUC" {
+		return false
+	}
+
+	return strings.Contains(strings.ToUpper(current), "FANUC")
+}
+
+func (poc *ProductOptimizationController) applyDefaultContentForDisabledAutoSEO(product *models.Product, updateData map[string]interface{}) bool {
+	if product == nil {
+		return false
+	}
+
+	defaults := services.BuildDefaultProductSEO(product)
+	contentUpdated := false
+
+	if shouldRefreshBrandSpecificContent(product.MetaTitle, product.Brand, services.MetaTitleMinLength) && strings.TrimSpace(defaults.MetaTitle) != "" {
+		updateData["meta_title"] = defaults.MetaTitle
+		contentUpdated = true
+	}
+	if shouldRefreshBrandSpecificContent(product.MetaDescription, product.Brand, services.MetaDescriptionMinLength) && strings.TrimSpace(defaults.MetaDescription) != "" {
+		updateData["meta_description"] = defaults.MetaDescription
+		contentUpdated = true
+	}
+	if shouldRefreshBrandSpecificContent(product.MetaKeywords, product.Brand, 20) && strings.TrimSpace(defaults.MetaKeywords) != "" {
+		updateData["meta_keywords"] = defaults.MetaKeywords
+		contentUpdated = true
+	}
+	if shouldRefreshBrandSpecificContent(product.ShortDescription, product.Brand, 50) && strings.TrimSpace(defaults.ShortDescription) != "" {
+		updateData["short_description"] = defaults.ShortDescription
+		contentUpdated = true
+	}
+	if shouldRefreshBrandSpecificContent(product.Description, product.Brand, 120) && strings.TrimSpace(defaults.Description) != "" {
+		updateData["description"] = defaults.Description
+		contentUpdated = true
+	}
+	if shouldRefreshBrandSpecificContent(product.CompatibilityInfo, product.Brand, 80) && strings.TrimSpace(defaults.CompatibilityInfo) != "" {
+		updateData["compatibility_info"] = defaults.CompatibilityInfo
+		contentUpdated = true
+	}
+	if shouldRefreshBrandSpecificContent(product.InstallationGuide, product.Brand, 80) && strings.TrimSpace(defaults.InstallationGuide) != "" {
+		updateData["installation_guide"] = defaults.InstallationGuide
+		contentUpdated = true
+	}
+	if shouldRefreshBrandSpecificContent(product.MaintenanceTips, product.Brand, 80) && strings.TrimSpace(defaults.MaintenanceTips) != "" {
+		updateData["maintenance_tips"] = defaults.MaintenanceTips
+		contentUpdated = true
+	}
+
+	return contentUpdated
+}
+
 // enhanceProductContent enhances product content with category-aware SEO optimization
 func (poc *ProductOptimizationController) enhanceProductContent(product *models.Product, updateData map[string]interface{}) bool {
 	if product == nil || product.DisableAutoSEO {
