@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"fanuc-backend/config"
 	"fanuc-backend/models"
@@ -44,6 +45,20 @@ type bulkCategoryImageReq struct {
 	bulkProductScopeReq
 	MediaAssetID uint   `json:"media_asset_id" binding:"required"`
 	ApplyMode    string `json:"apply_mode"` // fill_empty | replace_all
+}
+
+type bulkDisableAutoSEOReq struct {
+	bulkProductScopeReq
+}
+
+type bulkDisableAutoSEOItem struct {
+	ProductID   uint   `json:"product_id"`
+	SKU         string `json:"sku"`
+	Brand       string `json:"brand"`
+	Action      string `json:"action"`
+	SEOUpdated  bool   `json:"seo_updated"`
+	FAQUpdated  bool   `json:"faq_updated"`
+	DisabledSEO bool   `json:"disable_auto_seo"`
 }
 
 type bulkAutoCategorizeItem struct {
@@ -196,6 +211,125 @@ func defaultString(value string, fallback string) string {
 		return fallback
 	}
 	return trimmed
+}
+
+// Admin: PUT /api/v1/admin/products/bulk-disable-auto-seo
+func (pc *ProductController) BulkDisableAutoSEO(c *gin.Context) {
+	var req bulkDisableAutoSEOReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+
+	batchSize := req.BatchSize
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+
+	db := config.GetDB()
+	selector := buildBulkProductSelector(db, req.bulkProductScopeReq).Select(
+		"id", "sku", "brand", "model", "part_number", "name", "category_id",
+		"short_description", "description", "meta_title", "meta_description", "meta_keywords",
+		"compatibility_info", "installation_guide", "maintenance_tips",
+		"warranty_period", "manufacturer", "origin_country", "lead_time", "stock_quantity",
+		"disable_auto_seo",
+	)
+
+	var batch []models.Product
+	updated := int64(0)
+	skipped := int64(0)
+	failed := int64(0)
+	samples := make([]bulkDisableAutoSEOItem, 0, 50)
+	optimizer := &ProductOptimizationController{}
+
+	err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
+		for _, p := range batch {
+			updates := map[string]any{}
+			contentUpdated := optimizer.applyDefaultContentForDisabledAutoSEO(&p, updates)
+			if !p.DisableAutoSEO {
+				updates["disable_auto_seo"] = true
+			}
+
+			action := "skipped"
+			faqUpdated := false
+			if len(updates) > 0 {
+				now := time.Now()
+				updates["updated_at"] = now
+
+				nextProduct := p
+				applyProductUpdateData(&nextProduct, updates)
+
+				seoScore := optimizer.calculateSEOScore(&nextProduct)
+				updates["seo_score"] = seoScore
+				applyProductUpdateData(&nextProduct, map[string]any{"seo_score": seoScore})
+
+				if err := db.Model(&models.Product{}).Where("id = ?", p.ID).Updates(updates).Error; err != nil {
+					failed++
+					if len(samples) < 50 {
+						samples = append(samples, bulkDisableAutoSEOItem{
+							ProductID:   p.ID,
+							SKU:         p.SKU,
+							Brand:       p.Brand,
+							Action:      "failed",
+							SEOUpdated:  contentUpdated,
+							FAQUpdated:  false,
+							DisabledSEO: p.DisableAutoSEO,
+						})
+					}
+					continue
+				}
+
+				model := services.NormalizeProductModel(nextProduct.Model)
+				if model == "" {
+					model = services.NormalizeProductModel(nextProduct.PartNumber)
+				}
+				if model == "" {
+					model = services.NormalizeProductModel(nextProduct.SKU)
+				}
+				partType := services.InferProductCategory(nextProduct.Brand, model).PartType
+				if err := upsertGeneratedProductFAQs(db, &nextProduct, partType); err == nil {
+					faqUpdated = true
+				}
+
+				updated++
+				action = "updated"
+			} else {
+				skipped++
+			}
+
+			if len(samples) < 50 {
+				samples = append(samples, bulkDisableAutoSEOItem{
+					ProductID:   p.ID,
+					SKU:         p.SKU,
+					Brand:       p.Brand,
+					Action:      action,
+					SEOUpdated:  contentUpdated,
+					FAQUpdated:  faqUpdated,
+					DisabledSEO: true,
+				})
+			}
+		}
+		return nil
+	}).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to disable automatic SEO", Error: err.Error()})
+		return
+	}
+
+	if updated > 0 {
+		go services.InvalidatePublicCaches(context.Background(), "product:bulk-disable-auto-seo", nil)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Bulk automatic SEO disable completed",
+		Data: gin.H{
+			"updated": updated,
+			"skipped": skipped,
+			"failed":  failed,
+			"items":   samples,
+		},
+	})
 }
 
 // Admin: POST /api/v1/admin/products/selection-ids

@@ -198,6 +198,10 @@ func applyProductUpdateData(product *models.Product, updateData map[string]any) 
 			if v, ok := value.(string); ok {
 				product.Brand = v
 			}
+		case "disable_auto_seo":
+			if v, ok := value.(bool); ok {
+				product.DisableAutoSEO = v
+			}
 		case "model":
 			if v, ok := value.(string); ok {
 				product.Model = v
