@@ -1,5 +1,5 @@
 // API Response Types
-export interface APIResponse<T = any> {
+export interface APIResponse<T = unknown> {
   success: boolean;
   message: string;
   data?: T;
@@ -199,6 +199,137 @@ export interface ProductTag {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface EbayImportDraftListItem {
+  id: number;
+  source_site: string;
+  source_url: string;
+  title_raw: string;
+  normalized_title: string;
+  normalized_brand: string;
+  normalized_model: string;
+  normalized_part_number: string;
+  normalized_mpn: string;
+  normalized_price: number;
+  suggested_category_id?: number;
+  suggested_category_name: string;
+  suggested_part_type: string;
+  taxonomy_status: string;
+  match_status: string;
+  match_score: number;
+  match_reason: string;
+  import_action: string;
+  status: string;
+  review_note: string;
+  failure_reason: string;
+  imported_product_id?: number;
+  confirmed_at?: string;
+  imported_at?: string;
+  created_at: string;
+  updated_at: string;
+  matched_product?: {
+    id: number;
+    sku: string;
+    name: string;
+    slug: string;
+    category_id: number;
+  };
+  suggested_category?: {
+    id: number;
+    name: string;
+    slug: string;
+  };
+}
+
+export interface EbayImportDraftListResponse {
+  items: EbayImportDraftListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface MediaAssetSummary {
+  id: number;
+  original_name: string;
+  file_name: string;
+  relative_path: string;
+  url: string;
+  sha256: string;
+  mime_type: string;
+  size_bytes: number;
+  title: string;
+  alt_text: string;
+  folder: string;
+  tags: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EbayImportDraftDetail {
+  id: number;
+  source_type: string;
+  source_site: string;
+  source_url: string;
+  ebay_item_id: string;
+  listing_id: string;
+  raw_payload: Record<string, unknown>;
+  title_raw: string;
+  description_raw: string;
+  price_raw: string;
+  currency_raw: string;
+  normalized_title: string;
+  normalized_brand: string;
+  normalized_model: string;
+  normalized_part_number: string;
+  normalized_mpn: string;
+  normalized_price: number;
+  suggested_category_id?: number;
+  suggested_category_name: string;
+  suggested_part_type: string;
+  taxonomy_status: string;
+  match_status: string;
+  matched_product_id?: number;
+  match_score: number;
+  match_reason: string;
+  meta_title: string;
+  meta_description: string;
+  meta_keywords: string;
+  disable_auto_seo: boolean;
+  main_image_source_url: string;
+  image_source_urls: string[];
+  media_asset_ids: number[];
+  media_assets: MediaAssetSummary[];
+  import_action: string;
+  status: string;
+  review_note: string;
+  failure_reason: string;
+  imported_product_id?: number;
+  confirmed_by?: number;
+  confirmed_at?: string;
+  imported_at?: string;
+  created_at: string;
+  updated_at: string;
+  matched_product?: Product;
+  suggested_category?: Category;
+}
+
+export interface EbayImportDraftUpdateRequest {
+  normalized_title?: string;
+  normalized_brand?: string;
+  normalized_model?: string;
+  normalized_part_number?: string;
+  normalized_mpn?: string;
+  normalized_price?: number;
+  suggested_category_id?: number;
+  import_action?: string;
+  meta_title?: string;
+  meta_description?: string;
+  meta_keywords?: string;
+  disable_auto_seo?: boolean;
+  review_note?: string;
+  status?: string;
 }
 
 // Category Types
