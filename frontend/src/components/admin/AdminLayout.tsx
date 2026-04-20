@@ -25,7 +25,8 @@ import {
   CreditCardIcon,
   TruckIcon,
   ChartBarIcon,
-  NewspaperIcon
+  NewspaperIcon,
+  ClipboardDocumentListIcon
 } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, useLogout } from '@/hooks/useAuth';
@@ -39,6 +40,7 @@ import { formatCurrency } from '@/lib/utils';
 const navigation = [
   { key: 'nav.dashboard', name: 'Dashboard', href: '/admin', icon: HomeIcon },
   { key: 'nav.products', name: 'Products', href: '/admin/products', icon: CubeIcon },
+  { key: 'nav.ebayDrafts', name: 'eBay Drafts', href: '/admin/ebay-import-drafts', icon: ClipboardDocumentListIcon },
   { key: 'nav.categories', name: 'Categories', href: '/admin/categories', icon: TagIcon },
   { key: 'nav.orders', name: 'Orders', href: '/admin/orders', icon: ShoppingBagIcon },
   { key: 'nav.customers', name: 'Customers', href: '/admin/customers', icon: UserCircleIcon },

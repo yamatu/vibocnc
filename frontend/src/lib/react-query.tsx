@@ -78,10 +78,20 @@ export const queryKeys = {
     search: (query: string) => [...queryKeys.products.all(), 'search', query] as const,
   },
 
+  // eBay import drafts
+  ebayImportDrafts: {
+    all: () => ['ebayImportDrafts'] as const,
+    lists: () => [...queryKeys.ebayImportDrafts.all(), 'list'] as const,
+    list: (filters: any) => [...queryKeys.ebayImportDrafts.lists(), filters] as const,
+    details: () => [...queryKeys.ebayImportDrafts.all(), 'detail'] as const,
+    detail: (id: number) => [...queryKeys.ebayImportDrafts.details(), id] as const,
+  },
+
   // Categories
   categories: {
     all: () => ['categories'] as const,
     lists: () => [...queryKeys.categories.all(), 'list'] as const,
+    admin: () => [...queryKeys.categories.all(), 'admin'] as const,
     details: () => [...queryKeys.categories.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.categories.details(), id] as const,
     tree: () => [...queryKeys.categories.all(), 'tree'] as const,

@@ -44,6 +44,7 @@ func SetupRoutes(r *gin.Engine) {
 	newsController := &controllers.NewsController{}
 	productOptimizationController := &controllers.ProductOptimizationController{}
 	indexNowController := &controllers.IndexNowController{}
+	ebayImportDraftController := &controllers.EbayImportDraftController{}
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -191,6 +192,22 @@ func SetupRoutes(r *gin.Engine) {
 				products.GET("/:id/images", productController.GetProductImages)
 				// Note: controller expects :imageIndex for deletion
 				products.DELETE("/:id/images/:imageIndex", middleware.AdminOnly(), productController.DeleteImage)
+			}
+
+			// eBay import draft management (admin and editor access)
+			ebayImportDrafts := admin.Group("/ebay-import-drafts")
+			ebayImportDrafts.Use(middleware.EditorOrAdmin())
+			{
+				ebayImportDrafts.POST("/upload", ebayImportDraftController.Upload)
+				ebayImportDrafts.GET("", ebayImportDraftController.List)
+				ebayImportDrafts.POST("/bulk-confirm", ebayImportDraftController.BulkConfirm)
+				ebayImportDrafts.POST("/bulk-recheck", ebayImportDraftController.BulkRecheck)
+				ebayImportDrafts.DELETE("/bulk", ebayImportDraftController.BulkDelete)
+				ebayImportDrafts.GET("/:id", ebayImportDraftController.Get)
+				ebayImportDrafts.PUT("/:id", ebayImportDraftController.Update)
+				ebayImportDrafts.POST("/:id/recheck", ebayImportDraftController.Recheck)
+				ebayImportDrafts.POST("/:id/confirm", ebayImportDraftController.Confirm)
+				ebayImportDrafts.DELETE("/:id", ebayImportDraftController.Delete)
 			}
 
 			// Shipping template management (admin and editor access)

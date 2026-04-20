@@ -203,6 +203,11 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	search := c.Query("search")
 	isActive := c.Query("is_active")
 	isFeatured := c.Query("is_featured")
+	sortBy := strings.TrimSpace(strings.ToLower(c.Query("sort_by")))
+	sortDir := strings.TrimSpace(strings.ToLower(c.Query("sort_dir")))
+	if sortDir != "asc" {
+		sortDir = "desc"
+	}
 
 	// Build query (leaner preloads for public route to reduce N+1)
 	isPublic := strings.Contains(c.FullPath(), "/public/")
@@ -252,6 +257,19 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	if isFeatured != "" {
 		query = query.Where("is_featured = ?", isFeatured == "true")
 	}
+
+	orderColumn := "id"
+	switch sortBy {
+	case "created_at":
+		orderColumn = "created_at"
+	case "updated_at":
+		orderColumn = "updated_at"
+	case "price":
+		orderColumn = "price"
+	case "name":
+		orderColumn = "name"
+	}
+	query = query.Order(orderColumn + " " + sortDir).Order("id DESC")
 
 	// Get total count
 	var total int64
@@ -868,138 +886,20 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 	}
 
 	db := config.GetDB()
-
-	// Check if SKU already exists
-	var existingProduct models.Product
-	if err := db.Where("sku = ?", req.SKU).First(&existingProduct).Error; err == nil {
-		c.JSON(http.StatusConflict, models.APIResponse{
-			Success: false,
-			Message: "Product with this SKU already exists",
-			Error:   "sku_exists",
-		})
+	result, upsertErr := services.CreateProductFromRequest(db, req)
+	if upsertErr != nil {
+		status := http.StatusInternalServerError
+		switch upsertErr.Code {
+		case "sku_exists":
+			status = http.StatusConflict
+		case "category_required", "category_not_found", "invalid_image_urls":
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, models.APIResponse{Success: false, Message: upsertErr.Message, Error: upsertErr.Code})
 		return
 	}
 
-	// Generate slug
-	baseSlug := utils.GenerateSlug(req.Name)
-	slug := utils.GenerateUniqueSlug(baseSlug, func(s string) bool {
-		var count int64
-		db.Model(&models.Product{}).Where("slug = ?", s).Count(&count)
-		return count > 0
-	})
-
-	// Extract image URLs for backward compatibility
-	var imageURLs []string
-	for _, img := range req.Images {
-		imageURLs = append(imageURLs, img.URL)
-	}
-
-	// Serialize image URLs to JSON
-	var imageURLsJSON string
-	if len(imageURLs) > 0 {
-		imageURLsBytes, err := json.Marshal(imageURLs)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: "Invalid image URLs format",
-				Error:   err.Error(),
-			})
-			return
-		}
-		imageURLsJSON = string(imageURLsBytes)
-	} else {
-		imageURLsJSON = "[]"
-	}
-
-	// Create product
-	product := models.Product{
-		SKU:              req.SKU,
-		Name:             req.Name,
-		Slug:             slug,
-		ShortDescription: req.ShortDescription,
-		Description:      req.Description,
-		Price:            req.Price,
-		ComparePrice:     req.ComparePrice,
-		StockQuantity:    req.StockQuantity,
-		Weight:           req.Weight,
-		Dimensions:       req.Dimensions,
-		Brand:            req.Brand,
-		Model:            req.Model,
-		PartNumber:       req.PartNumber,
-		CategoryID:       req.CategoryID,
-		IsActive:         req.IsActive,
-		IsFeatured:       req.IsFeatured,
-		MetaTitle:        req.MetaTitle,
-		MetaDescription:  req.MetaDescription,
-		MetaKeywords:     req.MetaKeywords,
-		DisableAutoSEO:   req.DisableAutoSEO,
-		ImageURLs:        imageURLsJSON,
-	}
-
-	// Start transaction
-	tx := db.Begin()
-
-	// Create product (only known DB columns)
-	if err := tx.Select("SKU", "Name", "Slug", "ShortDescription", "Description", "Price", "ComparePrice", "StockQuantity", "Weight", "Dimensions", "Brand", "Model", "PartNumber", "CategoryID", "IsActive", "IsFeatured", "MetaTitle", "MetaDescription", "MetaKeywords", "DisableAutoSEO", "ImageURLs").Create(&product).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to create product",
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	// Create attributes
-	for _, attr := range req.Attributes {
-		attribute := models.ProductAttribute{
-			ProductID:      product.ID,
-			AttributeName:  attr.AttributeName,
-			AttributeValue: attr.AttributeValue,
-			SortOrder:      attr.SortOrder,
-		}
-		if err := tx.Create(&attribute).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to create product attributes",
-				Error:   err.Error(),
-			})
-			return
-		}
-	}
-
-	// Create translations
-	for _, trans := range req.Translations {
-		transSlug := utils.GenerateSlug(trans.Name)
-		translation := models.ProductTranslation{
-			ProductID:        product.ID,
-			LanguageCode:     trans.LanguageCode,
-			Name:             trans.Name,
-			Slug:             transSlug,
-			ShortDescription: trans.ShortDescription,
-			Description:      trans.Description,
-			MetaTitle:        trans.MetaTitle,
-			MetaDescription:  trans.MetaDescription,
-			MetaKeywords:     trans.MetaKeywords,
-		}
-		if err := tx.Create(&translation).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to create product translations",
-				Error:   err.Error(),
-			})
-			return
-		}
-	}
-
-	// Images are now stored in the ImageURLs JSON field, no need to create separate records
-	// The image URLs are already stored in the product.ImageURLs field above
-
-	// Commit transaction
-	tx.Commit()
-
+	product := result.Product
 	if _, err := optimizeProductAfterSave(db, product.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -1009,12 +909,8 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 		return
 	}
 
-	productPath := services.BuildProductPublicPath(product.SKU)
-
-	// Invalidate caches (Redis + optional Cloudflare)
+	productPath := result.NewPath
 	services.InvalidatePublicCaches(c.Request.Context(), "product:create", []string{productPath})
-
-	// Trigger Next.js ISR revalidation
 	services.TriggerNextRevalidate([]string{product.SKU}, []string{productPath}, true)
 
 	go func(sku string) {
@@ -1023,22 +919,22 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 		services.SubmitProductURLBestEffort(ctx, db, sku)
 	}(product.SKU)
 
-	// Load created product with relations (select only known columns)
-	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,disable_auto_seo,image_urls,created_at,updated_at").
-		Preload("Category").
-		First(&product, product.ID)
+	if err := db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,disable_auto_seo,image_urls,created_at,updated_at").Preload("Category").First(&product, product.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Product created but failed to load result", Error: err.Error()})
+		return
+	}
 
-	c.JSON(http.StatusCreated, models.APIResponse{
-		Success: true,
-		Message: "Product created successfully",
-		Data:    product,
-	})
+	c.JSON(http.StatusCreated, models.APIResponse{Success: true, Message: "Product created successfully", Data: product})
 
 }
 
 // UpdateProduct updates an existing product
 func (pc *ProductController) UpdateProduct(c *gin.Context) {
-	id := c.Param("id")
+	id, err := parseUintParam(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid ID", Error: "invalid_id"})
+		return
+	}
 
 	var req models.ProductCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1051,187 +947,22 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	}
 
 	db := config.GetDB()
-
-	// Find existing product (select minimal columns)
-	var product models.Product
-	if err := db.Select("id,sku,name,slug,image_urls").First(&product, id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, models.APIResponse{
-				Success: false,
-				Message: "Product not found",
-				Error:   "product_not_found",
-			})
-			return
+	result, upsertErr := services.UpdateProductFromRequest(db, id, req)
+	if upsertErr != nil {
+		status := http.StatusInternalServerError
+		switch upsertErr.Code {
+		case "product_not_found":
+			status = http.StatusNotFound
+		case "sku_exists":
+			status = http.StatusConflict
+		case "category_required", "category_not_found", "invalid_image_urls":
+			status = http.StatusBadRequest
 		}
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Database error",
-			Error:   err.Error(),
-		})
+		c.JSON(status, models.APIResponse{Success: false, Message: upsertErr.Message, Error: upsertErr.Code})
 		return
 	}
 
-	// Validate category exists to avoid foreign key errors
-	if req.CategoryID == 0 {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Category is required", Error: "category_required"})
-		return
-	}
-	var cat models.Category
-	if err := db.First(&cat, req.CategoryID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid category", Error: "category_not_found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: err.Error()})
-		return
-	}
-
-	// Check if SKU already exists (excluding current product)
-	var cnt int64
-	if err := db.Model(&models.Product{}).Where("sku = ? AND id != ?", req.SKU, product.ID).Count(&cnt).Error; err == nil && cnt > 0 {
-		c.JSON(http.StatusConflict, models.APIResponse{
-			Success: false,
-			Message: "Product with this SKU already exists",
-			Error:   "sku_exists",
-		})
-		return
-	}
-
-	// Generate new slug if name changed
-	if req.Name != product.Name {
-		baseSlug := utils.GenerateSlug(req.Name)
-		product.Slug = utils.GenerateUniqueSlug(baseSlug, func(s string) bool {
-			var count int64
-			db.Model(&models.Product{}).Where("slug = ? AND id != ?", s, product.ID).Count(&count)
-			return count > 0
-		})
-	}
-
-	// Extract image URLs for backward compatibility
-	var imageURLs []string
-	for _, img := range req.Images {
-		imageURLs = append(imageURLs, img.URL)
-	}
-
-	// Serialize image URLs to JSON
-	var imageURLsJSON string
-	if len(imageURLs) > 0 {
-		imageURLsBytes, err := json.Marshal(imageURLs)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, models.APIResponse{
-				Success: false,
-				Message: "Invalid image URLs format",
-				Error:   err.Error(),
-			})
-			return
-		}
-		imageURLsJSON = string(imageURLsBytes)
-	} else {
-		imageURLsJSON = "[]"
-	}
-
-	oldSKU := product.SKU
-	oldPath := services.BuildProductPublicPath(oldSKU)
-
-	// Update product fields
-	product.SKU = req.SKU
-	product.Name = req.Name
-	product.ShortDescription = req.ShortDescription
-	product.Description = req.Description
-	product.Price = req.Price
-	product.ComparePrice = req.ComparePrice
-	product.StockQuantity = req.StockQuantity
-	product.Weight = req.Weight
-	product.Dimensions = req.Dimensions
-	product.Brand = req.Brand
-	product.Model = req.Model
-	product.PartNumber = req.PartNumber
-	product.WarrantyPeriod = req.WarrantyPeriod
-	product.LeadTime = req.LeadTime
-	product.CategoryID = req.CategoryID
-	product.IsActive = req.IsActive
-	product.IsFeatured = req.IsFeatured
-	product.MetaTitle = req.MetaTitle
-	product.MetaDescription = req.MetaDescription
-	product.MetaKeywords = req.MetaKeywords
-	product.DisableAutoSEO = req.DisableAutoSEO
-	product.ImageURLs = imageURLsJSON
-
-	// Start transaction
-	tx := db.Begin()
-
-	// Update product (limit to known DB columns to avoid unknown-column errors)
-	// Perform explicit update to avoid referencing non-existent columns on legacy DBs
-	rawSQL := `UPDATE products SET
-        sku=?, name=?, slug=?, short_description=?, description=?, price=?, compare_price=?, stock_quantity=?, weight=?, dimensions=?,
-        brand=?, model=?, part_number=?, warranty_period=?, lead_time=?, category_id=?, is_active=?, is_featured=?, meta_title=?, meta_description=?, meta_keywords=?, disable_auto_seo=?, image_urls=?
-        WHERE id=?`
-	if err := tx.Exec(rawSQL,
-		product.SKU, product.Name, product.Slug, product.ShortDescription, product.Description, product.Price, product.ComparePrice, product.StockQuantity, product.Weight, product.Dimensions,
-		product.Brand, product.Model, product.PartNumber, product.WarrantyPeriod, product.LeadTime, product.CategoryID, product.IsActive, product.IsFeatured, product.MetaTitle, product.MetaDescription, product.MetaKeywords, product.DisableAutoSEO, product.ImageURLs,
-		product.ID,
-	).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, models.APIResponse{
-			Success: false,
-			Message: "Failed to update product",
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	// Delete existing attributes and create new ones
-	tx.Where("product_id = ?", product.ID).Delete(&models.ProductAttribute{})
-	for _, attr := range req.Attributes {
-		attribute := models.ProductAttribute{
-			ProductID:      product.ID,
-			AttributeName:  attr.AttributeName,
-			AttributeValue: attr.AttributeValue,
-			SortOrder:      attr.SortOrder,
-		}
-		if err := tx.Create(&attribute).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to update product attributes",
-				Error:   err.Error(),
-			})
-			return
-		}
-	}
-
-	// Delete existing translations and create new ones
-	tx.Where("product_id = ?", product.ID).Delete(&models.ProductTranslation{})
-	for _, trans := range req.Translations {
-		transSlug := utils.GenerateSlug(trans.Name)
-		translation := models.ProductTranslation{
-			ProductID:        product.ID,
-			LanguageCode:     trans.LanguageCode,
-			Name:             trans.Name,
-			Slug:             transSlug,
-			ShortDescription: trans.ShortDescription,
-			Description:      trans.Description,
-			MetaTitle:        trans.MetaTitle,
-			MetaDescription:  trans.MetaDescription,
-			MetaKeywords:     trans.MetaKeywords,
-		}
-		if err := tx.Create(&translation).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to update product translations",
-				Error:   err.Error(),
-			})
-			return
-		}
-	}
-
-	// Images are now stored in the ImageURLs JSON field, no need to create separate records
-	// The image URLs are already stored in the product.ImageURLs field above
-
-	// Commit transaction
-	tx.Commit()
-
+	product := result.Product
 	if _, err := optimizeProductAfterSave(db, product.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
@@ -1241,13 +972,16 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 		return
 	}
 
-	newPath := services.BuildProductPublicPath(product.SKU)
-
-	// Invalidate caches (Redis + optional Cloudflare)
-	services.InvalidatePublicCaches(c.Request.Context(), "product:update", []string{oldPath, newPath})
-
-	// Trigger Next.js ISR revalidation
-	services.TriggerNextRevalidate([]string{oldSKU, product.SKU}, []string{oldPath, newPath}, true)
+	paths := []string{result.NewPath}
+	if strings.TrimSpace(result.OldPath) != "" && result.OldPath != result.NewPath {
+		paths = append(paths, result.OldPath)
+	}
+	skus := []string{product.SKU}
+	if strings.TrimSpace(result.OldSKU) != "" && result.OldSKU != product.SKU {
+		skus = append(skus, result.OldSKU)
+	}
+	services.InvalidatePublicCaches(c.Request.Context(), "product:update", paths)
+	services.TriggerNextRevalidate(skus, paths, true)
 
 	go func(sku string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -1255,16 +989,12 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 		services.SubmitProductURLBestEffort(ctx, db, sku)
 	}(product.SKU)
 
-	// Load updated product with relations (select only known columns)
-	db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,disable_auto_seo,image_urls,created_at,updated_at").
-		Preload("Category").
-		First(&product, product.ID)
+	if err := db.Select("id,sku,name,slug,short_description,description,price,compare_price,stock_quantity,weight,dimensions,brand,model,part_number,category_id,is_active,is_featured,meta_title,meta_description,meta_keywords,disable_auto_seo,image_urls,created_at,updated_at").Preload("Category").First(&product, product.ID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Product updated but failed to load result", Error: err.Error()})
+		return
+	}
 
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "Product updated successfully",
-		Data:    product,
-	})
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Product updated successfully", Data: product})
 
 }
 

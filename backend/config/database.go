@@ -124,6 +124,7 @@ func ConnectDatabase() {
 			&models.ProductAttribute{},
 			&models.ProductReview{},
 			&models.ProductFAQ{},
+			&models.EbayImportDraft{},
 			&models.PurchaseLink{},
 			&models.SEORedirect{},
 			&models.Customer{},

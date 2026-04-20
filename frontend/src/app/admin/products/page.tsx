@@ -77,6 +77,8 @@ function AdminProductsContent() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'created_at' | 'updated_at' | 'price' | 'name'>('created_at');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20); // Dynamic page size
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -187,6 +189,8 @@ function AdminProductsContent() {
     category: string;
     brand: string;
     status: string;
+    sortBy: 'created_at' | 'updated_at' | 'price' | 'name';
+    sortDir: 'asc' | 'desc';
     page: number;
     pageSize: number;
   }>) => {
@@ -196,6 +200,8 @@ function AdminProductsContent() {
     const finalCategory = updates.category !== undefined ? updates.category : selectedCategory;
     const finalBrand = updates.brand !== undefined ? updates.brand : selectedBrand;
     const finalStatus = updates.status !== undefined ? updates.status : statusFilter;
+    const finalSortBy = updates.sortBy !== undefined ? updates.sortBy : sortBy;
+    const finalSortDir = updates.sortDir !== undefined ? updates.sortDir : sortDir;
     const finalPage = updates.page !== undefined ? updates.page : currentPage;
     const finalPageSize = updates.pageSize !== undefined ? updates.pageSize : pageSize;
 
@@ -203,6 +209,8 @@ function AdminProductsContent() {
     if (finalCategory) params.set('category', finalCategory);
     if (finalBrand) params.set('brand', finalBrand);
     if (finalStatus && finalStatus !== 'all') params.set('status', finalStatus);
+    if (finalSortBy !== 'created_at') params.set('sortBy', finalSortBy);
+    if (finalSortDir !== 'desc') params.set('sortDir', finalSortDir);
     if (finalPage && finalPage > 1) params.set('page', String(finalPage));
     if (finalPageSize !== 20) params.set('pageSize', String(finalPageSize));
 
@@ -220,6 +228,8 @@ function AdminProductsContent() {
     if (selectedCategory) params.set('category', selectedCategory);
     if (selectedBrand) params.set('brand', selectedBrand);
     if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
+    if (sortBy !== 'created_at') params.set('sortBy', sortBy);
+    if (sortDir !== 'desc') params.set('sortDir', sortDir);
     if (currentPage && currentPage > 1) params.set('page', String(currentPage));
     if (pageSize !== 20) params.set('pageSize', String(pageSize));
     const qs = params.toString();
@@ -233,6 +243,8 @@ function AdminProductsContent() {
     const c = searchParams.get('category') || '';
     const b = searchParams.get('brand') || '';
     const st = (searchParams.get('status') as 'all' | 'active' | 'inactive' | 'featured') || 'all';
+    const sb = (searchParams.get('sortBy') as 'created_at' | 'updated_at' | 'price' | 'name') || 'created_at';
+    const sd = (searchParams.get('sortDir') as 'asc' | 'desc') || 'desc';
     const p = parseInt(searchParams.get('page') || '1', 10);
     const ps = parseInt(searchParams.get('pageSize') || '20', 10);
 
@@ -240,6 +252,8 @@ function AdminProductsContent() {
     setSelectedCategory(c);
     setSelectedBrand(b);
     setStatusFilter(st);
+    setSortBy(['created_at', 'updated_at', 'price', 'name'].includes(sb) ? sb : 'created_at');
+    setSortDir(sd === 'asc' ? 'asc' : 'desc');
     setCurrentPage(Number.isFinite(p) && p > 0 ? p : 1);
     setPageSize([20, 50, 100, 200, 500].includes(ps) ? ps : 20);
   }, [searchParams]);
@@ -251,6 +265,8 @@ function AdminProductsContent() {
       category: selectedCategory,
       brand: selectedBrand,
       status: statusFilter,
+      sortBy,
+      sortDir,
       page: currentPage,
       pageSize
     }),
@@ -261,6 +277,8 @@ function AdminProductsContent() {
       brand: selectedBrand || undefined,
       is_active: statusFilter === 'active' ? 'true' : statusFilter === 'inactive' ? 'false' : undefined,
       is_featured: statusFilter === 'featured' ? 'true' : undefined,
+      sort_by: sortBy,
+      sort_dir: sortDir,
       page: currentPage,
       page_size: pageSize
     }),
@@ -984,6 +1002,18 @@ function AdminProductsContent() {
     updateURL({ status: value, page: 1 });
   };
 
+  const handleSortChange = (value: string) => {
+    const [nextSortByRaw, nextSortDirRaw] = value.split(':');
+    const nextSortBy = (['created_at', 'updated_at', 'price', 'name'].includes(nextSortByRaw)
+      ? nextSortByRaw
+      : 'created_at') as 'created_at' | 'updated_at' | 'price' | 'name';
+    const nextSortDir = (nextSortDirRaw === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
+    setSortBy(nextSortBy);
+    setSortDir(nextSortDir);
+    setCurrentPage(1);
+    updateURL({ sortBy: nextSortBy, sortDir: nextSortDir, page: 1 });
+  };
+
   const handlePageSizeChange = (value: number) => {
     setPageSize(value);
     setCurrentPage(1);
@@ -1003,8 +1033,10 @@ function AdminProductsContent() {
     setSelectedCategory('');
     setSelectedBrand('');
     setStatusFilter('all');
+    setSortBy('created_at');
+    setSortDir('desc');
     setCurrentPage(1);
-    updateURL({ search: '', category: '', brand: '', status: 'all', page: 1 });
+    updateURL({ search: '', category: '', brand: '', status: 'all', sortBy: 'created_at', sortDir: 'desc', page: 1 });
   };
 
   const toggleSelectAllOnPage = (checked: boolean, current: Product[]) => {
@@ -1950,7 +1982,7 @@ function AdminProductsContent() {
 
         {/* Filters */}
         <div className="bg-white shadow rounded-lg p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
             {/* Search */}
             <div>
                 <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
@@ -2027,6 +2059,28 @@ function AdminProductsContent() {
               </select>
             </div>
 
+            {/* Sort */}
+            <div>
+              <label htmlFor="sort" className="block text-sm font-medium text-gray-700 mb-1">
+                {locale === 'zh' ? '排序' : 'Sort'}
+              </label>
+              <select
+                id="sort"
+                value={`${sortBy}:${sortDir}`}
+                onChange={(e) => handleSortChange(e.target.value)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="created_at:desc">{locale === 'zh' ? '上传时间：新到旧' : 'Upload time: Newest'}</option>
+                <option value="created_at:asc">{locale === 'zh' ? '上传时间：旧到新' : 'Upload time: Oldest'}</option>
+                <option value="updated_at:desc">{locale === 'zh' ? '更新时间：新到旧' : 'Updated: Newest'}</option>
+                <option value="updated_at:asc">{locale === 'zh' ? '更新时间：旧到新' : 'Updated: Oldest'}</option>
+                <option value="price:desc">{locale === 'zh' ? '价格：高到低' : 'Price: High to Low'}</option>
+                <option value="price:asc">{locale === 'zh' ? '价格：低到高' : 'Price: Low to High'}</option>
+                <option value="name:asc">{locale === 'zh' ? '名称：A-Z' : 'Name: A-Z'}</option>
+                <option value="name:desc">{locale === 'zh' ? '名称：Z-A' : 'Name: Z-A'}</option>
+              </select>
+            </div>
+
             {/* Actions */}
             <div className="flex items-end">
               <button
@@ -2084,6 +2138,9 @@ function AdminProductsContent() {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {t('products.table.status', locale === 'zh' ? '状态' : 'Status')}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {locale === 'zh' ? '上传时间' : 'Uploaded'}
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {t('common.actions', locale === 'zh' ? '操作' : 'Actions')}
@@ -2158,6 +2215,10 @@ function AdminProductsContent() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div>{new Date(product.created_at).toLocaleDateString()}</div>
+                      <div className="text-xs text-gray-400">{new Date(product.created_at).toLocaleTimeString()}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">

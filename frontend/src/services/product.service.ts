@@ -16,6 +16,8 @@ export interface ProductFilters {
   search?: string;
   is_active?: string;
   is_featured?: string;
+  sort_by?: 'created_at' | 'updated_at' | 'price' | 'name';
+  sort_dir?: 'asc' | 'desc';
 }
 
 export interface ProductImportResult {
