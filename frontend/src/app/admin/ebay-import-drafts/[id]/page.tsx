@@ -22,6 +22,36 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const buildDraftUpdatePayload = (form: {
+  normalized_title: string;
+  normalized_brand: string;
+  normalized_model: string;
+  normalized_part_number: string;
+  normalized_mpn: string;
+  normalized_price: string;
+  suggested_category_id: string;
+  import_action: string;
+  meta_title: string;
+  meta_description: string;
+  meta_keywords: string;
+  review_note: string;
+  disable_auto_seo: boolean;
+}) => ({
+  normalized_title: form.normalized_title,
+  normalized_brand: form.normalized_brand,
+  normalized_model: form.normalized_model,
+  normalized_part_number: form.normalized_part_number,
+  normalized_mpn: form.normalized_mpn,
+  normalized_price: Number(form.normalized_price || 0),
+  suggested_category_id: form.suggested_category_id ? Number(form.suggested_category_id) : undefined,
+  import_action: form.import_action || undefined,
+  meta_title: form.meta_title,
+  meta_description: form.meta_description,
+  meta_keywords: form.meta_keywords,
+  review_note: form.review_note,
+  disable_auto_seo: form.disable_auto_seo,
+});
+
 export default function EbayImportDraftDetailPage() {
   const { locale } = useAdminI18n();
   const params = useParams();
@@ -81,22 +111,11 @@ export default function EbayImportDraftDetailPage() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
   };
 
+  const categoryRequiredMessage = locale === 'zh' ? '请先确认分类，再执行导入。' : 'Please confirm a category before importing.';
+  const isCategoryMissing = !form.suggested_category_id;
+
   const saveMutation = useMutation({
-    mutationFn: async () => EbayImportDraftService.update(draftId, {
-      normalized_title: form.normalized_title,
-      normalized_brand: form.normalized_brand,
-      normalized_model: form.normalized_model,
-      normalized_part_number: form.normalized_part_number,
-      normalized_mpn: form.normalized_mpn,
-      normalized_price: Number(form.normalized_price || 0),
-      suggested_category_id: form.suggested_category_id ? Number(form.suggested_category_id) : undefined,
-      import_action: form.import_action || undefined,
-      meta_title: form.meta_title,
-      meta_description: form.meta_description,
-      meta_keywords: form.meta_keywords,
-      review_note: form.review_note,
-      disable_auto_seo: form.disable_auto_seo,
-    }),
+    mutationFn: async () => EbayImportDraftService.update(draftId, buildDraftUpdatePayload(form)),
     onSuccess: async () => {
       await invalidate();
       toast.success(locale === 'zh' ? '草稿已保存' : 'Draft saved');
@@ -114,10 +133,17 @@ export default function EbayImportDraftDetailPage() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: () => EbayImportDraftService.confirm(draftId, form.import_action || undefined),
+    mutationFn: async () => {
+      if (!form.suggested_category_id) {
+        throw new Error(categoryRequiredMessage);
+      }
+
+      await EbayImportDraftService.update(draftId, buildDraftUpdatePayload(form));
+      return EbayImportDraftService.confirm(draftId, form.import_action || undefined);
+    },
     onSuccess: async () => {
       await invalidate();
-      toast.success(locale === 'zh' ? '已确认导入' : 'Draft confirmed');
+      toast.success(locale === 'zh' ? '已保存并确认导入' : 'Draft saved and confirmed');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '确认失败' : 'Confirm failed')),
   });
@@ -185,8 +211,8 @@ export default function EbayImportDraftDetailPage() {
             </button>
             <button
               onClick={() => confirmMutation.mutate()}
-              disabled={confirmMutation.isPending}
-              className="inline-flex items-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              disabled={confirmMutation.isPending || isCategoryMissing}
+              className="inline-flex items-center rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
             >
               <CheckCircleIcon className="mr-2 h-4 w-4" />
               {locale === 'zh' ? '确认导入' : 'Confirm Import'}
@@ -243,13 +269,23 @@ export default function EbayImportDraftDetailPage() {
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">{locale === 'zh' ? '分类' : 'Category'}</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-sm font-medium text-gray-700">{locale === 'zh' ? '分类' : 'Category'}</label>
+                    {draft.taxonomy_status === 'needs_review' && (
+                      <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                        {locale === 'zh' ? '需人工确认分类' : 'Category review required'}
+                      </span>
+                    )}
+                  </div>
                   <select value={form.suggested_category_id} onChange={(e) => setForm((prev) => ({ ...prev, suggested_category_id: e.target.value }))} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
                     <option value="">{locale === 'zh' ? '请选择分类' : 'Select category'}</option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>{category.name}</option>
                     ))}
                   </select>
+                  {isCategoryMissing ? (
+                    <p className="mt-2 text-sm text-amber-700">{categoryRequiredMessage}</p>
+                  ) : null}
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-gray-700">Meta Title</label>
