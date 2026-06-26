@@ -1,15 +1,15 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: fanuc_mysql
+    container_name: vibocnc_mysql
     command:
       - "--default-authentication-plugin=mysql_native_password"
       - "--character-set-server=utf8mb4"
       - "--collation-server=utf8mb4_unicode_ci"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me_root_password}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-fanuc_sales}
-      MYSQL_USER: ${MYSQL_USER:-fanuc}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-vibocnc_sales}
+      MYSQL_USER: ${MYSQL_USER:-vibocnc}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change_me_db_password}
     volumes:
       - mysql_data:/var/lib/mysql
@@ -27,7 +27,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: fanuc_redis
+    container_name: vibocnc_redis
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
@@ -46,7 +46,7 @@ services:
       context: ./backend
       args:
         BASE_REGISTRY: ${BASE_REGISTRY:-docker.io}
-    container_name: fanuc_backend
+    container_name: vibocnc_backend
     environment:
       GO_ENV: production
       GIN_MODE: release
@@ -55,9 +55,9 @@ services:
 
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_USER: ${MYSQL_USER:-fanuc}
+      DB_USER: ${MYSQL_USER:-vibocnc}
       DB_PASSWORD: ${MYSQL_PASSWORD:-change_me_db_password}
-      DB_NAME: ${MYSQL_DATABASE:-fanuc_sales}
+      DB_NAME: ${MYSQL_DATABASE:-vibocnc_sales}
 
       # CORS: allow the browser origin(s) you access the site from.
       # If you run Nginx on the host for TLS, set CORS_ORIGINS to your domain(s).
@@ -119,9 +119,9 @@ services:
       GO_ENV: production
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_USER: ${MYSQL_USER:-fanuc}
+      DB_USER: ${MYSQL_USER:-vibocnc}
       DB_PASSWORD: ${MYSQL_PASSWORD:-change_me_db_password}
-      DB_NAME: ${MYSQL_DATABASE:-fanuc_sales}
+      DB_NAME: ${MYSQL_DATABASE:-vibocnc_sales}
       DB_AUTO_MIGRATE: "true"
       SEO_OPTIMIZER_BRAND: ${SEO_OPTIMIZER_BRAND:-FANUC}
       SEO_OPTIMIZER_BATCH_SIZE: ${SEO_OPTIMIZER_BATCH_SIZE:-500}
@@ -159,22 +159,22 @@ services:
         # SSR 端访问后端用 service 名；浏览器端走 /api/v1 相对路径（由“宿主机 Nginx”反代）
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://backend:8080}
         # 对外站点 URL。生产默认应指向真实域名，避免 canonical / og:url 退回开发地址。
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://www.vcocncspare.com}
-        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-FANUC Parts Store}
-        NEXT_PUBLIC_SITE_DESCRIPTION: ${NEXT_PUBLIC_SITE_DESCRIPTION:-Professional FANUC Parts and Equipment Sales}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-VIBO CNC}
+        NEXT_PUBLIC_SITE_DESCRIPTION: ${NEXT_PUBLIC_SITE_DESCRIPTION:-Industrial automation components and CNC spare parts}
         NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${NEXT_PUBLIC_PAYPAL_CLIENT_ID:-}
         NEXT_PUBLIC_PAYPAL_ENVIRONMENT: ${NEXT_PUBLIC_PAYPAL_ENVIRONMENT:-sandbox}
-    container_name: fanuc_frontend
+    container_name: vibocnc_frontend
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      SITE_URL: ${SITE_URL:-https://www.vcocncspare.com}
+      SITE_URL: ${SITE_URL:-http://localhost:3000}
       # Also pass these at runtime so dynamic routes (robots/sitemaps/SSR) can read them without rebuild.
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://backend:8080}
-      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://www.vcocncspare.com}
-      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-FANUC Parts Store}
-      NEXT_PUBLIC_SITE_DESCRIPTION: ${NEXT_PUBLIC_SITE_DESCRIPTION:-Professional FANUC Parts and Equipment Sales}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-VIBO CNC}
+      NEXT_PUBLIC_SITE_DESCRIPTION: ${NEXT_PUBLIC_SITE_DESCRIPTION:-Industrial automation components and CNC spare parts}
       NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${NEXT_PUBLIC_PAYPAL_CLIENT_ID:-}
       NEXT_PUBLIC_PAYPAL_ENVIRONMENT: ${NEXT_PUBLIC_PAYPAL_ENVIRONMENT:-sandbox}
     depends_on:
@@ -193,7 +193,7 @@ services:
   nginx:
     profiles: ["internal-nginx"]
     image: nginx:1.27-alpine
-    container_name: fanuc_nginx
+    container_name: vibocnc_nginx
     ports:
       - "${NGINX_PORT:-3006}:80"
     volumes:

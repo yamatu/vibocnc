@@ -53,7 +53,7 @@ export default function OrderTrackingPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
-        return <ClockIcon className="h-6 w-6 text-yellow-500" />;
+        return <ClockIcon className="h-6 w-6 text-orange-500" />;
       case 'confirmed':
         return <CheckCircleIcon className="h-6 w-6 text-blue-500" />;
       case 'processing':
@@ -99,10 +99,10 @@ export default function OrderTrackingPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gray-50 py-8">
+        <div className="site-page-shell min-h-screen py-10">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600 mx-auto"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-800 mx-auto"></div>
               <p className="mt-2 text-gray-600">Loading order details...</p>
             </div>
           </div>
@@ -114,7 +114,7 @@ export default function OrderTrackingPage() {
   if (error || !order) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gray-50 py-8">
+        <div className="site-page-shell min-h-screen py-10">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
               <XCircleIcon className="h-12 w-12 text-red-500 mx-auto mb-4" />
@@ -124,7 +124,7 @@ export default function OrderTrackingPage() {
               </p>
               <Link
                 href="/"
-                className="inline-flex items-center bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700 transition duration-200"
+                className="site-primary-action px-4 py-2 text-sm"
               >
                 <ArrowLeftIcon className="h-4 w-4 mr-2" />
                 Back to Home
@@ -140,13 +140,13 @@ export default function OrderTrackingPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50 py-8">
+      <div className="site-page-shell min-h-screen py-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header */}
           <div className="mb-8">
             <Link
               href="/"
-              className="inline-flex items-center text-amber-600 hover:text-amber-700 mb-4"
+              className="site-link-accent mb-4 inline-flex items-center"
             >
               <ArrowLeftIcon className="h-4 w-4 mr-2" />
               Back to Home
@@ -172,7 +172,7 @@ export default function OrderTrackingPage() {
           </div>
 
           {/* Order Status Progress */}
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="site-panel p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-6">Order Progress</h2>
 
             <div className="relative">
@@ -185,7 +185,7 @@ export default function OrderTrackingPage() {
                       step.completed
                         ? 'bg-green-500 text-white'
                         : step.current
-                        ? 'bg-amber-500 text-white'
+                        ? 'bg-orange-600 text-white'
                         : 'bg-gray-200 text-gray-500'
                     }`}>
                       {step.completed ? (
@@ -202,7 +202,7 @@ export default function OrderTrackingPage() {
                         {step.label}
                       </h3>
                       {step.current && (
-                        <p className="text-sm text-amber-600">Current status</p>
+                        <p className="text-sm font-semibold text-orange-700">Current status</p>
                       )}
                     </div>
                   </div>
@@ -213,7 +213,7 @@ export default function OrderTrackingPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Order Details */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="site-panel p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Details</h2>
 
               <div className="space-y-3 text-sm">
@@ -261,7 +261,7 @@ export default function OrderTrackingPage() {
             </div>
 
             {/* Customer Information */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="site-panel p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Customer Information</h2>
 
               <div className="space-y-3 text-sm">
@@ -289,7 +289,7 @@ export default function OrderTrackingPage() {
           </div>
 
           {/* Order Items */}
-          <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+          <div className="site-panel p-6 mt-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Items</h2>
 
             <div className="space-y-4">
@@ -338,7 +338,7 @@ export default function OrderTrackingPage() {
 
           {/* Notes */}
           {order.notes && (
-            <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+            <div className="site-panel p-6 mt-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Notes</h2>
               <p className="text-gray-700 whitespace-pre-line">{order.notes}</p>
             </div>

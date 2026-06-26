@@ -281,6 +281,7 @@ func SetupRoutes(r *gin.Engine) {
 				media.POST("/upload", mediaController.Upload)
 				media.PUT("/batch", mediaController.BatchUpdate)
 				media.DELETE("/batch", mediaController.BatchDelete)
+				media.POST("/cleanup-missing", middleware.AdminOnly(), mediaController.CleanupMissing)
 				media.PUT("/:id", mediaController.Update)
 				media.GET("/watermark/settings", watermarkController.GetSettings)
 				media.PUT("/watermark/settings", watermarkController.UpdateSettings)

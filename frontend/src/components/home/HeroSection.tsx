@@ -67,7 +67,7 @@ export function HeroSection({ content }: Props) {
   };
 
   return (
-    <section className="relative w-full h-screen min-h-screen flex items-center justify-center overflow-hidden bg-gray-900">
+    <section className="relative w-full h-[72vh] min-h-[560px] max-h-[780px] flex items-center overflow-hidden bg-slate-950">
       {/* Background Images */}
       {slides.map((slide, index) => (
         <div
@@ -95,59 +95,62 @@ export function HeroSection({ content }: Props) {
               target.src = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1920&h=1080';
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/40" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.92)_0%,rgba(15,23,42,0.74)_42%,rgba(15,23,42,0.28)_100%)]" />
+          <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-950/75 to-transparent" />
         </div>
       ))}
 
       {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="max-w-4xl mx-auto bg-white bg-opacity-90 rounded-2xl p-8 md:p-12 shadow-2xl backdrop-blur-sm">
-          {slides.map((slide, index) => (
-            <div
-              key={slide.id ?? index}
-              className={`transition-all duration-1000 ${
-                index === currentSlide
-                  ? 'opacity-100 transform translate-y-0'
-                  : 'opacity-0 transform translate-y-8'
-              }`}
-              style={{ display: index === currentSlide ? 'block' : 'none' }}
-            >
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight text-gray-900">
-                {slide.title}
-              </h1>
-
-              <h2 className="text-xl md:text-2xl lg:text-3xl font-light mb-8 text-yellow-600">
-                {slide.subtitle}
-              </h2>
-
-              <p className="text-lg md:text-xl mb-12 max-w-3xl mx-auto leading-relaxed text-gray-700">
-                {slide.description}
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link
-                  href={slide.cta.primary.href}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg"
-                >
-                  {slide.cta.primary.text}
-                </Link>
-
-                <Link
-                  href={slide.cta.secondary.href}
-                  className="border-2 border-yellow-500 text-yellow-600 hover:bg-yellow-500 hover:text-black px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-300 transform hover:scale-105"
-                >
-                  {slide.cta.secondary.text}
-                </Link>
-              </div>
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {slides.map((slide, index) => (
+          <div
+            key={slide.id ?? index}
+            className={`max-w-3xl transition-all duration-1000 ${
+              index === currentSlide
+                ? 'opacity-100 transform translate-y-0'
+                : 'opacity-0 transform translate-y-8'
+            }`}
+            style={{ display: index === currentSlide ? 'block' : 'none' }}
+          >
+            <div className="mb-6 inline-flex items-center border border-orange-300/40 bg-slate-950/45 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-orange-100 backdrop-blur">
+              Industrial Automation Supply
             </div>
-          ))}
-        </div>
+
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-black mb-6 leading-[0.98] text-white">
+              {slide.title}
+            </h1>
+
+            <h2 className="text-xl md:text-2xl font-semibold mb-6 text-orange-200">
+              {slide.subtitle}
+            </h2>
+
+            <p className="text-base md:text-lg mb-10 max-w-2xl leading-8 text-slate-200">
+              {slide.description}
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link
+                href={slide.cta.primary.href}
+                className="inline-flex justify-center bg-orange-500 hover:bg-[#003a78] text-white px-7 py-3 rounded-md text-base font-semibold transition-colors shadow-lg shadow-teal-950/30"
+              >
+                {slide.cta.primary.text}
+              </Link>
+
+              <Link
+                href={slide.cta.secondary.href}
+                className="inline-flex justify-center border border-white/60 text-white hover:bg-white hover:text-slate-950 px-7 py-3 rounded-md text-base font-semibold transition-colors"
+              >
+                {slide.cta.secondary.text}
+              </Link>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Navigation Arrows */}
       <button
         onClick={prevSlide}
-        className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black bg-opacity-50 hover:bg-opacity-75 text-white p-3 rounded-full transition-all duration-300"
+        className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-slate-950/50 hover:bg-slate-950/80 text-white p-3 rounded-full transition-all duration-300"
         aria-label="Previous slide"
       >
         <ChevronLeftIcon className="h-6 w-6" />
@@ -155,7 +158,7 @@ export function HeroSection({ content }: Props) {
 
       <button
         onClick={nextSlide}
-        className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black bg-opacity-50 hover:bg-opacity-75 text-white p-3 rounded-full transition-all duration-300"
+        className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-slate-950/50 hover:bg-slate-950/80 text-white p-3 rounded-full transition-all duration-300"
         aria-label="Next slide"
       >
         <ChevronRightIcon className="h-6 w-6" />
@@ -169,8 +172,8 @@ export function HeroSection({ content }: Props) {
             onClick={() => goToSlide(index)}
             className={`w-3 h-3 rounded-full transition-all duration-300 ${
               index === currentSlide
-                ? 'bg-yellow-400 scale-125'
-                : 'bg-yellow-400 bg-opacity-50 hover:bg-opacity-75'
+                ? 'bg-orange-500 scale-125'
+                : 'bg-white/50 hover:bg-white/80'
             }`}
             aria-label={`Go to slide ${index + 1}`}
           />
@@ -178,7 +181,7 @@ export function HeroSection({ content }: Props) {
       </div>
 
       {/* Scroll Indicator */}
-      <div className="absolute bottom-8 right-8 z-20 text-white animate-bounce">
+      <div className="hidden md:block absolute bottom-8 right-8 z-20 text-white animate-bounce">
         <div className="flex flex-col items-center">
           <span className="text-sm mb-2">Scroll Down</span>
           <svg

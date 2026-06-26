@@ -114,7 +114,7 @@ export default function CategoriesClient({ initialCategories = [] }: CategoriesC
   if (loading) {
     return (
       <div className="flex justify-center items-center py-20">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
       </div>
     );
   }
@@ -125,7 +125,7 @@ export default function CategoriesClient({ initialCategories = [] }: CategoriesC
         <div className="text-red-600 mb-4">Error loading categories: {error}</div>
         <button 
           onClick={fetchCategories}
-          className="bg-yellow-500 hover:bg-yellow-600 text-black px-6 py-2 rounded-lg font-semibold"
+          className="site-primary-action px-6 py-2"
         >
           Retry
         </button>
@@ -139,7 +139,7 @@ export default function CategoriesClient({ initialCategories = [] }: CategoriesC
         <div className="text-gray-600 mb-4">No categories available</div>
         <button 
           onClick={fetchCategories}
-          className="bg-yellow-500 hover:bg-yellow-600 text-black px-6 py-2 rounded-lg font-semibold"
+          className="site-primary-action px-6 py-2"
         >
           Refresh
         </button>
@@ -157,7 +157,7 @@ export default function CategoriesClient({ initialCategories = [] }: CategoriesC
           <Link
             key={category.id}
             href={`/categories/${category.path || category.slug}`}
-            className="group bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden"
+            className="site-product-card group"
           >
             <div className="relative h-48 bg-gradient-to-br from-gray-100 to-gray-200">
               {category.image_url ? (
@@ -173,17 +173,17 @@ export default function CategoriesClient({ initialCategories = [] }: CategoriesC
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
-                  <IconComponent className="h-20 w-20 text-yellow-600" />
+                  <IconComponent className="h-20 w-20 text-[#0b3e75]" />
                 </div>
               )}
               
-              <div className="absolute bottom-4 right-4 bg-yellow-600 text-black px-3 py-1 rounded-full text-sm font-semibold">
+              <div className="absolute bottom-4 right-4 rounded-full bg-[#0b3e75] px-3 py-1 text-sm font-semibold text-white">
                 {productCounts[category.id] !== undefined ? productCounts[category.id] : '...'}
               </div>
             </div>
             
             <div className="p-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-yellow-600 transition-colors">
+              <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-[#0b3e75] transition-colors">
                 {category.name}
               </h3>
               <p className="text-gray-600 mb-4 line-clamp-3">
@@ -191,7 +191,7 @@ export default function CategoriesClient({ initialCategories = [] }: CategoriesC
               </p>
               
               <div className="flex items-center justify-between">
-                <span className="text-yellow-600 font-semibold text-sm group-hover:text-yellow-700">
+                <span className="site-link-accent text-sm">
                   View Products →
                 </span>
               </div>

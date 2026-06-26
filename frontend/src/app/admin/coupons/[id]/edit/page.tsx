@@ -41,6 +41,46 @@ export default function EditCouponPage() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const couponSchema = useMemo(
+    () =>
+      yup.object({
+        code: yup
+          .string()
+          .required(t('coupons.validation.codeRequired', 'Coupon code is required'))
+          .min(3, t('coupons.validation.codeMin', 'Code must be at least 3 characters')),
+        name: yup.string().required(t('coupons.validation.nameRequired', 'Coupon name is required')),
+        description: yup.string(),
+        type: yup
+          .string()
+          .oneOf(['percentage', 'fixed_amount'])
+          .required(t('coupons.validation.typeRequired', 'Discount type is required')),
+        value: yup
+          .number()
+          .required(t('coupons.validation.valueRequired', 'Discount value is required'))
+          .min(0.01, t('coupons.validation.valueMin', 'Value must be greater than 0')),
+        min_order_amount: yup
+          .number()
+          .min(0, t('coupons.validation.minOrderNonNeg', 'Minimum order amount cannot be negative'))
+          .default(0),
+        max_discount_amount: yup
+          .number()
+          .min(0, t('coupons.validation.maxNonNeg', 'Maximum discount amount cannot be negative'))
+          .nullable(),
+        usage_limit: yup
+          .number()
+          .min(1, t('coupons.validation.usageMin', 'Usage limit must be at least 1'))
+          .nullable(),
+        user_usage_limit: yup
+          .number()
+          .min(1, t('coupons.validation.userUsageMin', 'User usage limit must be at least 1'))
+          .nullable(),
+        is_active: yup.boolean().default(true),
+        starts_at: yup.string().nullable(),
+        expires_at: yup.string().nullable(),
+      }),
+    [t]
+  );
+
   const {
     register,
     handleSubmit,
@@ -532,6 +572,7 @@ export default function EditCouponPage() {
     </AdminLayout>
   );
 }
+/*
   const couponSchema = useMemo(
     () =>
       yup.object({
@@ -571,3 +612,4 @@ export default function EditCouponPage() {
       }),
     [locale, t]
   );
+*/

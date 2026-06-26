@@ -14,7 +14,6 @@ import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, toPr
 import { useCartStore } from '@/store/cart.store';
 import {
   AdjustmentsHorizontalIcon,
-  XMarkIcon,
   FunnelIcon,
   Squares2X2Icon,
   ListBulletIcon,
@@ -184,33 +183,33 @@ export default function CategoryProductsClient({
   return (
     <div>
       {/* Toolbar */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <div className="site-toolbar p-4 mb-6">
         <div className="flex flex-col space-y-4">
           {/* Top row */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-slate-700">
                 {pagination ? (
                   <>Showing {((pagination.page - 1) * pagination.page_size) + 1}-{Math.min(pagination.page * pagination.page_size, pagination.total)} of {pagination.total} products</>
                 ) : (
                   <>Loading...</>
                 )}
-                {hasActiveFilters && <span className="text-gray-500"> (filtered)</span>}
+                {hasActiveFilters && <span className="text-slate-500"> (filtered)</span>}
               </span>
             </div>
 
             {/* View Mode */}
-            <div className="flex items-center border border-gray-300 rounded-md">
+            <div className="flex items-center overflow-hidden rounded-md border border-slate-300 bg-white">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-2 ${viewMode === 'grid' ? 'bg-yellow-100 text-yellow-600' : 'text-gray-400'}`}
+                className={`site-icon-toggle ${viewMode === 'grid' ? 'site-icon-toggle-active' : ''}`}
                 title="Grid view"
               >
                 <Squares2X2Icon className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-2 ${viewMode === 'list' ? 'bg-yellow-100 text-yellow-600' : 'text-gray-400'}`}
+                className={`site-icon-toggle ${viewMode === 'list' ? 'site-icon-toggle-active' : ''}`}
                 title="List view"
               >
                 <ListBulletIcon className="h-4 w-4" />
@@ -224,7 +223,7 @@ export default function CategoryProductsClient({
               <select
                 value={sortValue}
                 onChange={handleSortChange}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500"
+                className="site-select px-3 py-2 text-sm"
               >
                 <option value="name">Sort by Name (A-Z)</option>
                 <option value="name_desc">Sort by Name (Z-A)</option>
@@ -235,12 +234,12 @@ export default function CategoryProductsClient({
 
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                className="site-secondary-action px-4 py-2 text-sm"
               >
                 <AdjustmentsHorizontalIcon className="h-4 w-4 mr-2" />
                 Filters
                 {hasActiveFilters && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                  <span className="ml-2 site-chip">
                     Active
                   </span>
                 )}
@@ -251,13 +250,13 @@ export default function CategoryProductsClient({
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
-                  className="text-sm text-yellow-600 hover:text-yellow-500 font-medium"
+                  className="site-link-accent text-sm"
                 >
                   Clear all filters
                 </button>
               )}
               {pagination && (
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-slate-500">
                   Page {pagination.page} of {pagination.total_pages}
                 </div>
               )}
@@ -268,7 +267,7 @@ export default function CategoryProductsClient({
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+        <div className="site-panel p-6 mb-6">
           <ProductFilters
             filters={filters}
             categories={categories}
@@ -288,9 +287,9 @@ export default function CategoryProductsClient({
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
               {products.map((product: any) => (
-                <div key={product.id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                <div key={product.id} className="site-product-card">
                   <div className="relative">
-                    <Link href={`/products/${toProductPathId(product.sku)}`} className="block aspect-w-1 aspect-h-1 w-full overflow-hidden rounded-t-lg bg-gray-200">
+                    <Link href={`/products/${toProductPathId(product.sku)}`} className="site-product-media block aspect-[4/3] w-full">
                       <Image
                         src={getProductImageUrl(
                           (product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []),
@@ -300,41 +299,41 @@ export default function CategoryProductsClient({
                         width={300}
                         height={300}
                         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                        className="h-48 w-full object-cover object-center"
+                        className="h-full w-full object-cover object-center transition-transform duration-300 hover:scale-105"
                         loading="lazy"
                       />
                     </Link>
                   </div>
 
                   <div className="p-4">
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      <Link href={`/products/${toProductPathId(product.sku)}`} className="hover:text-yellow-600">
+                    <h3 className="text-base font-semibold text-slate-950 mb-2 line-clamp-2 min-h-[3rem]">
+                      <Link href={`/products/${toProductPathId(product.sku)}`} className="site-product-title">
                         {product.name}
                       </Link>
                     </h3>
-                    <p className="text-sm text-gray-500 mb-2">SKU: {product.sku}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">SKU: {product.sku}</p>
                     {product.description && (
-                      <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                      <p className="text-sm text-slate-600 mb-4 line-clamp-2">
                         {product.description}
                       </p>
                     )}
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-xl font-bold text-yellow-600">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xl font-bold text-[#0b3e75]">
                         {formatCurrency(product.price)}
                       </span>
 
                       <div className="flex items-center space-x-2">
                         <Link
                           href={`/products/${toProductPathId(product.sku)}`}
-                          className="p-2 text-gray-400 hover:text-yellow-600 transition-colors"
+                          className="site-secondary-action h-9 w-9"
                           title="View details"
                         >
                           <EyeIcon className="h-5 w-5" />
                         </Link>
                         <button
                           onClick={() => handleAddToCart(product)}
-                          className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-yellow-500 hover:bg-yellow-600 transition-colors"
+                          className="site-primary-action px-3 py-2 text-sm"
                           title="Add to cart"
                         >
                           <ShoppingCartIcon className="h-4 w-4 mr-1" />
@@ -349,8 +348,8 @@ export default function CategoryProductsClient({
           ) : (
             <div className="space-y-4 mb-8">
               {products.map((product: any) => (
-                <div key={product.id} className="bg-white rounded-lg shadow p-6">
-                  <div className="flex items-center space-x-6">
+                <div key={product.id} className="site-product-card p-4 sm:p-6">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                     <Link href={`/products/${toProductPathId(product.sku)}`} className="flex-shrink-0">
                       <Image
                         src={getProductImageUrl(
@@ -361,40 +360,40 @@ export default function CategoryProductsClient({
                         width={120}
                         height={120}
                         sizes="120px"
-                        className="h-20 w-20 object-cover rounded-lg"
+                        className="h-28 w-full object-cover rounded-md border border-slate-200 sm:h-24 sm:w-24"
                         loading="lazy"
                       />
                     </Link>
 
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-medium text-gray-900 mb-1">
-                        <Link href={`/products/${toProductPathId(product.sku)}`} className="hover:text-yellow-600">
+                      <h3 className="text-lg font-semibold text-slate-950 mb-1">
+                        <Link href={`/products/${toProductPathId(product.sku)}`} className="site-product-title">
                           {product.name}
                         </Link>
                       </h3>
-                      <p className="text-sm text-gray-500 mb-2">SKU: {product.sku}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">SKU: {product.sku}</p>
                       {product.description && (
-                        <p className="text-sm text-gray-600 line-clamp-2">
+                        <p className="text-sm text-slate-600 line-clamp-2">
                           {product.description}
                         </p>
                       )}
                     </div>
 
-                    <div className="flex-shrink-0 text-right">
-                      <div className="text-xl font-bold text-yellow-600 mb-2">
+                    <div className="flex-shrink-0 text-left sm:text-right">
+                      <div className="text-xl font-bold text-[#0b3e75] mb-2">
                         {formatCurrency(product.price)}
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center gap-2">
                         <Link
                           href={`/products/${toProductPathId(product.sku)}`}
-                          className="p-2 text-gray-400 hover:text-yellow-600 transition-colors"
+                          className="site-secondary-action h-9 w-9"
                           title="View details"
                         >
                           <EyeIcon className="h-5 w-5" />
                         </Link>
                         <button
                           onClick={() => handleAddToCart(product)}
-                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-yellow-500 hover:bg-yellow-600 transition-colors"
+                          className="site-primary-action px-4 py-2 text-sm"
                           title="Add to cart"
                         >
                           <ShoppingCartIcon className="h-4 w-4 mr-2" />
@@ -422,17 +421,17 @@ export default function CategoryProductsClient({
         </>
       ) : (
         <div className="text-center py-12">
-          <div className="text-gray-400 mb-4">
+          <div className="text-slate-400 mb-4">
             <MagnifyingGlassIcon className="mx-auto h-12 w-12" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
-          <p className="text-gray-600 mb-4">
+          <h3 className="text-lg font-semibold text-slate-950 mb-2">No products found</h3>
+          <p className="text-slate-600 mb-4">
             Try adjusting your filters or search terms.
           </p>
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700"
+              className="site-primary-action px-4 py-2 text-sm"
             >
               Clear all filters
             </button>

@@ -86,11 +86,12 @@ export default function About() {
       />
       <PublicLayout>
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-r from-yellow-500 to-yellow-600 text-black py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="site-page-hero py-24">
+        <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
+            <div className="site-hero-kicker mb-5">About VIBO CNC</div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6">About Vcocnc</h1>
-            <p className="text-xl md:text-2xl text-yellow-900 max-w-3xl mx-auto">
+            <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto">
               Your trusted one-stop CNC solution supplier since 2005
             </p>
           </div>
@@ -116,12 +117,12 @@ export default function About() {
                 around 200 million.
               </p>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-yellow-600">20+</div>
+                <div className="site-subtle-card p-4">
+                  <div className="text-2xl font-bold text-[#0b3e75]">20+</div>
                   <div className="text-sm text-gray-600">Years Experience</div>
                 </div>
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-yellow-600">Top 3</div>
+                <div className="site-subtle-card p-4">
+                  <div className="text-2xl font-bold text-[#0b3e75]">Top 3</div>
                   <div className="text-sm text-gray-600">Fanuc Supplier in China</div>
                 </div>
               </div>
@@ -132,7 +133,7 @@ export default function About() {
                 alt="Vcocnc Company Building"
                 width={600}
                 height={400}
-                className="rounded-lg shadow-lg"
+                className="w-full rounded-lg shadow-lg"
               />
             </div>
           </div>
@@ -153,26 +154,26 @@ export default function About() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="text-center bg-white p-8 rounded-lg shadow-lg">
-              <BuildingOfficeIcon className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
+            <div className="site-detail-panel text-center p-8">
+              <BuildingOfficeIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">5,000</div>
               <div className="text-gray-600">sqm Workshop</div>
             </div>
 
-            <div className="text-center bg-white p-8 rounded-lg shadow-lg">
-              <UserGroupIcon className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
+            <div className="site-detail-panel text-center p-8">
+              <UserGroupIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">37</div>
               <div className="text-gray-600">Total Employees</div>
             </div>
 
-            <div className="text-center bg-white p-8 rounded-lg shadow-lg">
-              <CubeIcon className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
+            <div className="site-detail-panel text-center p-8">
+              <CubeIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">100K+</div>
               <div className="text-gray-600">Items in Stock</div>
             </div>
 
-            <div className="text-center bg-white p-8 rounded-lg shadow-lg">
-              <TruckIcon className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
+            <div className="site-detail-panel text-center p-8">
+              <TruckIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">50-100</div>
               <div className="text-gray-600">Daily Parcels</div>
             </div>
@@ -194,7 +195,7 @@ export default function About() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center p-6">
-              <ChartBarIcon className="h-16 w-16 text-yellow-600 mx-auto mb-4" />
+              <ChartBarIcon className="h-16 w-16 text-[#0b3e75] mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Sales Service</h3>
               <p className="text-gray-600">
                 Professional sales team with deep knowledge of automation components
@@ -203,7 +204,7 @@ export default function About() {
             </div>
 
             <div className="text-center p-6">
-              <ClockIcon className="h-16 w-16 text-yellow-600 mx-auto mb-4" />
+              <ClockIcon className="h-16 w-16 text-[#0b3e75] mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Testing Service</h3>
               <p className="text-gray-600">
                 Comprehensive testing procedures ensure all components meet quality
@@ -212,7 +213,7 @@ export default function About() {
             </div>
 
             <div className="text-center p-6">
-              <WrenchScrewdriverIcon className="h-16 w-16 text-yellow-600 mx-auto mb-4" />
+              <WrenchScrewdriverIcon className="h-16 w-16 text-[#0b3e75] mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Maintenance Service</h3>
               <p className="text-gray-600">
                 Expert maintenance and repair services to keep your automation
@@ -224,23 +225,23 @@ export default function About() {
       </section>
 
       {/* Experience Section */}
-      <section className="py-16 bg-yellow-600 text-black">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="site-page-hero py-16">
+        <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
               <h2 className="text-3xl md:text-4xl font-bold mb-6">
                 20+ Years of Excellence
               </h2>
-              <p className="text-lg text-yellow-900 mb-6 leading-relaxed">
+              <p className="text-lg text-blue-100 mb-6 leading-relaxed">
                 More than 18 years experience we have ability to coordinate specific strengths
                 into a whole, providing clients with solutions that consider various import and
                 export transportation options.
               </p>
               <div className="flex items-center space-x-4">
-                <ShieldCheckIcon className="h-12 w-12 text-yellow-800" />
+                <ShieldCheckIcon className="h-12 w-12 text-orange-300" />
                 <div>
                   <div className="text-xl font-semibold">Trusted Partner</div>
-                  <div className="text-yellow-900">Reliable solutions worldwide</div>
+                  <div className="text-blue-100">Reliable solutions worldwide</div>
                 </div>
               </div>
             </div>
@@ -250,7 +251,7 @@ export default function About() {
                 alt="Workshop Interior"
                 width={600}
                 height={400}
-                className="rounded-lg shadow-lg"
+                className="w-full rounded-lg shadow-lg"
               />
             </div>
           </div>

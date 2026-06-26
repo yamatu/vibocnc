@@ -239,22 +239,30 @@ export default function GuestCheckoutPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50 py-8">
+      <div className="site-page-shell min-h-screen py-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-8">
+            <span className="site-chip">Guest checkout</span>
+            <h1 className="mt-3 text-3xl font-bold text-slate-950 sm:text-4xl">Place an order without an account</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Enter contact, shipping, and payment details for a one-time parts purchase.
+            </p>
+          </div>
+
           {/* Progress Steps */}
           <div className="mb-8">
-            <div className="flex items-center justify-center space-x-4">
+            <div className="site-toolbar flex flex-wrap items-center justify-center gap-3 px-4 py-3">
               {['Order Details', 'Payment', 'Complete'].map((label, i) => {
                 const stepIdx = step === 'form' ? 0 : step === 'payment' ? 1 : 2;
                 const done = i < stepIdx;
                 const active = i === stepIdx;
                 return (
                   <div key={label} className="flex items-center">
-                    {i > 0 && <div className={`w-8 h-0.5 mr-4 ${done || active ? 'bg-yellow-500' : 'bg-gray-200'}`} />}
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${active ? 'bg-yellow-100 text-yellow-700' : done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {i > 0 && <div className={`site-progress-line mr-1 ${done || active ? 'site-progress-line-active' : ''}`} />}
+                    <div className={`site-progress-step ${active ? 'site-progress-step-active' : done ? 'site-progress-step-done' : ''}`}>
                       {i + 1}
                     </div>
-                    <span className="ml-2 text-sm font-medium">{label}</span>
+                    <span className="ml-2 text-sm font-semibold text-slate-700">{label}</span>
                   </div>
                 );
               })}
@@ -267,52 +275,52 @@ export default function GuestCheckoutPage() {
                 {/* Form Section */}
                 <div className="lg:col-span-2 space-y-6">
                   {/* Contact Info */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="site-panel p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                        <input {...register('customer_name', { required: 'Name is required' })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input {...register('customer_name', { required: 'Name is required' })} className="site-input w-full px-3 py-2.5" />
                         {errors.customer_name && <p className="mt-1 text-sm text-red-600">{errors.customer_name.message}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                        <input type="email" {...register('customer_email', { required: 'Email is required', pattern: { value: /^\S+@\S+$/i, message: 'Invalid email' } })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input type="email" {...register('customer_email', { required: 'Email is required', pattern: { value: /^\S+@\S+$/i, message: 'Invalid email' } })} className="site-input w-full px-3 py-2.5" />
                         {errors.customer_email && <p className="mt-1 text-sm text-red-600">{errors.customer_email.message}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
-                        <input type="tel" {...register('customer_phone', { required: 'Phone is required' })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input type="tel" {...register('customer_phone', { required: 'Phone is required' })} className="site-input w-full px-3 py-2.5" />
                         {errors.customer_phone && <p className="mt-1 text-sm text-red-600">{errors.customer_phone.message}</p>}
                       </div>
                       <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Company (optional)</label>
-                        <input {...register('company')} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input {...register('company')} className="site-input w-full px-3 py-2.5" />
                       </div>
                     </div>
                   </div>
 
                   {/* Shipping Address */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="site-panel p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">Shipping Address</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
-                        <input {...register('shipping_address', { required: 'Address is required' })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input {...register('shipping_address', { required: 'Address is required' })} className="site-input w-full px-3 py-2.5" />
                         {errors.shipping_address && <p className="mt-1 text-sm text-red-600">{errors.shipping_address.message}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-                        <input {...register('shipping_city', { required: 'City is required' })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input {...register('shipping_city', { required: 'City is required' })} className="site-input w-full px-3 py-2.5" />
                         {errors.shipping_city && <p className="mt-1 text-sm text-red-600">{errors.shipping_city.message}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">State / Province</label>
-                        <input {...register('shipping_state')} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input {...register('shipping_state')} className="site-input w-full px-3 py-2.5" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">ZIP / Postal Code *</label>
-                        <input {...register('shipping_zip', { required: 'ZIP code is required' })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                        <input {...register('shipping_zip', { required: 'ZIP code is required' })} className="site-input w-full px-3 py-2.5" />
                         {errors.shipping_zip && <p className="mt-1 text-sm text-red-600">{errors.shipping_zip.message}</p>}
                       </div>
                       <div>
@@ -327,7 +335,7 @@ export default function GuestCheckoutPage() {
                               value={shipCountrySearch}
                               onChange={(e) => { setShipCountrySearch(e.target.value); setShipCountryOpen(true); if (!e.target.value) setValue('shipping_country', '', { shouldValidate: true }); }}
                               onFocus={() => setShipCountryOpen(true)}
-                              className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                              className="site-input w-full pl-9 pr-8 py-2.5"
                             />
                             {shipCountrySearch && (
                               <button type="button" onClick={() => { setShipCountrySearch(''); setValue('shipping_country', '', { shouldValidate: true }); setShipCountryOpen(false); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -340,7 +348,7 @@ export default function GuestCheckoutPage() {
                               {filteredShipCountries.length === 0 ? (
                                 <li className="px-3 py-2 text-sm text-gray-500">No countries found</li>
                               ) : filteredShipCountries.map(c => (
-                                <li key={c.country_code} onClick={() => selectShipCountry(c.country_code, c.country_name)} className={`cursor-pointer px-3 py-2 text-sm hover:bg-yellow-50 ${shippingCountry === c.country_code ? 'bg-yellow-50 font-medium' : ''}`}>
+                                <li key={c.country_code} onClick={() => selectShipCountry(c.country_code, c.country_name)} className={`cursor-pointer px-3 py-2 text-sm hover:bg-blue-50 ${shippingCountry === c.country_code ? 'bg-blue-50 font-medium text-blue-950' : ''}`}>
                                   {c.country_name}
                                 </li>
                               ))}
@@ -353,11 +361,11 @@ export default function GuestCheckoutPage() {
                   </div>
 
                   {/* Billing Address */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="site-panel p-6">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-lg font-semibold text-gray-900">Billing Address</h2>
                       <label className="flex items-center text-sm text-gray-600 cursor-pointer">
-                        <input type="checkbox" checked={sameAsShipping} onChange={(e) => setSameAsShipping(e.target.checked)} className="mr-2 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500" />
+                        <input type="checkbox" checked={sameAsShipping} onChange={(e) => setSameAsShipping(e.target.checked)} className="mr-2 rounded border-gray-300" />
                         Same as shipping
                       </label>
                     </div>
@@ -365,19 +373,19 @@ export default function GuestCheckoutPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="sm:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
-                          <input {...register('billing_address', { required: !sameAsShipping ? 'Address is required' : false })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                          <input {...register('billing_address', { required: !sameAsShipping ? 'Address is required' : false })} className="site-input w-full px-3 py-2.5" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-                          <input {...register('billing_city', { required: !sameAsShipping ? 'City is required' : false })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                          <input {...register('billing_city', { required: !sameAsShipping ? 'City is required' : false })} className="site-input w-full px-3 py-2.5" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">State / Province</label>
-                          <input {...register('billing_state')} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                          <input {...register('billing_state')} className="site-input w-full px-3 py-2.5" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">ZIP / Postal Code *</label>
-                          <input {...register('billing_zip', { required: !sameAsShipping ? 'ZIP is required' : false })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" />
+                          <input {...register('billing_zip', { required: !sameAsShipping ? 'ZIP is required' : false })} className="site-input w-full px-3 py-2.5" />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
@@ -391,7 +399,7 @@ export default function GuestCheckoutPage() {
                                 value={billCountrySearch}
                                 onChange={(e) => { setBillCountrySearch(e.target.value); setBillCountryOpen(true); if (!e.target.value) setValue('billing_country', '', { shouldValidate: true }); }}
                                 onFocus={() => setBillCountryOpen(true)}
-                                className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                                className="site-input w-full pl-9 pr-8 py-2.5"
                               />
                               {billCountrySearch && (
                                 <button type="button" onClick={() => { setBillCountrySearch(''); setValue('billing_country', '', { shouldValidate: true }); setBillCountryOpen(false); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -404,7 +412,7 @@ export default function GuestCheckoutPage() {
                                 {filteredBillCountries.length === 0 ? (
                                   <li className="px-3 py-2 text-sm text-gray-500">No countries found</li>
                                 ) : filteredBillCountries.map(c => (
-                                  <li key={c.country_code} onClick={() => selectBillCountry(c.country_code, c.country_name)} className="cursor-pointer px-3 py-2 text-sm hover:bg-yellow-50">
+                                  <li key={c.country_code} onClick={() => selectBillCountry(c.country_code, c.country_name)} className="cursor-pointer px-3 py-2 text-sm hover:bg-blue-50">
                                     {c.country_name}
                                   </li>
                                 ))}
@@ -420,15 +428,15 @@ export default function GuestCheckoutPage() {
                   </div>
 
                   {/* Notes */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="site-panel p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Notes (optional)</h2>
-                    <textarea {...register('notes')} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Any special instructions..." />
+                    <textarea {...register('notes')} rows={3} className="site-input w-full px-3 py-2.5" placeholder="Any special instructions..." />
                   </div>
                 </div>
 
                 {/* Order Summary Sidebar */}
                 <div>
-                  <div className="bg-white rounded-lg shadow-sm p-6 sticky top-24">
+                  <div className="site-panel sticky top-24 p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h2>
                     <div className="space-y-3 mb-4">
                       {items.map((item) => (
@@ -457,13 +465,13 @@ export default function GuestCheckoutPage() {
                       </div>
                       <div className="flex justify-between text-base font-semibold border-t pt-2">
                         <span>Total</span>
-                        <span className="text-yellow-700">{formatCurrency(grandTotal)}</span>
+                        <span className="text-orange-700">{formatCurrency(grandTotal)}</span>
                       </div>
                     </div>
                     <button
                       type="submit"
                       disabled={isProcessing}
-                      className="w-full mt-6 bg-yellow-500 text-black py-3 px-4 rounded-md font-semibold hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="site-primary-action w-full mt-6 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isProcessing ? 'Processing...' : 'Place Order & Pay'}
                     </button>
@@ -478,9 +486,9 @@ export default function GuestCheckoutPage() {
 
           {step === 'payment' && currentOrder && (
             <div className="max-w-2xl mx-auto">
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="site-panel p-6">
                 <div className="flex items-center mb-6">
-                  <CreditCardIcon className="h-6 w-6 text-yellow-600 mr-2" />
+                  <CreditCardIcon className="h-6 w-6 text-blue-800 mr-2" />
                   <h2 className="text-xl font-semibold text-gray-900">Payment</h2>
                 </div>
                 <div className="mb-6 p-4 bg-blue-50 rounded-lg">
@@ -496,7 +504,7 @@ export default function GuestCheckoutPage() {
                 />
                 {isProcessing && (
                   <div className="mt-4 flex items-center justify-center text-gray-500">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2" />
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800 mr-2" />
                     Processing payment...
                   </div>
                 )}
@@ -506,14 +514,14 @@ export default function GuestCheckoutPage() {
 
           {step === 'success' && currentOrder && (
             <div className="max-w-2xl mx-auto text-center">
-              <div className="bg-white rounded-lg shadow-sm p-8">
+              <div className="site-panel p-8">
                 <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mx-auto mb-6">
                   <ShoppingBagIcon className="h-8 w-8 text-green-600" />
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900 mb-4">Order Placed Successfully!</h1>
                 <p className="text-gray-600 mb-2">Thank you for your purchase. A confirmation email has been sent to your email address.</p>
                 <p className="text-gray-600 mb-6">You can use the order number below to track your order status.</p>
-                <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <div className="site-form-muted-box p-4 mb-6">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Order Number:</span>
@@ -528,7 +536,7 @@ export default function GuestCheckoutPage() {
                 <div className="space-y-3">
                   <Link
                     href={`/orders/track/${currentOrder.order_number}`}
-                    className="block w-full bg-yellow-500 text-black py-2 px-4 rounded-md hover:bg-yellow-600 font-semibold text-center"
+                    className="site-primary-action block w-full px-4 py-2.5 text-center text-sm"
                   >
                     Track My Order
                   </Link>

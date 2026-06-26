@@ -45,9 +45,9 @@ export default function ProductCardHorizontal({ product }: { product: Product })
   return (
     <Link
       href={href}
-      className="group flex overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow"
+      className="site-product-card group flex"
     >
-      <div className="relative w-44 sm:w-48 shrink-0 bg-gray-100">
+      <div className="site-product-media relative w-44 sm:w-48 shrink-0">
         <div className="relative aspect-[4/3] w-full">
           {imageUrl && imageUrl !== '/images/placeholder.svg' ? (
             <Image
@@ -66,11 +66,11 @@ export default function ProductCardHorizontal({ product }: { product: Product })
       <div className="min-w-0 flex-1 p-4 flex flex-col">
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="text-base sm:text-lg font-semibold text-gray-900 line-clamp-2 group-hover:text-yellow-700 transition-colors">
+            <h3 className="site-product-title text-base sm:text-lg font-semibold line-clamp-2">
               {product.name}
             </h3>
             {product.is_featured ? (
-              <span className="shrink-0 rounded-md bg-yellow-500 px-2 py-1 text-xs font-semibold text-black">Featured</span>
+              <span className="site-chip shrink-0">Featured</span>
             ) : null}
           </div>
           <div className="mt-1 text-xs text-gray-500">SKU: {product.sku}</div>
@@ -84,7 +84,7 @@ export default function ProductCardHorizontal({ product }: { product: Product })
         <div className="mt-auto pt-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold text-yellow-700">{formatCurrency(product.price)}</span>
+              <span className="text-lg font-bold text-[#0b3e75]">{formatCurrency(product.price)}</span>
               {product.compare_price && product.compare_price > product.price ? (
                 <span className="text-sm text-gray-500 line-through">{formatCurrency(product.compare_price)}</span>
               ) : null}
@@ -92,14 +92,14 @@ export default function ProductCardHorizontal({ product }: { product: Product })
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+            <span className="site-secondary-action hidden gap-1 px-3 py-2 text-sm sm:inline-flex">
               <EyeIcon className="h-4 w-4" />
               View
             </span>
             <button
               onClick={handleAddToCart}
               disabled={isLoading}
-              className="inline-flex items-center gap-1 rounded-md bg-yellow-500 px-3 py-2 text-sm font-semibold text-black hover:bg-yellow-600 disabled:opacity-60"
+              className="site-primary-action gap-1 px-3 py-2 text-sm disabled:opacity-60"
             >
               <ShoppingCartIcon className="h-4 w-4" />
               {isLoading ? 'Adding' : 'Add'}

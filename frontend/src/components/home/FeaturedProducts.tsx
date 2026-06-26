@@ -106,10 +106,10 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-950 mb-4">
             {headerTitle}
           </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
+          <p className="text-xl text-slate-600 max-w-3xl mx-auto mb-8">
             {headerDescription}
           </p>
         </div>
@@ -119,7 +119,7 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
           {products.map((product: any) => (
             <div
               key={product.id}
-              className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden group"
+              className="bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden group"
               onMouseEnter={() => setHoveredProduct(product.id)}
               onMouseLeave={() => setHoveredProduct(null)}
             >
@@ -141,12 +141,12 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
                 })()}
                 
                 {/* Overlay Actions */}
-                <div className={`absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center space-x-4 transition-opacity duration-300 ${
+                <div className={`absolute inset-0 bg-slate-950/55 flex items-center justify-center space-x-4 transition-opacity duration-300 ${
                   hoveredProduct === product.id ? 'opacity-100' : 'opacity-0'
                 }`}>
                   <Link
                     href={`/products/${toProductPathId(product.sku)}`}
-                    className="bg-white text-gray-900 p-3 rounded-full hover:bg-gray-100 transition-colors"
+                    className="bg-white text-slate-900 p-3 rounded-full hover:bg-slate-100 transition-colors"
                   >
                     <EyeIcon className="h-5 w-5" />
                   </Link>
@@ -154,7 +154,7 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
                   {(product.stock_quantity ?? 0) > 0 && (
                     <button
                       onClick={() => handleAddToCart(product)}
-                      className="bg-yellow-500 text-black p-3 rounded-full hover:bg-yellow-600 transition-colors"
+                      className="bg-orange-500 text-white p-3 rounded-full hover:bg-[#003a78] transition-colors"
                     >
                       <ShoppingCartIcon className="h-5 w-5" />
                     </button>
@@ -164,7 +164,7 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
                 {/* Badges */}
                 <div className="absolute top-4 left-4 flex flex-col space-y-2">
                   {product.compare_price && product.compare_price > product.price && (
-                    <span className="bg-red-500 text-white px-2 py-1 rounded text-sm font-semibold" suppressHydrationWarning>
+                    <span className="bg-orange-500 text-white px-2 py-1 rounded text-sm font-semibold" suppressHydrationWarning>
                       Save {Math.round(((product.compare_price - product.price) / product.compare_price) * 100)}%
                     </span>
                   )}
@@ -180,18 +180,18 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
               {/* Product Info */}
               <div className="p-6">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-yellow-600 font-medium">{product.category?.name || 'FANUC'}</span>
+                  <span className="text-sm text-[#003a78] font-medium">{product.category?.name || 'CNC Parts'}</span>
                   <div className="flex items-center space-x-1">
-                    <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">4.9 (18)</span>
+                    <StarIcon className="h-4 w-4 text-orange-400 fill-current" />
+                    <span className="text-sm text-slate-600">4.9 (18)</span>
                   </div>
                 </div>
 
-                <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+                <h3 className="text-lg font-semibold text-slate-950 mb-2 line-clamp-2">
                   {product.name}
                 </h3>
                 
-                <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                <p className="text-sm text-slate-600 mb-3 line-clamp-2">
                   {product.description}
                 </p>
 
@@ -200,7 +200,7 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
                   {Array.isArray(product.features) && product.features.slice(0, 2).map((feature: any) => (
                     <span
                       key={String(feature)}
-                      className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs"
+                      className="bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs"
                     >
                       {feature}
                     </span>
@@ -210,7 +210,7 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
                 {/* Price and Actions */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <span className="text-2xl font-bold text-gray-900">
+                    <span className="text-2xl font-bold text-slate-950">
                       {formatCurrency(product.price)}
                     </span>
                     {product.compare_price && product.compare_price > product.price && (
@@ -220,14 +220,14 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
                     )}
                   </div>
 
-                  <div className="ml-1 text-sm text-gray-600">
+                  <div className="ml-1 text-sm text-slate-600">
                     {(product.stock_quantity ?? 0) > 0 ? `In Stock: ${product.stock_quantity}` : 'Out of Stock'}
                   </div>
 
                   {(product.stock_quantity ?? 0) > 0 ? (
                     <button
                       onClick={() => handleAddToCart(product)}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-medium transition-colors duration-300"
+                      className="bg-orange-500 hover:bg-[#003a78] text-white px-4 py-2 rounded-md font-medium transition-colors duration-300"
                     >
                       Add to Cart
                     </button>
@@ -249,7 +249,7 @@ export function FeaturedProducts({ content }: { content?: HomepageContent | null
         <div className="text-center">
           <Link
             href={ctaHref}
-            className="inline-flex items-center space-x-2 bg-yellow-500 hover:bg-yellow-600 text-black px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-300 transform hover:scale-105"
+            className="inline-flex items-center space-x-2 bg-slate-950 hover:bg-orange-600 text-white px-8 py-4 rounded-md text-lg font-semibold transition-colors duration-300"
           >
             <span>{ctaText}</span>
             <ArrowRightIcon className="h-5 w-5" />

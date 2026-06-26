@@ -207,7 +207,7 @@ export default function Pagination({
                 disabled={page === '...'}
                 className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                   page === currentPage
-                    ? 'z-10 bg-yellow-50 border-yellow-500 text-yellow-600'
+                    ? 'z-10 bg-blue-50 border-blue-700 text-[#0b3e75]'
                     : page === '...'
                     ? 'border-gray-300 bg-white text-gray-700 cursor-default'
                     : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'

@@ -83,15 +83,15 @@ export default function OrderSummary({
 
   return (
     <div>
-      <div className="flex items-center mb-6">
-        <ShoppingCartIcon className="h-6 w-6 text-amber-600 mr-2" />
+      <div className="site-form-heading mb-6">
+        <ShoppingCartIcon className="h-6 w-6" />
         <h2 className="text-xl font-semibold text-gray-900">Order Summary</h2>
       </div>
 
       {/* Items List */}
       <div className="space-y-4 mb-6">
         {items.map((item) => (
-          <div key={item.product.id} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
+          <div key={item.product.id} className="site-form-muted-box flex items-center space-x-4 p-3">
             <div className="flex-shrink-0">
               <div className="w-16 h-16 bg-gray-200 rounded-md overflow-hidden">
                 <Image
@@ -136,7 +136,7 @@ export default function OrderSummary({
 
       {/* Coupon Section */}
       {!readonly && (
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+        <div className="site-form-muted-box mb-6 p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-3">Coupon Code</h3>
 
           {appliedCoupon?.valid ? (
@@ -165,13 +165,13 @@ export default function OrderSummary({
                 value={couponCode}
                 onChange={(e) => setCouponCode(e.target.value)}
                 placeholder="Enter coupon code"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                className="site-input flex-1 px-3 py-2.5"
                 disabled={isValidatingCoupon}
               />
               <button
                 onClick={handleApplyCoupon}
                 disabled={isValidatingCoupon || !couponCode.trim()}
-                className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="site-primary-action px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isValidatingCoupon ? 'Validating...' : 'Apply'}
               </button>
@@ -207,7 +207,7 @@ export default function OrderSummary({
           <div className="border-t border-gray-200 pt-3">
             <div className="flex justify-between">
               <span className="text-base font-medium text-gray-900">Total</span>
-              <span className="text-lg font-bold text-amber-600">
+              <span className="text-lg font-bold text-orange-700">
                 ${finalTotal.toFixed(2)}
               </span>
             </div>

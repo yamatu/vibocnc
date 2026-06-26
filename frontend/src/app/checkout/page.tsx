@@ -232,30 +232,38 @@ export default function CheckoutPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50 py-8">
+      <div className="site-page-shell min-h-screen py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-8">
+            <span className="site-chip">Secure checkout</span>
+            <h1 className="mt-3 text-3xl font-bold text-slate-950 sm:text-4xl">Complete your parts order</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Confirm shipping details, review the order, and complete payment through the configured PayPal flow.
+            </p>
+          </div>
+
           {/* Progress Steps */}
           <div className="mb-8">
-            <div className="flex items-center justify-center space-x-4">
-              <div className={`flex items-center ${step === 'form' ? 'text-amber-600' : step === 'payment' || step === 'success' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step === 'form' ? 'bg-amber-100 text-amber-600' : step === 'payment' || step === 'success' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+            <div className="site-toolbar flex flex-wrap items-center justify-center gap-3 px-4 py-3">
+              <div className="flex items-center">
+                <div className={`site-progress-step ${step === 'form' ? 'site-progress-step-active' : step === 'payment' || step === 'success' ? 'site-progress-step-done' : ''}`}>
                   1
                 </div>
-                <span className="ml-2 text-sm font-medium">Order Details</span>
+                <span className="ml-2 text-sm font-semibold text-slate-700">Order Details</span>
               </div>
-              <div className={`w-8 h-0.5 ${step === 'payment' || step === 'success' ? 'bg-green-600' : 'bg-gray-200'}`} />
-              <div className={`flex items-center ${step === 'payment' ? 'text-amber-600' : step === 'success' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step === 'payment' ? 'bg-amber-100 text-amber-600' : step === 'success' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+              <div className={`site-progress-line ${step === 'payment' || step === 'success' ? 'site-progress-line-active' : ''}`} />
+              <div className="flex items-center">
+                <div className={`site-progress-step ${step === 'payment' ? 'site-progress-step-active' : step === 'success' ? 'site-progress-step-done' : ''}`}>
                   2
                 </div>
-                <span className="ml-2 text-sm font-medium">Payment</span>
+                <span className="ml-2 text-sm font-semibold text-slate-700">Payment</span>
               </div>
-              <div className={`w-8 h-0.5 ${step === 'success' ? 'bg-green-600' : 'bg-gray-200'}`} />
-              <div className={`flex items-center ${step === 'success' ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${step === 'success' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+              <div className={`site-progress-line ${step === 'success' ? 'site-progress-line-active' : ''}`} />
+              <div className="flex items-center">
+                <div className={`site-progress-step ${step === 'success' ? 'site-progress-step-done' : ''}`}>
                   3
                 </div>
-                <span className="ml-2 text-sm font-medium">Complete</span>
+                <span className="ml-2 text-sm font-semibold text-slate-700">Complete</span>
               </div>
             </div>
           </div>
@@ -263,7 +271,7 @@ export default function CheckoutPage() {
           {step === 'form' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Checkout Form */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="site-panel p-6">
                 <CheckoutForm
                   register={register}
                   errors={errors}
@@ -279,7 +287,7 @@ export default function CheckoutPage() {
               </div>
 
               {/* Order Summary */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="site-panel p-6">
                 <OrderSummary
                   items={items}
                   total={total}
@@ -297,9 +305,9 @@ export default function CheckoutPage() {
           {step === 'payment' && currentOrder && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Payment Section */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="site-panel p-6">
                 <div className="flex items-center mb-6">
-                  <CreditCardIcon className="h-6 w-6 text-amber-600 mr-2" />
+                  <CreditCardIcon className="h-6 w-6 text-blue-800 mr-2" />
                   <h2 className="text-xl font-semibold text-gray-900">Payment</h2>
                 </div>
 
@@ -320,14 +328,14 @@ export default function CheckoutPage() {
 
                 {isProcessing && (
                   <div className="mt-4 flex items-center justify-center text-gray-500">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600 mr-2"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800 mr-2"></div>
                     Processing payment...
                   </div>
                 )}
               </div>
 
               {/* Order Summary */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="site-panel p-6">
                 <OrderSummary
                   items={items}
                   total={currentOrder.subtotal_amount}
@@ -345,7 +353,7 @@ export default function CheckoutPage() {
 
           {step === 'success' && currentOrder && (
             <div className="max-w-2xl mx-auto text-center">
-              <div className="bg-white rounded-lg shadow-sm p-8">
+              <div className="site-panel p-8">
                 <div className="flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mx-auto mb-6">
                   <ShoppingBagIcon className="h-8 w-8 text-green-600" />
                 </div>
@@ -358,7 +366,7 @@ export default function CheckoutPage() {
                   Thank you for your order. We have received your payment and will process your order shortly.
                 </p>
 
-                <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                  <div className="site-form-muted-box p-4 mb-6">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Order Number:</span>
@@ -374,7 +382,7 @@ export default function CheckoutPage() {
                 <div className="space-y-3">
                   <button
                     onClick={() => router.push('/account/orders')}
-                    className="w-full bg-amber-600 text-white py-2 px-4 rounded-md hover:bg-amber-700 transition duration-200"
+                    className="site-primary-action w-full px-4 py-2.5 text-sm"
                   >
                     View My Orders
                   </button>

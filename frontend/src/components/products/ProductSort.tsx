@@ -45,7 +45,7 @@ export default function ProductSort({
           id="sort"
           value={currentValue}
           onChange={(e) => handleSortChange(e.target.value)}
-          className="appearance-none block w-full px-3 py-2 pr-8 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 cursor-pointer"
+          className="site-select appearance-none block w-full px-3 py-2 pr-8 text-sm font-medium cursor-pointer"
         >
           {sortOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -54,12 +54,12 @@ export default function ProductSort({
           ))}
         </select>
         <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-          <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+          <ChevronDownIcon className="h-4 w-4 text-slate-400" />
         </div>
       </div>
       
       {/* Sort indicator */}
-      <div className="mt-1 text-xs text-gray-500">
+      <div className="mt-1 text-xs text-slate-500">
         Sorted by: {currentOption?.label || 'Default'}
       </div>
     </div>

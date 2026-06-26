@@ -155,8 +155,8 @@ export default function PayPalCheckout(props: PayPalCheckoutProps) {
   // Check if PayPal is configured
   if (!config?.enabled || !config.client_id) {
     return (
-      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-        <div className="text-yellow-800 text-sm">
+      <div className="site-form-muted-box p-4">
+        <div className="text-slate-700 text-sm">
           <strong>PayPal is not configured</strong>
           <br />
           Please configure PayPal in Admin → PayPal.

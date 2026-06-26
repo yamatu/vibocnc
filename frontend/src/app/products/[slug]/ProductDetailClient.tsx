@@ -66,15 +66,15 @@ function FAQAccordionItem({ question, answer }: { question: string; answer: stri
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between px-6 py-4 text-left text-sm font-medium text-gray-900 hover:bg-gray-50"
+        className="flex w-full items-center justify-between px-6 py-4 text-left text-sm font-semibold text-slate-950 hover:bg-slate-50"
       >
         <span>{question}</span>
         <ChevronDownIcon
-          className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`h-5 w-5 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
       {open && (
-        <div className="px-6 pb-4 text-sm text-gray-700 leading-relaxed">
+        <div className="px-6 pb-4 text-sm text-slate-700 leading-relaxed">
           {answer}
         </div>
       )}
@@ -277,7 +277,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
         </div>
       </Layout>
     );
@@ -290,11 +290,11 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
         <Layout>
           <div className="min-h-screen flex items-center justify-center">
             <div className="text-center">
-              <h1 className="text-2xl font-bold text-gray-900 mb-4">Product Not Found</h1>
-              <p className="text-gray-600 mb-8">The product you&apos;re looking for doesn&apos;t exist.</p>
+              <h1 className="text-2xl font-bold text-slate-950 mb-4">Product Not Found</h1>
+              <p className="text-slate-600 mb-8">The product you&apos;re looking for doesn&apos;t exist.</p>
               <Link
                 href="/products"
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700"
+                className="site-primary-action px-4 py-2 text-sm"
               >
                 <ArrowLeftIcon className="h-4 w-4 mr-2" />
                 Back to Products
@@ -307,7 +307,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
         </div>
       </Layout>
     );
@@ -420,14 +420,14 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
         categoryBreadcrumb={categoryBreadcrumb}
       />
 
-      <div className="min-h-screen bg-gray-50">
+      <div className="site-page-shell min-h-screen">
         {/* Breadcrumb */}
-        <div className="bg-white border-b">
+        <div className="site-breadcrumb-bar">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <nav className="flex items-center space-x-2 text-sm text-gray-500">
-              <Link href="/" className="hover:text-yellow-600">Home</Link>
+            <nav className="flex items-center space-x-2 text-sm text-slate-500">
+              <Link href="/" className="site-link-accent">Home</Link>
               <span>/</span>
-              <Link href="/products" className="hover:text-yellow-600">Products</Link>
+              <Link href="/products" className="site-link-accent">Products</Link>
               <span>/</span>
               {product.category && (
                 <>
@@ -435,7 +435,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                     const href = resolveCategoryHref();
                     if (!href) return <span>{product.category.name}</span>;
                     return (
-                      <Link href={href} className="hover:text-yellow-600">
+                      <Link href={href} className="site-link-accent">
                         {product.category.name}
                       </Link>
                     );
@@ -443,7 +443,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                   <span>/</span>
                 </>
               )}
-              <span className="text-gray-900 font-medium">{product.name}</span>
+              <span className="font-medium text-slate-900">{product.name}</span>
             </nav>
           </div>
         </div>
@@ -462,19 +462,22 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             />
 
             {/* Product Info */}
-            <div className="mt-10 px-4 sm:px-0 sm:mt-16 lg:mt-0">
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900">{computedHeading}</h1>
+            <div className="site-detail-panel mt-10 px-5 py-6 sm:px-6 sm:mt-16 lg:mt-0">
+              <div className="mb-3 inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0b3e75]">
+                {categoryName}
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-950">{computedHeading}</h1>
               
               <div className="mt-3">
                 <h2 className="sr-only">Product information</h2>
-                <p className="text-3xl tracking-tight text-gray-900">{formatCurrency(product.price)}</p>
+                <p className="text-3xl font-bold tracking-tight text-[#0b3e75]">{formatCurrency(product.price)}</p>
               </div>
 
               {/* SKU */}
               <div className="mt-4 space-y-1">
-                <p className="text-sm text-gray-500">SKU: <span className="font-medium text-gray-900">{product.sku}</span></p>
+                <p className="text-sm text-slate-500">SKU: <span className="font-semibold text-slate-900">{product.sku}</span></p>
                 {product.sku && (
-                  <p className="text-xs text-gray-500">Alternate: <span className="font-mono">{String(product.sku).replace(/-/g, '')}</span></p>
+                  <p className="text-xs text-slate-500">Alternate: <span className="font-mono">{String(product.sku).replace(/-/g, '')}</span></p>
                 )}
               </div>
 
@@ -482,14 +485,14 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   onClick={handleAddToCart}
-                  className="inline-flex items-center px-5 py-3 border border-transparent text-sm font-medium rounded-md text-black bg-yellow-500 hover:bg-yellow-600"
+                  className="site-primary-action px-5 py-3 text-sm"
                 >
                   <ShoppingCartIcon className="h-5 w-5 mr-2" />
                   Add to Cart
                 </button>
                 <button
                   onClick={handleWhatsAppInquiry}
-                  className="inline-flex items-center px-5 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-green-500 hover:bg-green-600"
+                  className="inline-flex items-center rounded-md border border-green-600 bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-green-700"
                 >
                   <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
@@ -498,37 +501,37 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                 </button>
                 <button
                   onClick={handleBuyNow}
-                  className="inline-flex items-center px-5 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                  className="inline-flex items-center rounded-md border border-[#0b3e75] bg-[#0b3e75] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#082f5a]"
                 >
                   Buy Now
                 </button>
               </div>
 
               {/* Key specs */}
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="site-subtle-card mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
                 <div className="text-sm">
-                  <div className="text-xs text-gray-500">Brand</div>
-                  <div className="font-medium text-gray-900">{brandName || '-'}</div>
+                  <div className="text-xs text-slate-500">Brand</div>
+                  <div className="font-semibold text-slate-900">{brandName || '-'}</div>
                 </div>
                 <div className="text-sm">
-                  <div className="text-xs text-gray-500">Part No.</div>
-                  <div className="font-mono text-gray-900">{product.part_number || product.model || product.sku}</div>
+                  <div className="text-xs text-slate-500">Part No.</div>
+                  <div className="font-mono text-slate-900">{product.part_number || product.model || product.sku}</div>
                 </div>
                 <div className="text-sm">
-                  <div className="text-xs text-gray-500">Warranty</div>
-                  <div className="font-medium text-gray-900">{product.warranty_period || '12 months'}</div>
+                  <div className="text-xs text-slate-500">Warranty</div>
+                  <div className="font-semibold text-slate-900">{product.warranty_period || '12 months'}</div>
                 </div>
                 <div className="text-sm">
-                  <div className="text-xs text-gray-500">Lead time</div>
-                  <div className="font-medium text-gray-900">{product.lead_time || '3-7 days'}</div>
+                  <div className="text-xs text-slate-500">Lead time</div>
+                  <div className="font-semibold text-slate-900">{product.lead_time || '3-7 days'}</div>
                 </div>
               </div>
 
               {/* Shipping Calculator */}
               {shippingCountries.length > 0 && (
-                <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 flex items-center mb-3">
-                    <TruckIcon className="h-4 w-4 mr-2 text-yellow-600" />
+                <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+                  <h3 className="text-sm font-semibold text-slate-950 flex items-center mb-3">
+                    <TruckIcon className="h-4 w-4 mr-2 text-[#0b3e75]" />
                     Shipping Estimate
                   </h3>
                   <div className="relative" ref={countryDropdownRef}>
@@ -548,7 +551,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                           }
                         }}
                         onFocus={() => setCountryDropdownOpen(true)}
-                        className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-8 text-sm text-gray-900 focus:border-yellow-500 focus:ring-yellow-500"
+                        className="site-input w-full py-2 pl-9 pr-8 text-sm"
                       />
                       {countrySearch && (
                         <button
@@ -568,14 +571,14 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                     {countryDropdownOpen && (
                       <ul className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
                         {filteredCountries.length === 0 ? (
-                          <li className="px-3 py-2 text-sm text-gray-500">No countries found</li>
+                          <li className="px-3 py-2 text-sm text-slate-500">No countries found</li>
                         ) : (
                           filteredCountries.map((c) => (
                             <li
                               key={c.country_code}
                               onClick={() => selectCountry(c.country_code, c.country_name)}
-                              className={`cursor-pointer px-3 py-2 text-sm hover:bg-yellow-50 flex items-center justify-between ${
-                                shippingCountry === c.country_code ? 'bg-yellow-50 text-yellow-900 font-medium' : 'text-gray-900'
+                              className={`cursor-pointer px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between ${
+                                shippingCountry === c.country_code ? 'bg-blue-50 text-[#0b3e75] font-medium' : 'text-slate-900'
                               }`}
                             >
                               <span>{c.country_name}</span>
@@ -591,8 +594,8 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                   {shippingCountry && (
                     <div className="mt-3">
                       {shippingLoading ? (
-                        <div className="flex items-center text-sm text-gray-500">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2" />
+                        <div className="flex items-center text-sm text-slate-500">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700 mr-2" />
                           Calculating...
                         </div>
                       ) : shippingError ? (
@@ -603,12 +606,12 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                           Free Shipping
                         </div>
                       ) : shippingQuote ? (
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-slate-900">
                           <span className="font-medium">
                             {shippingQuote.currency === 'USD' ? '$' : shippingQuote.currency + ' '}
                             {shippingQuote.shipping_fee.toFixed(2)}
                           </span>
-                          <span className="text-gray-500 ml-1">
+                          <span className="text-slate-500 ml-1">
                             (weight: {shippingQuote.weight_kg}kg)
                           </span>
                         </div>
@@ -619,23 +622,23 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
               )}
 
               {/* Stock & Availability */}
-              <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+              <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4 space-y-3">
                 <div className="flex items-center text-sm">
                   {product.stock_quantity && product.stock_quantity > 0 ? (
                     <>
                       <CheckIcon className="h-4 w-4 text-green-600 mr-2 flex-shrink-0" />
                       <span className="text-green-700 font-medium">In Stock</span>
-                      <span className="text-gray-500 ml-1">— Ready to ship</span>
+                      <span className="text-slate-500 ml-1">- Ready to ship</span>
                     </>
                   ) : (
                     <>
-                      <ClockIcon className="h-4 w-4 text-yellow-600 mr-2 flex-shrink-0" />
-                      <span className="text-yellow-700 font-medium">Available to Order</span>
-                      <span className="text-gray-500 ml-1">— {product.lead_time || '3-7 days'} lead time</span>
+                      <ClockIcon className="h-4 w-4 text-[#c46a2d] mr-2 flex-shrink-0" />
+                      <span className="font-medium text-[#8a421d]">Available to Order</span>
+                      <span className="text-slate-500 ml-1">- {product.lead_time || '3-7 days'} lead time</span>
                     </>
                   )}
                 </div>
-                <div className="flex items-center text-sm text-gray-600">
+                <div className="flex items-center text-sm text-slate-600">
                   <TruckIcon className="h-4 w-4 mr-2 flex-shrink-0" />
                   Worldwide shipping available
                 </div>
@@ -643,17 +646,17 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
 
               {/* Trust Badges */}
               <div className="mt-6 grid grid-cols-3 gap-3">
-                <div className="flex flex-col items-center text-center p-3 rounded-lg bg-gray-50">
-                  <ShieldCheckIcon className="h-6 w-6 text-yellow-600 mb-1" />
-                  <span className="text-xs font-medium text-gray-700">{product.warranty_period || '12 Month'} Warranty</span>
+                <div className="site-subtle-card flex flex-col items-center text-center p-3">
+                  <ShieldCheckIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
+                  <span className="text-xs font-medium text-slate-700">{product.warranty_period || '12 Month'} Warranty</span>
                 </div>
-                <div className="flex flex-col items-center text-center p-3 rounded-lg bg-gray-50">
-                  <GlobeAltIcon className="h-6 w-6 text-yellow-600 mb-1" />
-                  <span className="text-xs font-medium text-gray-700">Worldwide Shipping</span>
+                <div className="site-subtle-card flex flex-col items-center text-center p-3">
+                  <GlobeAltIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
+                  <span className="text-xs font-medium text-slate-700">Worldwide Shipping</span>
                 </div>
-                <div className="flex flex-col items-center text-center p-3 rounded-lg bg-gray-50">
-                  <CheckIcon className="h-6 w-6 text-yellow-600 mb-1" />
-                  <span className="text-xs font-medium text-gray-700">Quality Tested</span>
+                <div className="site-subtle-card flex flex-col items-center text-center p-3">
+                  <CheckIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
+                  <span className="text-xs font-medium text-slate-700">Quality Tested</span>
                 </div>
               </div>
             </div>
@@ -662,23 +665,23 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
           {/* Product Description — full width below the grid */}
           <div className="mt-12 space-y-8">
             <section>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">About This Part</h2>
-              <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
-                <div className="product-summary rounded-lg bg-yellow-50 border border-yellow-100 p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Quick Answer</h3>
-                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+              <h2 className="text-xl font-semibold text-slate-950 mb-4">About This Part</h2>
+              <div className="site-detail-panel p-6 space-y-4">
+                <div className="product-summary site-subtle-card p-4">
+                  <h3 className="text-sm font-semibold text-slate-950 mb-2">Quick Answer</h3>
+                  <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
                     {productSummaryPoints.map((item) => (
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
                 </div>
                 {shouldRenderIntroParagraph && (
-                  <p className="text-base text-gray-700 leading-relaxed">
+                  <p className="text-base text-slate-700 leading-relaxed">
                     {introParagraph}
                   </p>
                 )}
                 {partHighlights.length > 0 && (
-                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                  <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
                     {partHighlights.map((item) => (
                       <li key={item}>{item}</li>
                     ))}
@@ -689,9 +692,9 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
 
             {/* Main Description */}
             <section>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Product Description</h2>
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="product-description text-base text-gray-700 whitespace-pre-line leading-relaxed max-w-none">
+              <h2 className="text-xl font-semibold text-slate-950 mb-4">Product Description</h2>
+              <div className="site-detail-panel p-6">
+                <div className="product-description text-base text-slate-700 whitespace-pre-line leading-relaxed max-w-none">
                   {descriptionToShow}
                 </div>
               </div>
@@ -700,14 +703,14 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             {/* Technical Specifications */}
             {specs && (
               <section>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Technical Specifications</h2>
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden product-specs">
+                <h2 className="text-xl font-semibold text-slate-950 mb-4">Technical Specifications</h2>
+                <div className="site-detail-panel overflow-hidden product-specs">
                   <table className="w-full text-sm">
                     <tbody>
                       {Object.entries(specs).map(([key, value], idx) => (
-                        <tr key={key} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                          <td className="px-6 py-3 font-medium text-gray-900 w-1/3">{key}</td>
-                          <td className="px-6 py-3 text-gray-700">{String(value)}</td>
+                        <tr key={key} className={idx % 2 === 0 ? 'bg-slate-50' : 'bg-white'}>
+                          <td className="px-6 py-3 font-medium text-slate-950 w-1/3">{key}</td>
+                          <td className="px-6 py-3 text-slate-700">{String(value)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -717,43 +720,43 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             )}
 
             <section>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Part Details</h2>
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-semibold text-slate-950 mb-4">Part Details</h2>
+              <div className="site-detail-panel p-6">
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <dt className="text-sm text-gray-500">SKU</dt>
-                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.sku}</dd>
+                    <dt className="text-sm text-slate-500">SKU</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{product.sku}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-gray-500">Brand</dt>
-                    <dd className="mt-1 text-sm font-medium text-gray-900">{brandName || '-'}</dd>
+                    <dt className="text-sm text-slate-500">Brand</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{brandName || '-'}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-gray-500">Part Number</dt>
-                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.part_number || product.sku}</dd>
+                    <dt className="text-sm text-slate-500">Part Number</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{product.part_number || product.sku}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-gray-500">Category</dt>
-                    <dd className="mt-1 text-sm font-medium text-gray-900">{categoryName}</dd>
+                    <dt className="text-sm text-slate-500">Category</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{categoryName}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-gray-500">Condition</dt>
-                    <dd className="mt-1 text-sm font-medium text-gray-900 capitalize">{product.condition_type || 'new'}</dd>
+                    <dt className="text-sm text-slate-500">Condition</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950 capitalize">{product.condition_type || 'new'}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-gray-500">Warranty</dt>
-                    <dd className="mt-1 text-sm font-medium text-gray-900">{product.warranty_period || '12 months'}</dd>
+                    <dt className="text-sm text-slate-500">Warranty</dt>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{product.warranty_period || '12 months'}</dd>
                   </div>
                   {product.origin_country && (
                     <div>
-                      <dt className="text-sm text-gray-500">Country of Origin</dt>
-                      <dd className="mt-1 text-sm font-medium text-gray-900">{product.origin_country}</dd>
+                      <dt className="text-sm text-slate-500">Country of Origin</dt>
+                      <dd className="mt-1 text-sm font-semibold text-slate-950">{product.origin_country}</dd>
                     </div>
                   )}
                   {product.certifications && (
                     <div>
-                      <dt className="text-sm text-gray-500">Certifications</dt>
-                      <dd className="mt-1 text-sm font-medium text-gray-900">{product.certifications}</dd>
+                      <dt className="text-sm text-slate-500">Certifications</dt>
+                      <dd className="mt-1 text-sm font-semibold text-slate-950">{product.certifications}</dd>
                     </div>
                   )}
                 </dl>
@@ -763,9 +766,9 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             {/* Compatibility Info */}
             {product.compatibility_info && (
               <section>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Compatibility Information</h2>
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <p className="text-base text-gray-700 whitespace-pre-line leading-relaxed">{product.compatibility_info}</p>
+                <h2 className="text-xl font-semibold text-slate-950 mb-4">Compatibility Information</h2>
+                <div className="site-detail-panel p-6">
+                  <p className="text-base text-slate-700 whitespace-pre-line leading-relaxed">{product.compatibility_info}</p>
                 </div>
               </section>
             )}
@@ -773,9 +776,9 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             {/* Installation Guide */}
             {product.installation_guide && (
               <section>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Installation Guide</h2>
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <p className="text-base text-gray-700 whitespace-pre-line leading-relaxed">{product.installation_guide}</p>
+                <h2 className="text-xl font-semibold text-slate-950 mb-4">Installation Guide</h2>
+                <div className="site-detail-panel p-6">
+                  <p className="text-base text-slate-700 whitespace-pre-line leading-relaxed">{product.installation_guide}</p>
                 </div>
               </section>
             )}
@@ -783,17 +786,17 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             {/* Maintenance Tips */}
             {product.maintenance_tips && (
               <section>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Maintenance Tips</h2>
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <p className="text-base text-gray-700 whitespace-pre-line leading-relaxed">{product.maintenance_tips}</p>
+                <h2 className="text-xl font-semibold text-slate-950 mb-4">Maintenance Tips</h2>
+                <div className="site-detail-panel p-6">
+                  <p className="text-base text-slate-700 whitespace-pre-line leading-relaxed">{product.maintenance_tips}</p>
                 </div>
               </section>
             )}
 
             {resourceLinks.length > 0 && (
               <section>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Downloads and References</h2>
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h2 className="text-xl font-semibold text-slate-950 mb-4">Downloads and References</h2>
+                <div className="site-detail-panel p-6">
                   <div className="flex flex-wrap gap-3">
                     {resourceLinks.map((resource) => (
                       <a
@@ -801,7 +804,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                         href={resource.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                        className="site-secondary-action px-4 py-2 text-sm"
                       >
                         {resource.label}
                       </a>
@@ -813,8 +816,8 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
 
             {/* Product FAQ */}
             <section>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Frequently Asked Questions</h2>
-              <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+              <h2 className="text-xl font-semibold text-slate-950 mb-4">Frequently Asked Questions</h2>
+              <div className="site-detail-panel divide-y divide-slate-200">
                 {activeFaqs.map((faq) => (
                   <FAQAccordionItem key={faq.id || faq.question} question={faq.question} answer={faq.answer} />
                 ))}
@@ -824,13 +827,13 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             {/* Customer Reviews */}
             {product.reviews && product.reviews.filter((r: ProductReview) => r.is_approved).length > 0 && (
               <section>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Customer Reviews</h2>
+                <h2 className="text-xl font-semibold text-slate-950 mb-4">Customer Reviews</h2>
                 <div className="space-y-4">
                   {product.reviews.filter((r: ProductReview) => r.is_approved).map((review: ProductReview) => (
-                    <div key={review.id} className="bg-white rounded-lg border border-gray-200 p-6">
+                    <div key={review.id} className="site-detail-panel p-6">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">{review.customer_name}</span>
+                          <span className="font-semibold text-slate-950">{review.customer_name}</span>
                           {review.is_verified && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                               <CheckIcon className="h-3 w-3 mr-0.5" />
@@ -838,19 +841,19 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                             </span>
                           )}
                         </div>
-                        <span className="text-xs text-gray-500">{new Date(review.created_at).toLocaleDateString()}</span>
+                        <span className="text-xs text-slate-500">{new Date(review.created_at).toLocaleDateString()}</span>
                       </div>
                       <div className="flex items-center mb-2">
                         {[1, 2, 3, 4, 5].map((star) => (
                           star <= review.rating
-                            ? <StarIconSolid key={star} className="h-4 w-4 text-yellow-400" />
-                            : <StarIcon key={star} className="h-4 w-4 text-gray-300" />
+                            ? <StarIconSolid key={star} className="h-4 w-4 text-[#c46a2d]" />
+                            : <StarIcon key={star} className="h-4 w-4 text-slate-300" />
                         ))}
                       </div>
                       {review.review_title && (
-                        <h3 className="font-medium text-gray-900 mb-1">{review.review_title}</h3>
+                        <h3 className="font-semibold text-slate-950 mb-1">{review.review_title}</h3>
                       )}
-                      <p className="text-sm text-gray-700">{review.review_content}</p>
+                      <p className="text-sm text-slate-700">{review.review_content}</p>
                     </div>
                   ))}
                 </div>
@@ -858,18 +861,18 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
             )}
 
             <section>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Explore More Options</h2>
-              <div className="bg-white rounded-lg border border-gray-200 p-6 flex flex-wrap gap-3 text-sm">
+              <h2 className="text-xl font-semibold text-slate-950 mb-4">Explore More Options</h2>
+              <div className="site-detail-panel p-6 flex flex-wrap gap-3 text-sm">
                 <Link
                   href="/products"
-                  className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                  className="site-secondary-action px-4 py-2"
                 >
                   Browse all products
                 </Link>
                 {categoryHref && (
                   <Link
                     href={categoryHref}
-                    className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                    className="site-secondary-action px-4 py-2"
                   >
                     More {categoryName}
                   </Link>
@@ -877,7 +880,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                 {product.brand && (
                   <Link
                     href={categoryHref || '/products'}
-                    className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 font-medium text-gray-900 hover:border-yellow-500 hover:text-yellow-700"
+                    className="site-secondary-action px-4 py-2"
                   >
                     More {product.brand} parts
                   </Link>
@@ -889,11 +892,11 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
           {/* Related Products */}
           {relatedProducts?.data?.length > 0 && (
             <div className="mt-12">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Related Products</h2>
+              <h2 className="text-xl font-semibold text-slate-950 mb-4">Related Products</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {relatedProducts.data.map((relatedProduct) => (
-                  <div key={relatedProduct.id} className="bg-white rounded-lg shadow p-4">
-                    <div className="aspect-w-1 aspect-h-1 w-full overflow-hidden rounded-md bg-gray-200">
+                  <div key={relatedProduct.id} className="site-product-card p-4">
+                    <div className="site-product-media aspect-[4/3] w-full overflow-hidden rounded-md">
                       <Image
                         src={getProductImageUrl(
                           (relatedProduct.image_urls && relatedProduct.image_urls.length > 0) ? relatedProduct.image_urls : (relatedProduct.images || []),
@@ -902,17 +905,17 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                         alt={relatedProduct.name}
                         width={200}
                         height={200}
-                        className="h-40 w-full object-cover object-center"
+                        className="h-full w-full object-cover object-center"
                       />
                     </div>
                     <div className="mt-2">
                       <Link
                         href={`/products/${toProductPathId(relatedProduct.sku)}`}
-                        className="text-sm font-medium text-gray-900 hover:text-yellow-600"
+                        className="site-product-title text-sm font-semibold"
                       >
                         {relatedProduct.name}
                       </Link>
-                      <p className="text-sm text-gray-500">SKU: {relatedProduct.sku}</p>
+                      <p className="text-sm text-slate-500">SKU: {relatedProduct.sku}</p>
                     </div>
                   </div>
                 ))}

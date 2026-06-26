@@ -46,7 +46,7 @@ export default function SmartPagination({
   const showLastEllipsis = visiblePages[visiblePages.length - 1] < totalPages - 1;
 
   return (
-    <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+    <div className="site-toolbar flex items-center justify-between px-4 py-3 sm:px-6">
       {/* Mobile pagination info */}
       <div className="flex flex-1 justify-between sm:hidden">
         <button
@@ -115,7 +115,7 @@ export default function SmartPagination({
                 onClick={() => onPageChange(page)}
                 className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 ${
                   page === currentPage
-                    ? 'z-10 bg-yellow-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-yellow-600'
+                    ? 'z-10 bg-[#0b3e75] text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b3e75]'
                     : 'text-gray-900'
                 }`}
               >
@@ -163,7 +163,7 @@ export default function SmartPagination({
           type="number"
           min="1"
           max={totalPages}
-          className="w-16 rounded-md border-gray-300 text-sm focus:border-yellow-500 focus:ring-yellow-500"
+          className="site-input w-16 px-2 py-1 text-sm"
           onKeyPress={(e) => {
             if (e.key === 'Enter') {
               const page = parseInt((e.target as HTMLInputElement).value);

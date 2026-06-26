@@ -153,29 +153,30 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50">
+      <div className="site-page-shell min-h-screen">
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="site-page-hero py-16">
+          <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
+              <div className="site-hero-kicker mb-5">Industrial Parts Catalog</div>
               <h1 className="text-4xl md:text-5xl font-bold mb-6">Hot Selling Products</h1>
-              <p className="text-xl md:text-2xl text-yellow-900 max-w-4xl mx-auto mb-8">
+              <p className="text-lg md:text-xl text-blue-100 max-w-4xl mx-auto mb-8 leading-relaxed">
                 More than 18 years experience we have ability to coordinate specific strengths
                 into a whole, providing clients with solutions that consider various import and
                 export transportation options.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-                <div className="bg-yellow-700 bg-opacity-50 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-black">100K+</div>
-                  <div className="text-yellow-900">Items in Stock</div>
+                <div className="site-stat-card">
+                  <div className="text-2xl font-bold text-white">100K+</div>
+                  <div className="text-blue-100">Items in Stock</div>
                 </div>
-                <div className="bg-yellow-700 bg-opacity-50 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-black">50-100</div>
-                  <div className="text-yellow-900">Daily Parcels</div>
+                <div className="site-stat-card">
+                  <div className="text-2xl font-bold text-white">50-100</div>
+                  <div className="text-blue-100">Daily Parcels</div>
                 </div>
-                <div className="bg-yellow-700 bg-opacity-50 rounded-lg p-4">
-                  <div className="text-2xl font-bold text-black">Top 3</div>
-                  <div className="text-yellow-900">Fanuc Supplier in China</div>
+                <div className="site-stat-card">
+                  <div className="text-2xl font-bold text-white">Top 3</div>
+                  <div className="text-blue-100">Fanuc Supplier in China</div>
                 </div>
               </div>
             </div>
@@ -187,30 +188,30 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
             {/* Sidebar Filters */}
             <div className="lg:w-64 space-y-6">
               {/* Search */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Search</h3>
+              <div className="site-panel p-6">
+                <h3 className="text-lg font-semibold text-slate-950 mb-4">Search</h3>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                    <MagnifyingGlassIcon className="h-5 w-5 text-slate-400" />
                   </div>
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500"
+                    className="site-input block w-full pl-10 pr-3 py-2 leading-5 placeholder-slate-400"
                     placeholder="Search by name, SKU, model, description..."
                   />
                 </div>
                 {searchQuery && (
-                  <div className="mt-2 text-sm text-gray-500">
+                  <div className="mt-2 text-sm text-slate-500">
                     Searching for "{searchQuery}"...
                   </div>
                 )}
               </div>
 
               {/* Categories */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Categories</h3>
+              <div className="site-panel p-6">
+                <h3 className="text-lg font-semibold text-slate-950 mb-4">Categories</h3>
                 <CategoryFilterTree
                   tree={initialData.categories as any}
                   selectedCategoryId={selectedCategory ? Number(selectedCategory) : null}
@@ -226,36 +227,36 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
             {/* Main Content */}
             <div className="flex-1">
               {/* Enhanced Toolbar */}
-              <div className="bg-white rounded-lg shadow p-4 mb-6">
+              <div className="site-toolbar p-4 mb-6">
                 <div className="flex flex-col space-y-4">
                   {/* Top row - Results info and view controls */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
                     <div className="flex items-center space-x-4">
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-slate-700">
                         Showing {sortedProducts.length} of {totalProducts} products
                         {(searchQuery || selectedCategory) && (
-                          <span className="text-gray-500"> (filtered)</span>
+                          <span className="text-slate-500"> (filtered)</span>
                         )}
                       </span>
                       {searchQuery && (
-                        <span className="text-sm text-gray-500">
+                        <span className="text-sm text-slate-500">
                           for "{searchQuery}"
                         </span>
                       )}
                     </div>
 
                     {/* View Mode */}
-                    <div className="flex items-center border border-gray-300 rounded-md">
+                    <div className="flex items-center overflow-hidden rounded-md border border-slate-300 bg-white">
                       <button
                         onClick={() => setViewMode('grid')}
-                        className={`p-2 ${viewMode === 'grid' ? 'bg-yellow-100 text-yellow-600' : 'text-gray-400'}`}
+                        className={`site-icon-toggle ${viewMode === 'grid' ? 'site-icon-toggle-active' : ''}`}
                         title="Grid view"
                       >
                         <Squares2X2Icon className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => setViewMode('list')}
-                        className={`p-2 ${viewMode === 'list' ? 'bg-yellow-100 text-yellow-600' : 'text-gray-400'}`}
+                        className={`site-icon-toggle ${viewMode === 'list' ? 'site-icon-toggle-active' : ''}`}
                         title="List view"
                       >
                         <ListBulletIcon className="h-4 w-4" />
@@ -270,7 +271,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500"
+                        className="site-select px-3 py-2 text-sm"
                       >
                         <option value="name">Sort by Name (A-Z)</option>
                         <option value="name_desc">Sort by Name (Z-A)</option>
@@ -289,12 +290,12 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                       {(searchQuery || selectedCategory) && (
                         <button
                           onClick={clearAllFilters}
-                          className="text-sm text-yellow-600 hover:text-yellow-500 font-medium"
+                          className="site-link-accent text-sm"
                         >
                           Clear all filters
                         </button>
                       )}
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-slate-500">
                         Page {currentPage} of {totalPages}
                       </div>
                     </div>
@@ -306,9 +307,9 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
               {viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {sortedProducts.map((product: any) => (
-                    <div key={product.id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                    <div key={product.id} className="site-product-card">
                       <div className="relative">
-                        <Link href={`/products/${toProductPathId(product.sku)}`} className="block aspect-w-1 aspect-h-1 w-full overflow-hidden rounded-t-lg bg-gray-200">
+                        <Link href={`/products/${toProductPathId(product.sku)}`} className="site-product-media block aspect-[4/3] w-full">
                           <Image
                             src={getProductImageUrl(
                               (product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []),
@@ -318,7 +319,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             width={300}
                             height={300}
                             sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                            className="h-48 w-full object-cover object-center"
+                            className="h-full w-full object-cover object-center transition-transform duration-300 hover:scale-105"
                             priority={false}
                             loading="lazy"
                           />
@@ -326,7 +327,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
 
                         <button
                           onClick={() => toggleFavorite(product.id)}
-                          className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-md hover:shadow-lg transition-shadow"
+                          className="absolute top-3 right-3 z-10 rounded-md border border-slate-200 bg-white/95 p-2 text-slate-500 shadow-sm transition-colors hover:text-red-500"
                         >
                           {favorites.includes(product.id) ? (
                             <HeartIconSolid className="h-5 w-5 text-red-500" />
@@ -337,36 +338,36 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                       </div>
 
                       <div className="p-4">
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">
-                          <Link href={`/products/${toProductPathId(product.sku)}`} className="hover:text-yellow-600">
+                        <h3 className="text-base font-semibold text-slate-950 mb-2 line-clamp-2 min-h-[3rem]">
+                          <Link href={`/products/${toProductPathId(product.sku)}`} className="site-product-title">
 
 
                             {product.name}
                           </Link>
                         </h3>
-                        <p className="text-sm text-gray-500 mb-2">SKU: {product.sku}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">SKU: {product.sku}</p>
                         {product.description && (
-                          <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                          <p className="text-sm text-slate-600 mb-4 line-clamp-2">
                             {product.description}
                           </p>
                         )}
 
-                        <div className="flex items-center justify-between">
-                          <span className="text-xl font-bold text-yellow-600">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xl font-bold text-[#0b3e75]">
                             {formatCurrency(product.price)}
                           </span>
 
                           <div className="flex items-center space-x-2">
                             <Link
                               href={`/products/${toProductPathId(product.sku)}`}
-                              className="p-2 text-gray-400 hover:text-yellow-600 transition-colors"
+                              className="site-secondary-action h-9 w-9"
                               title={`View ${product.name} details`}
                             >
                               <EyeIcon className="h-5 w-5" />
                             </Link>
                             <button
                               onClick={() => handleAddToCart(product)}
-                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-yellow-500 hover:bg-yellow-600 transition-colors"
+                              className="site-primary-action px-3 py-2 text-sm"
                               title={`Add ${product.name} to cart`}
                             >
                               <ShoppingCartIcon className="h-4 w-4 mr-1" />
@@ -381,8 +382,8 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
               ) : (
                 <div className="space-y-4">
                   {sortedProducts.map((product: any) => (
-                    <div key={product.id} className="bg-white rounded-lg shadow p-6">
-                      <div className="flex items-center space-x-6">
+                    <div key={product.id} className="site-product-card p-4 sm:p-6">
+                      <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                         <Link href={`/products/${toProductPathId(product.sku)}`} className="flex-shrink-0">
                           <Image
                             src={getProductImageUrl(
@@ -393,34 +394,34 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             width={120}
                             height={120}
                             sizes="120px"
-                            className="h-20 w-20 object-cover rounded-lg"
+                            className="h-28 w-full object-cover rounded-md border border-slate-200 sm:h-24 sm:w-24"
                             loading="lazy"
                           />
                         </Link>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-lg font-medium text-gray-900 mb-1">
-                            <Link href={`/products/${toProductPathId(product.sku)}`} className="hover:text-yellow-600">
+                          <h3 className="text-lg font-semibold text-slate-950 mb-1">
+                            <Link href={`/products/${toProductPathId(product.sku)}`} className="site-product-title">
 
                               {product.name}
                             </Link>
                           </h3>
-                          <p className="text-sm text-gray-500 mb-2">SKU: {product.sku}</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">SKU: {product.sku}</p>
                           {product.description && (
-                            <p className="text-sm text-gray-600 line-clamp-2">
+                            <p className="text-sm text-slate-600 line-clamp-2">
                               {product.description}
                             </p>
                           )}
                         </div>
 
-                        <div className="flex-shrink-0 text-right">
-                          <div className="text-xl font-bold text-yellow-600 mb-2">
+                        <div className="flex-shrink-0 text-left sm:text-right">
+                          <div className="text-xl font-bold text-[#0b3e75] mb-2">
                             {formatCurrency(product.price)}
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center gap-2">
                             <button
                               onClick={() => toggleFavorite(product.id)}
-                              className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                              className="site-secondary-action h-9 w-9"
                             >
                               {favorites.includes(product.id) ? (
                                 <HeartIconSolid className="h-5 w-5 text-red-500" />
@@ -430,14 +431,14 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             </button>
                             <Link
                               href={`/products/${toProductPathId(product.sku)}`}
-                              className="p-2 text-gray-400 hover:text-yellow-600 transition-colors"
+                              className="site-secondary-action h-9 w-9"
                               title={`View ${product.name} details`}
                             >
                               <EyeIcon className="h-5 w-5" />
                             </Link>
                             <button
                               onClick={() => handleAddToCart(product)}
-                              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-yellow-500 hover:bg-yellow-600 transition-colors"
+                              className="site-primary-action px-4 py-2 text-sm"
                               title={`Add ${product.name} to cart`}
                             >
                               <ShoppingCartIcon className="h-4 w-4 mr-2" />
@@ -465,11 +466,11 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
               {/* No Products Found */}
               {sortedProducts.length === 0 && (
                 <div className="text-center py-12">
-                  <div className="text-gray-400 mb-4">
+                  <div className="text-slate-400 mb-4">
                     <MagnifyingGlassIcon className="mx-auto h-12 w-12" />
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
-                  <p className="text-gray-500">
+                  <h3 className="text-lg font-semibold text-slate-950 mb-2">No products found</h3>
+                  <p className="text-slate-500">
                     Try adjusting your search criteria or browse all categories.
                   </p>
                 </div>

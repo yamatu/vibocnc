@@ -21,10 +21,10 @@ export const DEFAULT_HERO_DATA: HeroSectionData = {
   slides: [
     {
       id: 1,
-      title: 'Vcocnc - One-Stop CNC Solution Supplier',
-      subtitle: 'Your Trusted Partner Since 2005',
+      title: 'VIBO CNC Industrial Parts Supply',
+      subtitle: 'Automation Components, Tested and Ready to Ship',
       description:
-        'Vcocnc established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB, ABB, Fanuc, Mitsubishi, Siemens and other manufacturers.',
+        'VIBO CNC supplies tested automation components including system units, circuit boards, PLC modules, HMI panels, inverters, encoders, amplifiers, servo motors and servo drives for global maintenance teams.',
       image: 'https://s2.loli.net/2025/08/26/Vo4JfbtW5H2GMEN.png',
       cta: {
         primary: { text: 'Browse Products', href: '/products' },
@@ -33,10 +33,10 @@ export const DEFAULT_HERO_DATA: HeroSectionData = {
     },
     {
       id: 2,
-      title: '5,000sqm Workshop Facility',
-      subtitle: 'Top 3 Fanuc Supplier in China',
+      title: '5,000sqm Testing and Stock Facility',
+      subtitle: 'Deep Inventory for CNC Maintenance',
       description:
-        'Especially Fanuc, We are one of the top three suppliers in China. We now have 27 workers, 10 sales and 100,000 items regularly stocked. Daily parcel around 50-100pcs, yearly turnover around 200 million.',
+        'Our team manages more than 100,000 stocked industrial parts with inspection, packaging and export processes built for urgent CNC repair and replacement orders.',
       image: 'https://s2.loli.net/2025/08/26/17MRNhXEcrKTdDY.png',
       cta: {
         primary: { text: 'View Facility', href: '/about' },
@@ -45,10 +45,10 @@ export const DEFAULT_HERO_DATA: HeroSectionData = {
     },
     {
       id: 3,
-      title: '20+ Years Professional Service',
-      subtitle: 'Sales, Testing & Maintenance',
+      title: '20+ Years Industrial Service',
+      subtitle: 'Sales, Testing and Maintenance Support',
       description:
-        'More than 18 years experience we have ability to coordinate specific strengths into a whole, providing clients with solutions that consider various import and export transportation options.',
+        'Our sales and technical teams coordinate sourcing, testing, packing and international shipping so factories can keep production equipment running with less downtime.',
       image: 'https://s2.loli.net/2025/08/26/17MRNhXEcrKTdDY.png',
       cta: {
         primary: { text: 'Get Support', href: '/contact' },
@@ -79,9 +79,9 @@ export type CompanyStatsData = {
 };
 
 export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
-  headerTitle: 'Vcocnc - One-Stop CNC Solution Supplier',
+  headerTitle: 'VIBO CNC - One-Stop Industrial Parts Supplier',
   headerDescription:
-    'We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB, ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.',
+    'We supply automation components including system units, circuit boards, PLC, HMI, inverters, encoders, amplifiers, servo motors and servo drives from major industrial manufacturers.',
   stats: [
     {
       id: 1,
@@ -90,7 +90,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: '+',
       label: 'Years Experience',
       description: 'Established in 2005 in Kunshan, China',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
     {
       id: 2,
@@ -99,7 +99,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: 'sqm',
       label: 'Workshop Facility',
       description: 'Modern infrastructure for quality service',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
     {
       id: 3,
@@ -108,7 +108,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: '',
       label: 'Total Employees',
       description: '27 workers and 10 sales professionals',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
     {
       id: 4,
@@ -117,7 +117,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: '',
       label: 'Top Fanuc Supplier',
       description: 'One of top 3 suppliers in China',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
     {
       id: 5,
@@ -126,7 +126,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: '+',
       label: 'Items in Stock',
       description: 'Comprehensive inventory management',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
     {
       id: 6,
@@ -135,7 +135,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: '',
       label: 'Daily Parcels',
       description: '50-100 parcels shipped daily',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
     {
       id: 7,
@@ -144,7 +144,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: 'M',
       label: 'Yearly Turnover',
       description: 'Annual revenue in millions',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
     {
       id: 8,
@@ -153,7 +153,7 @@ export const DEFAULT_COMPANY_STATS_DATA: CompanyStatsData = {
       suffix: ' days',
       label: 'Professional Service',
       description: 'Sales, testing and maintenance',
-      color: 'text-yellow-600',
+      color: 'text-teal-700',
     },
   ],
   ctaTitle: 'Ready to Experience Professional Service?',
@@ -197,14 +197,14 @@ export type WorkshopSectionData = {
 export const DEFAULT_WORKSHOP_SECTION_DATA: WorkshopSectionData = {
   headerTitle: '5,000sqm Modern Workshop Facility',
   headerDescription:
-    'Our state-of-the-art facility combines advanced technology with expert craftsmanship to deliver exceptional FANUC parts and services.',
+    'Our facility combines structured inventory, inspection benches and export packing to deliver dependable CNC spare parts and service.',
   facilities: [
     {
       id: 1,
       icon: 'beaker',
       title: 'Testing & Quality Control',
       description:
-        'State-of-the-art testing equipment ensures all parts meet FANUC specifications and industry standards.',
+        'Testing equipment and inspection procedures help verify parts before they leave our facility.',
       image: 'https://s2.loli.net/2025/09/01/ZxuFKAvIM3zUHj4.jpg',
       features: [
         'Automated testing systems',
@@ -232,7 +232,7 @@ export const DEFAULT_WORKSHOP_SECTION_DATA: WorkshopSectionData = {
       icon: 'wrench',
       title: 'Repair & Refurbishment',
       description:
-        'Professional repair services with original FANUC parts and certified procedures.',
+        'Professional repair and refurbishment support for critical CNC and automation components.',
       image: 'https://s2.loli.net/2025/09/01/wMHu93Fv5egJ6pn.jpg',
       features: [
         'Certified technicians',
@@ -270,7 +270,7 @@ export const DEFAULT_WORKSHOP_SECTION_DATA: WorkshopSectionData = {
     ],
     ctaTitle: 'Experience Our World-Class Facility',
     ctaDescription:
-      'Schedule a virtual tour or visit our facility to see how we maintain the highest standards in FANUC parts and services.',
+      'Schedule a virtual tour or visit our facility to see how we manage inspection, storage and export packing.',
     ctaPrimary: { text: 'Schedule Tour', href: '/contact' },
     ctaSecondary: { text: 'Learn More', href: '/about' },
   },
@@ -303,18 +303,18 @@ export type ServicesSectionData = {
 };
 
 export const DEFAULT_SERVICES_SECTION_DATA: ServicesSectionData = {
-  headerTitle: 'Comprehensive FANUC Services',
+  headerTitle: 'Comprehensive CNC Parts Services',
   headerDescription:
-    'From parts supply to technical support, we provide end-to-end solutions for all your FANUC industrial automation requirements.',
+    'From parts supply to technical support, we provide end-to-end support for industrial automation maintenance requirements.',
   services: [
     {
       id: 1,
       icon: 'cog',
-      title: 'FANUC Parts Supply',
+      title: 'Automation Parts Supply',
       description:
-        'Comprehensive inventory of genuine FANUC parts including servo motors, drives, encoders, and control systems.',
-      features: ['Genuine FANUC parts', 'Fast delivery', 'Competitive pricing', 'Quality guarantee'],
-      color: 'bg-yellow-500',
+        'Comprehensive inventory including servo motors, drives, encoders, control systems and electronic modules.',
+      features: ['Tested parts', 'Fast delivery', 'Competitive pricing', 'Quality guarantee'],
+      color: 'bg-teal-600',
       href: '/contact',
     },
     {
@@ -322,7 +322,7 @@ export const DEFAULT_SERVICES_SECTION_DATA: ServicesSectionData = {
       icon: 'wrench',
       title: 'Repair Services',
       description:
-        'Professional repair and refurbishment services for all FANUC components with certified technicians.',
+        'Professional repair and refurbishment services for CNC and automation components.',
       features: ['Expert technicians', 'Original procedures', 'Quality testing', 'Warranty included'],
       color: 'bg-green-500',
       href: '/contact',
@@ -332,7 +332,7 @@ export const DEFAULT_SERVICES_SECTION_DATA: ServicesSectionData = {
       icon: 'phone',
       title: 'Technical Support',
       description:
-        '24/7 technical assistance from certified FANUC specialists for troubleshooting and guidance.',
+        'Technical assistance from automation parts specialists for troubleshooting and sourcing guidance.',
       features: ['24/7 availability', 'Certified specialists', 'Remote diagnostics', 'Quick response'],
       color: 'bg-purple-500',
       href: '/contact',
@@ -352,7 +352,7 @@ export const DEFAULT_SERVICES_SECTION_DATA: ServicesSectionData = {
       icon: 'shield',
       title: 'Quality Assurance',
       description:
-        'Rigorous testing and quality control processes ensuring all parts meet FANUC specifications.',
+        'Rigorous testing and quality control processes for sensitive industrial components.',
       features: ['ISO certified', 'Comprehensive testing', 'Quality documentation', 'Compliance verification'],
       color: 'bg-red-500',
       href: '/contact',
@@ -362,7 +362,7 @@ export const DEFAULT_SERVICES_SECTION_DATA: ServicesSectionData = {
       icon: 'cap',
       title: 'Training & Education',
       description:
-        'Professional training programs for FANUC systems operation, maintenance, and troubleshooting.',
+        'Professional training support for industrial systems operation, maintenance and troubleshooting.',
       features: ['Certified instructors', 'Hands-on training', 'Custom programs', 'Certification available'],
       color: 'bg-indigo-500',
       href: '/contact',
@@ -370,13 +370,13 @@ export const DEFAULT_SERVICES_SECTION_DATA: ServicesSectionData = {
   ],
   processTitle: 'Our Service Process',
   processDescription:
-    'We follow a systematic approach to ensure the best outcomes for your FANUC automation projects.',
+    'We follow a systematic approach to keep sourcing, inspection and delivery predictable.',
   processSteps: [
     {
       step: '01',
       title: 'Consultation',
       description:
-        'We analyze your requirements and provide expert recommendations for your FANUC automation needs.',
+        'We analyze your requirements and provide practical recommendations for automation parts sourcing.',
     },
     {
       step: '02',
@@ -399,7 +399,7 @@ export const DEFAULT_SERVICES_SECTION_DATA: ServicesSectionData = {
   ],
   ctaTitle: 'Ready to Get Started?',
   ctaDescription:
-    'Contact our experts today to discuss your FANUC automation needs and discover how we can help optimize your industrial processes.',
+    'Contact our experts today to discuss your automation parts needs and delivery requirements.',
   ctaPrimary: { text: 'Contact Us Today', href: '/contact' },
   ctaSecondary: { text: 'Browse Products', href: '/products' },
   ctaBadges: ['24/7 Support Available', 'Worldwide Service', 'Quality Guaranteed'],
@@ -413,9 +413,9 @@ export type FeaturedProductsSectionData = {
 };
 
 export const DEFAULT_FEATURED_PRODUCTS_SECTION_DATA: FeaturedProductsSectionData = {
-  headerTitle: 'Featured FANUC Products',
+  headerTitle: 'Featured Industrial Automation Parts',
   headerDescription:
-    'Discover our most popular and high-quality FANUC parts, carefully selected for their reliability and performance in industrial automation applications.',
+    'Discover popular CNC and automation parts selected for reliability, availability and industrial maintenance use.',
   ctaText: 'View All Products',
   ctaHref: '/products',
 };

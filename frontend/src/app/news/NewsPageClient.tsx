@@ -57,13 +57,14 @@ export default function NewsPageClient({ initialData, searchParams }: NewsPageCl
 
   return (
     <Layout>
-      <div className="bg-gray-50 min-h-screen">
+      <div className="site-page-shell min-h-screen">
         {/* Hero Header */}
-        <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+        <div className="site-page-hero">
+          <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
             <div className="text-center">
-              <h1 className="text-3xl sm:text-4xl font-bold mb-4">News & Articles</h1>
-              <p className="text-gray-300 text-lg max-w-2xl mx-auto mb-8">
+              <span className="site-hero-kicker">Insights library</span>
+              <h1 className="mt-5 text-3xl sm:text-4xl font-bold mb-4">News & Articles</h1>
+              <p className="text-blue-100 text-lg max-w-2xl mx-auto mb-8">
                 Latest insights, technical guides, and industry news about industrial automation and CNC equipment.
               </p>
 
@@ -76,7 +77,7 @@ export default function NewsPageClient({ initialData, searchParams }: NewsPageCl
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search articles..."
-                    className="w-full pl-12 pr-4 py-3 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-yellow-500 focus:outline-none"
+                    className="site-input w-full pl-12 pr-4 py-3 bg-white text-gray-900 text-sm"
                   />
                 </div>
               </form>
@@ -117,7 +118,7 @@ export default function NewsPageClient({ initialData, searchParams }: NewsPageCl
                       <Link
                         key={article.id}
                         href={`/news/${article.slug}`}
-                        className="group bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                        className="group site-product-card block"
                       >
                         {article.featured_image ? (
                           <div className="aspect-[16/9] overflow-hidden">
@@ -133,7 +134,7 @@ export default function NewsPageClient({ initialData, searchParams }: NewsPageCl
                           </div>
                         )}
                         <div className="p-6">
-                          <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors mb-2 line-clamp-2">
+                          <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-800 transition-colors mb-2 line-clamp-2">
                             {article.title}
                           </h3>
                           <p className="text-gray-600 text-sm line-clamp-3 mb-4">
@@ -169,7 +170,7 @@ export default function NewsPageClient({ initialData, searchParams }: NewsPageCl
                     <Link
                       key={article.id}
                       href={`/news/${article.slug}`}
-                      className="group bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+                      className="group site-product-card flex flex-col"
                     >
                       {article.featured_image ? (
                         <div className="aspect-[16/10] overflow-hidden">
@@ -185,7 +186,7 @@ export default function NewsPageClient({ initialData, searchParams }: NewsPageCl
                         </div>
                       )}
                       <div className="p-5 flex-1 flex flex-col">
-                        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors mb-2 line-clamp-2">
+                        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-800 transition-colors mb-2 line-clamp-2">
                           {article.title}
                         </h3>
                         <p className="text-gray-600 text-sm line-clamp-3 mb-4 flex-1">

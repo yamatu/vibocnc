@@ -40,6 +40,12 @@ export interface MediaUploadResponse {
   results: MediaUploadItemResult[];
 }
 
+export interface MediaCleanupMissingResponse {
+  scanned: number;
+  deleted: number;
+  errors?: string[];
+}
+
 export interface WatermarkSettings {
   id: number;
   enabled: boolean;
@@ -85,6 +91,12 @@ export class MediaService {
     });
     if (response.data.success) return;
     throw new Error(response.data.message || 'Failed to delete media');
+  }
+
+  static async cleanupMissing(): Promise<MediaCleanupMissingResponse> {
+    const response = await apiClient.post<APIResponse<MediaCleanupMissingResponse>>('/admin/media/cleanup-missing');
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to clean missing media records');
   }
 
   static async batchUpdate(ids: number[], updates: Partial<Pick<MediaAsset, 'folder' | 'tags' | 'title' | 'alt_text'>>): Promise<void> {

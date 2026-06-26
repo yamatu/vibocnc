@@ -186,18 +186,19 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
         baseUrl={baseUrl}
       />
       <ScrollRestorer storageKey="category-scroll-y" />
-      <div className="min-h-screen bg-gray-50">
+      <div className="site-page-shell min-h-screen">
         {/* Hero */}
-        <div className="bg-gradient-to-r from-yellow-600 to-yellow-500 text-white py-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="site-page-hero py-12">
+          <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
+              <div className="site-hero-kicker mb-5">Category Supply</div>
               <h1 className="text-3xl md:text-5xl font-bold mb-3">{resolved.category.name}</h1>
               {resolved.category.description && (
-                <p className="text-lg md:text-xl text-yellow-100 max-w-3xl mx-auto">{resolved.category.description}</p>
+                <p className="text-lg md:text-xl text-blue-100 max-w-3xl mx-auto leading-relaxed">{resolved.category.description}</p>
               )}
               <div className="mt-5">
                 <nav className="flex justify-center" aria-label="Breadcrumb">
-                  <ol className="flex items-center flex-wrap gap-x-2 gap-y-1 text-yellow-100">
+                  <ol className="flex items-center flex-wrap gap-x-2 gap-y-1 text-blue-100">
                     <li>
                       <a href="/" className="hover:text-white transition-colors">
                         Home
@@ -229,8 +230,8 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Left sidebar */}
             <aside className="lg:col-span-3">
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="text-sm font-semibold text-gray-900 mb-3">Categories</div>
+              <div className="site-panel p-4 lg:sticky lg:top-28">
+                <div className="mb-3 border-b border-slate-200 pb-3 text-sm font-semibold uppercase tracking-wide text-slate-900">Categories</div>
                 <CategorySidebarTree
                   tree={tree}
                   activeCategoryId={resolved.category.id}
@@ -245,7 +246,7 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-600" />
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700" />
                   </div>
                 }
               >

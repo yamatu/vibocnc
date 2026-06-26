@@ -121,25 +121,48 @@ export default function RegisterPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-        <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Already have an account?{' '}
-            <Link href="/login" className="font-medium text-amber-600 hover:text-amber-500">
-              Sign in
-            </Link>
-          </p>
-        </div>
+      <div className="site-auth-shell px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-6xl items-start gap-10 lg:grid-cols-[1fr_34rem]">
+          <div className="pt-4 text-white lg:sticky lg:top-28">
+            <span className="site-hero-kicker">Trade account</span>
+            <h1 className="mt-5 max-w-2xl text-4xl font-bold leading-tight sm:text-5xl">
+              Build a faster purchasing workflow for FANUC spare parts.
+            </h1>
+            <p className="mt-5 max-w-xl text-base leading-7 text-blue-100">
+              Create an account for repeat ordering, verified contact details, and cleaner communication with the VCO CNC team.
+            </p>
+            <div className="mt-8 space-y-3 text-sm text-blue-50">
+              {['Centralized order details', 'Email verification support', 'Company purchasing profile'].map((item) => (
+                <div key={item} className="flex items-center gap-3">
+                  <span className="h-1.5 w-8 rounded-full bg-orange-300" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
 
-        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <div className="w-full">
+          <div className="site-auth-card px-5 py-8 sm:px-8">
+            <div className="text-center">
+              <div className="site-auth-mark mx-auto">
+                <UserIcon className="h-7 w-7" />
+              </div>
+              <h2 className="mt-5 text-2xl font-bold text-slate-950">
+                Create your account
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Already have an account?{' '}
+                <Link href="/login" className="site-link-accent">
+                  Sign in
+                </Link>
+              </p>
+            </div>
+
+            <div className="mt-8">
             <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
               {/* Full Name */}
               <div>
-                <label htmlFor="full_name" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="full_name" className="block text-sm font-semibold text-slate-700">
                   Full Name *
                 </label>
                 <div className="mt-1 relative">
@@ -149,7 +172,7 @@ export default function RegisterPage() {
                   <input
                     {...register('full_name')}
                     type="text"
-                    className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
+                    className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
                     placeholder="John Doe"
                   />
                 </div>
@@ -160,7 +183,7 @@ export default function RegisterPage() {
 
               {/* Email */}
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="email" className="block text-sm font-semibold text-slate-700">
                   Email address *
                 </label>
                 <div className="mt-1 relative">
@@ -170,7 +193,7 @@ export default function RegisterPage() {
                   <input
                     {...register('email')}
                     type="email"
-                    className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
+                    className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
                     placeholder="you@example.com"
                   />
                 </div>
@@ -181,21 +204,21 @@ export default function RegisterPage() {
 
               {/* Email Code */}
               <div>
-                <label htmlFor="email_code" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="email_code" className="block text-sm font-semibold text-slate-700">
                   Email verification code {verificationRequired ? '*' : ''}
                 </label>
                 <div className="mt-1 flex gap-2">
                   <input
                     {...register('email_code')}
                     type="text"
-                    className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
+                    className="site-input block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
                     placeholder="123456"
                   />
                   <button
                     type="button"
                     onClick={sendCode}
                     disabled={sendingCode || cooldown > 0 || !verificationRequired}
-                    className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    className="site-secondary-action shrink-0 px-3 py-2.5 text-sm disabled:opacity-50"
                   >
                     {cooldown > 0 ? `${cooldown}s` : sendingCode ? 'Sending...' : 'Send'}
                   </button>
@@ -209,7 +232,7 @@ export default function RegisterPage() {
 
               {/* Phone (Optional) */}
               <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="phone" className="block text-sm font-semibold text-slate-700">
                   Phone Number
                 </label>
                 <div className="mt-1 relative">
@@ -219,7 +242,7 @@ export default function RegisterPage() {
                   <input
                     {...register('phone')}
                     type="tel"
-                    className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
+                    className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
                     placeholder="+1 (555) 000-0000"
                   />
                 </div>
@@ -227,7 +250,7 @@ export default function RegisterPage() {
 
               {/* Company (Optional) */}
               <div>
-                <label htmlFor="company" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="company" className="block text-sm font-semibold text-slate-700">
                   Company
                 </label>
                 <div className="mt-1 relative">
@@ -237,7 +260,7 @@ export default function RegisterPage() {
                   <input
                     {...register('company')}
                     type="text"
-                    className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
+                    className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
                     placeholder="Your Company Name"
                   />
                 </div>
@@ -245,7 +268,7 @@ export default function RegisterPage() {
 
               {/* Password */}
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
                   Password *
                 </label>
                 <div className="mt-1 relative">
@@ -255,8 +278,8 @@ export default function RegisterPage() {
                   <input
                     {...register('password')}
                     type="password"
-                    className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
-                    placeholder="••••••••"
+                    className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
+                    placeholder="********"
                   />
                 </div>
                 {errors.password && (
@@ -266,7 +289,7 @@ export default function RegisterPage() {
 
               {/* Confirm Password */}
               <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="confirmPassword" className="block text-sm font-semibold text-slate-700">
                   Confirm Password *
                 </label>
                 <div className="mt-1 relative">
@@ -276,8 +299,8 @@ export default function RegisterPage() {
                   <input
                     {...register('confirmPassword')}
                     type="password"
-                    className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
-                    placeholder="••••••••"
+                    className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
+                    placeholder="********"
                   />
                 </div>
                 {errors.confirmPassword && (
@@ -292,11 +315,11 @@ export default function RegisterPage() {
                   name="terms"
                   type="checkbox"
                   required
-                  className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                  className="h-4 w-4 rounded border-gray-300"
                 />
                 <label htmlFor="terms" className="ml-2 block text-sm text-gray-900">
                   I agree to the{' '}
-                  <a href="#" className="text-amber-600 hover:text-amber-500">
+                  <a href="#" className="site-link-accent">
                     Terms and Conditions
                   </a>
                 </label>
@@ -307,12 +330,14 @@ export default function RegisterPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="site-primary-action w-full px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isLoading ? 'Creating account...' : 'Create account'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
           </div>
         </div>
       </div>

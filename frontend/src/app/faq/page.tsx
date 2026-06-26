@@ -39,21 +39,24 @@ export default function FAQPage() {
         }}
       />
       <PublicLayout>
-        <div className="min-h-screen bg-gray-50 py-12">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            {/* Header */}
-            <div className="text-center mb-12">
-              <h1 className="text-4xl font-bold text-gray-900 mb-4">
+        <div className="site-page-shell min-h-screen">
+          <section className="site-page-hero">
+            <div className="site-hero-inner mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 lg:px-8">
+              <span className="site-hero-kicker">Support center</span>
+              <h1 className="mt-5 text-4xl font-bold text-white sm:text-5xl">
                 Frequently Asked Questions
               </h1>
-              <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              <p className="mx-auto mt-4 max-w-3xl text-lg leading-8 text-blue-100">
                 Find answers to common questions about FANUC parts, shipping, warranty, and technical support.
               </p>
             </div>
+          </section>
 
+          <div className="max-w-4xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+            {/* Header */}
             {/* FAQ Items */}
             <div className="space-y-8">
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   What FANUC parts do you stock?
                 </h2>
@@ -62,7 +65,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   Do you ship worldwide?
                 </h2>
@@ -71,7 +74,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   Are your FANUC parts genuine?
                 </h2>
@@ -80,7 +83,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   What is your warranty policy?
                 </h2>
@@ -89,7 +92,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   How can I get technical support?
                 </h2>
@@ -98,7 +101,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   How do I place an order?
                 </h2>
@@ -107,7 +110,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   Do you offer quantity discounts?
                 </h2>
@@ -116,7 +119,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   How do I know if a part is compatible with my system?
                 </h2>
@@ -125,7 +128,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   What payment methods do you accept?
                 </h2>
@@ -134,7 +137,7 @@ export default function FAQPage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="site-panel p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-3">
                   How do I track my order?
                 </h2>
@@ -145,7 +148,7 @@ export default function FAQPage() {
             </div>
 
             {/* Contact CTA */}
-            <div className="mt-16 bg-amber-50 rounded-lg p-8 text-center">
+            <div className="site-status-panel-strong mt-16 p-8 text-center">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">
                 Still Have Questions?
               </h2>
@@ -155,13 +158,13 @@ export default function FAQPage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <a
                   href="/contact"
-                  className="bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 transition-colors"
+                  className="site-primary-action px-6 py-3"
                 >
                   Contact Us
                 </a>
                 <a
                   href="mailto:sales@vcocncspare.com"
-                  className="bg-white text-amber-600 border border-amber-600 px-6 py-3 rounded-lg hover:bg-amber-50 transition-colors"
+                  className="site-secondary-action px-6 py-3"
                 >
                   Email Support
                 </a>

@@ -110,6 +110,12 @@ type mediaUploadResponse struct {
 	Results      []mediaUploadItemResult `json:"results"`
 }
 
+type mediaCleanupMissingResponse struct {
+	Scanned int      `json:"scanned"`
+	Deleted int      `json:"deleted"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
 // Upload handles batch image upload for the admin media library.
 // Multipart fields:
 // - files: one or multiple files
@@ -292,6 +298,61 @@ func (mc *MediaController) Upload(c *gin.Context) {
 	})
 }
 
+func (mc *MediaController) CleanupMissing(c *gin.Context) {
+	db := config.GetDB()
+
+	var assets []models.MediaAsset
+	if err := db.Select("id", "relative_path").Find(&assets).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to query media assets",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	uploadRoot := getUploadRoot()
+	missingIDs := make([]uint, 0)
+	errorsList := make([]string, 0)
+
+	for _, asset := range assets {
+		diskPath, ok := mediaAssetDiskPath(uploadRoot, asset.RelativePath)
+		if !ok {
+			missingIDs = append(missingIDs, asset.ID)
+			continue
+		}
+
+		if _, err := os.Stat(diskPath); err == nil {
+			continue
+		} else if os.IsNotExist(err) {
+			missingIDs = append(missingIDs, asset.ID)
+		} else {
+			errorsList = append(errorsList, "id "+strconv.FormatUint(uint64(asset.ID), 10)+": "+err.Error())
+		}
+	}
+
+	if len(missingIDs) > 0 {
+		if err := db.Where("id IN ?", missingIDs).Delete(&models.MediaAsset{}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to delete missing media records",
+				Error:   err.Error(),
+			})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Missing media records cleaned successfully",
+		Data: mediaCleanupMissingResponse{
+			Scanned: len(assets),
+			Deleted: len(missingIDs),
+			Errors:  errorsList,
+		},
+	})
+}
+
 func (mc *MediaController) Update(c *gin.Context) {
 	db := config.GetDB()
 
@@ -423,6 +484,35 @@ func (mc *MediaController) BatchUpdate(c *gin.Context) {
 	})
 }
 
+func mediaAssetDiskPath(uploadRoot string, relativePath string) (string, bool) {
+	trimmed := strings.TrimSpace(relativePath)
+	if trimmed == "" || filepath.IsAbs(trimmed) {
+		return "", false
+	}
+
+	rootAbs, err := filepath.Abs(uploadRoot)
+	if err != nil {
+		return "", false
+	}
+
+	cleanRel := filepath.Clean(filepath.FromSlash(trimmed))
+	if cleanRel == "." || cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+
+	assetAbs, err := filepath.Abs(filepath.Join(rootAbs, cleanRel))
+	if err != nil {
+		return "", false
+	}
+
+	relToRoot, err := filepath.Rel(rootAbs, assetAbs)
+	if err != nil || relToRoot == ".." || strings.HasPrefix(relToRoot, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+
+	return assetAbs, true
+}
+
 func (mc *MediaController) BatchDelete(c *gin.Context) {
 	db := config.GetDB()
 
@@ -458,8 +548,9 @@ func (mc *MediaController) BatchDelete(c *gin.Context) {
 	uploadRoot := getUploadRoot()
 	// Best-effort file deletion.
 	for _, a := range assets {
-		p := filepath.Join(uploadRoot, filepath.FromSlash(a.RelativePath))
-		_ = os.Remove(p)
+		if p, ok := mediaAssetDiskPath(uploadRoot, a.RelativePath); ok {
+			_ = os.Remove(p)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{

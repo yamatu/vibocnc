@@ -113,7 +113,7 @@ export function Header() {
       <div className="border-t border-gray-100 mt-2 pt-2">
         {suggestionsLoading ? (
           <div className="flex items-center justify-center py-4">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-600" />
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-700" />
           </div>
         ) : suggestions.length > 0 ? (
           <div className="space-y-1">
@@ -127,7 +127,7 @@ export function Header() {
                   key={p.id}
                   href={`/products/${toProductPathId(p.sku)}`}
                   onClick={handleSuggestionClick}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-yellow-50 transition-colors"
+                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-blue-50 transition-colors"
                 >
                   <div className="h-12 w-12 flex-shrink-0 rounded-md bg-gray-100 overflow-hidden">
                     <Image
@@ -142,7 +142,7 @@ export function Header() {
                     <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
                     <p className="text-xs text-gray-500">SKU: {p.sku}</p>
                   </div>
-                  <div className="text-sm font-semibold text-yellow-700 whitespace-nowrap">
+                  <div className="text-sm font-semibold text-[#0b3e75] whitespace-nowrap">
                     {formatCurrency(p.price)}
                   </div>
                 </Link>
@@ -151,7 +151,7 @@ export function Header() {
             <Link
               href={`/products?search=${encodeURIComponent(searchQuery.trim())}`}
               onClick={handleSuggestionClick}
-              className="block text-center text-sm text-yellow-600 hover:text-yellow-700 font-medium py-2"
+              className="site-link-accent block text-center text-sm py-2"
             >
               View all results
             </Link>
@@ -164,25 +164,25 @@ export function Header() {
   };
 
   return (
-    <header className="bg-white shadow-lg sticky top-0 z-50">
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur">
       {/* Top Bar */}
-      <div className="bg-yellow-500 text-black py-2">
+      <div className="bg-slate-950 text-slate-100 py-2">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center text-sm">
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center gap-4 sm:gap-6">
               <div className="flex items-center space-x-2">
-                <PhoneIcon className="h-4 w-4" />
+                <PhoneIcon className="h-4 w-4 text-orange-300" />
                 <span suppressHydrationWarning>+86 13348028050</span>
 
               </div>
-              <div className="flex items-center space-x-2">
-                <EnvelopeIcon className="h-4 w-4" />
+              <div className="hidden sm:flex items-center space-x-2">
+                <EnvelopeIcon className="h-4 w-4 text-orange-300" />
                 <span suppressHydrationWarning>sales@vcocncspare.com</span>
 
               </div>
             </div>
             <div className="hidden md:flex items-center space-x-4">
-              <span suppressHydrationWarning>Professional FANUC Parts & Services | Vcocnc Since 2005</span>
+              <span suppressHydrationWarning>Industrial automation parts supply | VIBO CNC Since 2005</span>
             </div>
           </div>
         </div>
@@ -194,12 +194,12 @@ export function Header() {
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-3">
-              <div className="bg-yellow-500 text-black px-4 py-2 rounded-lg font-bold text-xl">
-                Vcocnc
+              <div className="bg-white px-4 py-2 rounded-md text-lg font-black tracking-wide ring-2 ring-orange-400/30">
+                <span className="text-[#003a78]">Vibo</span><span className="text-orange-500">cnc</span>
               </div>
               <div className="hidden sm:block">
-                <div className="text-xl font-bold text-gray-900">CNC Solutions</div>
-                <div className="text-sm text-gray-600">Since 2005</div>
+                <div className="text-xl font-bold text-slate-950">CNC Parts Hub</div>
+                <div className="text-sm text-slate-500">Automation Supply</div>
               </div>
             </Link>
           </div>
@@ -216,7 +216,7 @@ export function Header() {
                 <Link
                   key={item.name}
                   href={item.href}
-                  className="text-gray-700 hover:text-yellow-600 font-medium transition-colors duration-200"
+                  className="text-sm font-semibold uppercase tracking-wide text-slate-700 transition-colors duration-200 hover:text-orange-600"
                 >
                   {item.name}
                 </Link>
@@ -230,13 +230,13 @@ export function Header() {
             <div className="relative" ref={searchDropdownRef}>
               <button
                 onClick={() => setSearchOpen(!searchOpen)}
-                className="p-2 text-gray-600 hover:text-yellow-600 transition-colors"
+                className="p-2 text-slate-600 hover:text-orange-600 transition-colors"
               >
                 <MagnifyingGlassIcon className="h-6 w-6" />
               </button>
 
               {searchOpen && (
-                <div className="absolute right-0 top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50">
+                <div className="absolute right-0 top-full mt-2 w-96 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-50">
                   <form onSubmit={handleSearch}>
                     <div className="flex">
                       <input
@@ -244,12 +244,12 @@ export function Header() {
                         placeholder="Search products..."
                         value={searchQuery}
                         onChange={(e) => handleSearchInput(e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        className="flex-1 px-3 py-2 border border-slate-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#003a78]"
                         autoFocus
                       />
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-yellow-500 text-black rounded-r-md hover:bg-yellow-600 transition-colors font-semibold"
+                        className="px-4 py-2 bg-[#003a78] text-white rounded-r-md hover:bg-orange-600 transition-colors font-semibold"
                       >
                         Search
                       </button>
@@ -263,11 +263,11 @@ export function Header() {
             {/* Cart */}
             <button
               onClick={toggleCart}
-              className="relative p-2 text-gray-600 hover:text-yellow-600 transition-colors"
+              className="relative p-2 text-slate-600 hover:text-orange-600 transition-colors"
             >
               <ShoppingCartIcon className="h-6 w-6" />
               {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold">
+                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold">
                   {itemCount}
                 </span>
               )}
@@ -278,7 +278,7 @@ export function Header() {
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center space-x-2 p-2 text-gray-600 hover:text-yellow-600 transition-colors"
+                  className="flex items-center space-x-2 p-2 text-slate-600 hover:text-orange-600 transition-colors"
                 >
                   <UserCircleIcon className="h-6 w-6" />
                   <span className="hidden md:inline text-sm font-medium">{customer.full_name}</span>
@@ -328,19 +328,19 @@ export function Header() {
               <div className="hidden md:flex items-center space-x-2">
                 <Link
                   href="/login"
-                  className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-yellow-600 transition-colors"
+                  className="px-3 py-2 text-sm font-medium text-slate-700 hover:text-orange-600 transition-colors"
                 >
                   Login
                 </Link>
                 <Link
                   href="/register"
-                  className="px-3 py-2 text-sm font-medium text-white bg-yellow-500 rounded-md hover:bg-yellow-600 transition-colors"
+                  className="px-3 py-2 text-sm font-semibold text-white bg-[#003a78] rounded-md hover:bg-orange-600 transition-colors"
                 >
                   Register
                 </Link>
                 <Link
                   href="/track-order"
-                  className="px-3 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                  className="px-3 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
                 >
                   Track Order
                 </Link>
@@ -350,7 +350,7 @@ export function Header() {
             {/* Mobile menu button */}
             <button
               type="button"
-              className="lg:hidden p-2 text-gray-600 hover:text-yellow-600"
+              className="lg:hidden p-2 text-slate-600 hover:text-orange-600"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? (
@@ -365,7 +365,7 @@ export function Header() {
 
       {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-gray-200">
+        <div className="lg:hidden border-t border-slate-200 bg-white">
           <div className="px-4 py-4 space-y-4">
             {navigation.map((item) => {
               if (item.name === 'Categories') {
@@ -375,7 +375,7 @@ export function Header() {
                 <Link
                   key={item.name}
                   href={item.href}
-                  className="block text-gray-700 hover:text-yellow-600 font-medium py-2"
+                  className="block text-slate-700 hover:text-orange-600 font-medium py-2"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {item.name}
@@ -389,13 +389,13 @@ export function Header() {
                 <input
                   type="text"
                   placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearchInput(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                value={searchQuery}
+                onChange={(e) => handleSearchInput(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#003a78]"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-yellow-500 text-black rounded-r-md hover:bg-yellow-600 transition-colors font-semibold"
+                  className="px-4 py-2 bg-[#003a78] text-white rounded-r-md hover:bg-orange-600 transition-colors font-semibold"
                 >
                   Search
                 </button>
@@ -471,22 +471,22 @@ function CategoriesDropdown() {
 
   return (
     <div className="relative group">
-      <a
+      <Link
         href="/categories"
-        className="text-gray-700 hover:text-yellow-600 font-medium transition-colors duration-200 py-2 px-1 block"
+        className="text-sm font-semibold uppercase tracking-wide text-slate-700 hover:text-orange-600 transition-colors duration-200 py-2 px-1 block"
       >
         Categories
-      </a>
+      </Link>
       {/* Invisible bridge to prevent hover gap */}
       <div className="absolute top-full left-0 w-full h-2 bg-transparent"></div>
       {/* Dropdown Panel */}
       {Array.isArray(categories) && categories.length > 0 && (
         <div
-          className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-200 ease-in-out transform group-hover:translate-y-0 translate-y-1 absolute left-0 top-full mt-1 w-[720px] max-h-[80vh] overflow-auto rounded-xl border border-gray-100 bg-white shadow-2xl z-50 p-4 backdrop-blur-sm"
+          className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-200 ease-in-out transform group-hover:translate-y-0 translate-y-1 absolute left-0 top-full mt-1 w-[720px] max-h-[80vh] overflow-auto rounded-xl border border-slate-200 bg-white shadow-2xl z-50 p-4 backdrop-blur-sm"
           onMouseLeave={() => setHoverPath([])}
         >
-          <div className="mb-3 pb-2 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Product Categories</h3>
+          <div className="mb-3 pb-2 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">Product Categories</h3>
           </div>
           <div className="flex gap-3">
             {columns.map((col, level) => (
@@ -503,7 +503,7 @@ function CategoriesDropdown() {
                           scroll={false}
                           className={cn(
                             'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                            isActive ? 'bg-yellow-100 text-yellow-900' : 'text-gray-800 hover:bg-yellow-50 hover:text-yellow-800'
+                            isActive ? 'bg-blue-50 text-[#003a78]' : 'text-slate-800 hover:bg-slate-50 hover:text-orange-600'
                           )}
                         >
                           <span className="min-w-0 flex-1 truncate">{cat.name}</span>
@@ -543,14 +543,14 @@ function MobileCategoriesMenu({ onNavigate }: { onNavigate: () => void }) {
     <div>
       <button
         type="button"
-        className="w-full flex items-center justify-between text-gray-700 hover:text-yellow-600 font-medium py-2"
+        className="w-full flex items-center justify-between text-slate-700 hover:text-orange-600 font-medium py-2"
         onClick={() => setOpen((v) => !v)}
       >
         <span>Categories</span>
-        <span className="text-gray-400">{open ? '–' : '+'}</span>
+        <span className="text-slate-400">{open ? '-' : '+'}</span>
       </button>
       {open && Array.isArray(categories) && categories.length > 0 && (
-        <div className="mt-2 pl-2 border-l border-gray-200 space-y-1">
+        <div className="mt-2 pl-2 border-l border-slate-200 space-y-1">
           <MobileCategoryTree categories={categories} level={0} onNavigate={onNavigate} openIds={openIds} onToggle={toggle} />
         </div>
       )}
@@ -595,7 +595,7 @@ function MobileCategoryTree({
 
             <Link
               href={`/categories/${cat.path || cat.slug}`}
-              className="block text-sm text-gray-700 hover:text-yellow-600 py-0.5"
+              className="block text-sm text-slate-700 hover:text-orange-600 py-0.5"
               onClick={onNavigate}
               scroll={false}
             >

@@ -70,8 +70,8 @@ export default function CategoryFilterTree({
       <div key={node.id}>
         <div
           className={cn(
-            'flex items-center gap-2 rounded-md px-2 py-1.5',
-            isSelected ? 'bg-yellow-100 text-yellow-900' : 'text-gray-800 hover:bg-gray-100'
+            'flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors',
+            isSelected ? 'bg-blue-50 text-[#0b3e75] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[#0b3e75]'
           )}
         >
           <div style={{ width: depth * 12 }} />
@@ -79,7 +79,7 @@ export default function CategoryFilterTree({
             <button
               type="button"
               onClick={() => toggle(node.id)}
-              className="p-0.5 rounded hover:bg-gray-200"
+              className="p-0.5 rounded text-slate-500 hover:bg-slate-200 hover:text-[#0b3e75]"
               aria-label={isOpen ? 'Collapse' : 'Expand'}
             >
               {isOpen ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
@@ -113,7 +113,7 @@ export default function CategoryFilterTree({
         onClick={() => onSelectCategory(null)}
         className={cn(
           'w-full rounded-md px-2 py-2 text-left text-sm font-medium',
-          !hasSelection ? 'bg-yellow-100 text-yellow-900' : 'text-gray-800 hover:bg-gray-100'
+          !hasSelection ? 'bg-blue-50 text-[#0b3e75] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[#0b3e75]'
         )}
       >
         {allLabel}

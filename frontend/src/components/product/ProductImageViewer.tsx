@@ -85,8 +85,8 @@ export default function ProductImageViewer({
               <button
                 key={index}
                 onClick={() => onImageChange(index)}
-                className={`relative h-24 bg-white rounded-md flex items-center justify-center text-sm font-medium uppercase text-gray-900 cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring focus:ring-offset-4 focus:ring-yellow-500 ${
-                  index === selectedImageIndex ? 'ring-2 ring-yellow-500' : ''
+                className={`relative h-24 bg-white rounded-md flex items-center justify-center text-sm font-medium uppercase text-slate-900 cursor-pointer hover:bg-slate-50 focus:outline-none focus:ring focus:ring-offset-4 focus:ring-blue-700 ${
+                  index === selectedImageIndex ? 'ring-2 ring-blue-700' : ''
                 }`}
               >
                 <span className="sr-only">Image {index + 1}</span>
@@ -110,7 +110,7 @@ export default function ProductImageViewer({
       <div className="w-full aspect-w-1 aspect-h-1">
         <div 
           ref={imageRef}
-          className="relative h-96 sm:h-[500px] bg-white rounded-lg overflow-hidden cursor-zoom-in"
+          className="site-detail-panel relative h-96 sm:h-[500px] overflow-hidden cursor-zoom-in"
           onMouseMove={handleMouseMove}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
@@ -133,15 +133,15 @@ export default function ProductImageViewer({
             <>
               <button
                 onClick={() => handleImageChange('prev')}
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-2 shadow-lg transition-opacity duration-200 hover:opacity-100"
+                className="absolute left-4 top-1/2 transform -translate-y-1/2 rounded-md border border-slate-200 bg-white/90 p-2 shadow-lg transition-opacity duration-200 hover:bg-white hover:opacity-100"
               >
-                <ChevronLeftIcon className="h-5 w-5 text-gray-600" />
+                <ChevronLeftIcon className="h-5 w-5 text-slate-600" />
               </button>
               <button
                 onClick={() => handleImageChange('next')}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-2 shadow-lg transition-opacity duration-200 hover:opacity-100"
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 rounded-md border border-slate-200 bg-white/90 p-2 shadow-lg transition-opacity duration-200 hover:bg-white hover:opacity-100"
               >
-                <ChevronRightIcon className="h-5 w-5 text-gray-600" />
+                <ChevronRightIcon className="h-5 w-5 text-slate-600" />
               </button>
             </>
           )}

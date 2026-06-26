@@ -17,7 +17,7 @@ import {
 import AdminLayout from '@/components/admin/AdminLayout';
 import { CategoryService, MediaService, ProductService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
-import type { MediaAsset, MediaUploadResponse } from '@/services/media.service';
+import type { MediaAsset, MediaCleanupMissingResponse, MediaUploadResponse } from '@/services/media.service';
 import type { Category } from '@/types';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
@@ -166,6 +166,40 @@ export default function AdminMediaPage() {
     onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.deleteFailed', locale === 'zh' ? '删除失败' : 'Failed to delete'))),
   });
 
+  const cleanupMissingMutation = useMutation({
+    mutationFn: () => MediaService.cleanupMissing(),
+    onSuccess: (res: MediaCleanupMissingResponse) => {
+      if (res.deleted > 0) {
+        toast.success(
+          t(
+            'media.toast.cleanupMissingDone',
+            locale === 'zh' ? `已清理 ${res.deleted} 条缺失图片记录` : `Cleaned ${res.deleted} missing media record(s)`
+          )
+        );
+      } else {
+        toast.success(
+          t(
+            'media.toast.cleanupMissingNone',
+            locale === 'zh' ? `已扫描 ${res.scanned} 条记录，没有发现缺失文件` : `Scanned ${res.scanned} record(s); no missing files found`
+          )
+        );
+      }
+      if (res.errors?.length) {
+        toast.error(
+          t(
+            'media.toast.cleanupMissingPartial',
+            locale === 'zh' ? `有 ${res.errors.length} 条记录检查失败，请稍后重试` : `${res.errors.length} record(s) could not be checked`
+          )
+        );
+      }
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: queryKeys.media.lists() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.media.watermarkSettings() });
+    },
+    onError: (error: unknown) =>
+      toast.error(getErrorMessage(error, t('media.toast.cleanupMissingFailed', locale === 'zh' ? '清理缺失图片记录失败' : 'Failed to clean missing media records'))),
+  });
+
   const batchUpdateMutation = useMutation({
     mutationFn: (payload: BatchUpdatePayload) =>
       MediaService.batchUpdate(payload.ids, {
@@ -306,20 +340,46 @@ export default function AdminMediaPage() {
     <AdminLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{t('nav.media', 'Media Library')}</h1>
             <p className="mt-1 text-sm text-gray-500">
               {t('media.subtitle', locale === 'zh' ? '上传并管理图片（按 SHA-256 去重）' : 'Upload and manage images (deduplicated by SHA-256)')}
             </p>
           </div>
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
-            {t('media.upload', locale === 'zh' ? '上传图片' : 'Upload Images')}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={cleanupMissingMutation.isPending}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    t(
+                      'media.confirm.cleanupMissing',
+                      locale === 'zh'
+                        ? '将删除数据库中存在、但文件已不存在的图库记录。不会删除仍存在的图片文件。继续吗？'
+                        : 'Delete media database records whose files no longer exist on disk? Existing files will not be deleted.'
+                    )
+                  )
+                )
+                  return;
+                cleanupMissingMutation.mutate();
+              }}
+              className="inline-flex items-center px-4 py-2 border border-red-200 rounded-md text-sm font-medium text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
+            >
+              <TrashIcon className="h-4 w-4 mr-2" />
+              {cleanupMissingMutation.isPending
+                ? t('common.processing', locale === 'zh' ? '处理中...' : 'Processing...')
+                : t('media.cleanupMissing', locale === 'zh' ? '清理缺失记录' : 'Clean Missing Records')}
+            </button>
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
+              {t('media.upload', locale === 'zh' ? '上传图片' : 'Upload Images')}
+            </button>
+          </div>
         </div>
 
         {/* Watermark Settings */}

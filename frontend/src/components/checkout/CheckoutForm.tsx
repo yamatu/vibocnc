@@ -60,8 +60,8 @@ export default function CheckoutForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
-      <div className="flex items-center mb-6">
-        <UserIcon className="h-6 w-6 text-amber-600 mr-2" />
+      <div className="site-form-heading mb-6">
+        <UserIcon className="h-6 w-6" />
         <h2 className="text-xl font-semibold text-gray-900">Customer Information</h2>
       </div>
 
@@ -76,8 +76,8 @@ export default function CheckoutForm({
             type="text"
             id="customer_name"
             {...register('customer_name')}
-            className={`w-full pl-10 pr-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${
-              errors.customer_name ? 'border-red-300' : 'border-gray-300'
+            className={`site-input w-full pl-10 pr-3 py-2.5 ${
+              errors.customer_name ? 'border-red-300' : ''
             }`}
             placeholder="Enter your full name"
           />
@@ -98,8 +98,8 @@ export default function CheckoutForm({
             type="email"
             id="customer_email"
             {...register('customer_email')}
-            className={`w-full pl-10 pr-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${
-              errors.customer_email ? 'border-red-300' : 'border-gray-300'
+            className={`site-input w-full pl-10 pr-3 py-2.5 ${
+              errors.customer_email ? 'border-red-300' : ''
             }`}
             placeholder="Enter your email address"
           />
@@ -120,8 +120,8 @@ export default function CheckoutForm({
             type="tel"
             id="customer_phone"
             {...register('customer_phone')}
-            className={`w-full pl-10 pr-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${
-              errors.customer_phone ? 'border-red-300' : 'border-gray-300'
+            className={`site-input w-full pl-10 pr-3 py-2.5 ${
+              errors.customer_phone ? 'border-red-300' : ''
             }`}
             placeholder="Enter your phone number"
           />
@@ -142,8 +142,8 @@ export default function CheckoutForm({
             id="shipping_address"
             {...register('shipping_address')}
             rows={3}
-            className={`w-full pl-10 pr-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none ${
-              errors.shipping_address ? 'border-red-300' : 'border-gray-300'
+            className={`site-input w-full pl-10 pr-3 py-2.5 resize-none ${
+              errors.shipping_address ? 'border-red-300' : ''
             }`}
             placeholder="Enter your complete shipping address"
           />
@@ -171,7 +171,7 @@ export default function CheckoutForm({
 		>
 			{({ open }) => (
 				<div className="relative">
-					<div className="relative w-full cursor-default overflow-hidden rounded-md bg-white text-left border border-gray-300 focus-within:ring-2 focus-within:ring-amber-500 focus-within:border-amber-500">
+					<div className="site-input relative w-full cursor-default overflow-hidden text-left">
 						<MapPinIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
 						<Combobox.Input
 							id="shipping_country"
@@ -201,7 +201,7 @@ export default function CheckoutForm({
 									key={c.country_code}
 									value={c}
 									className={({ active }) =>
-										`relative cursor-default select-none py-2 pl-9 pr-3 ${active ? 'bg-amber-50 text-amber-900' : 'text-gray-900'}`
+										`relative cursor-default select-none py-2 pl-9 pr-3 ${active ? 'bg-blue-50 text-blue-950' : 'text-gray-900'}`
 									}
 								>
 									{({ selected }) => (
@@ -210,7 +210,7 @@ export default function CheckoutForm({
 												{c.country_name} ({c.country_code})
 											</span>
 											{selected ? (
-												<span className="absolute inset-y-0 left-0 flex items-center pl-3 text-amber-600">
+												<span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-800">
 													<CheckIcon className="h-5 w-5" aria-hidden="true" />
 												</span>
 											) : null}
@@ -235,7 +235,7 @@ export default function CheckoutForm({
           id="same_as_shipping"
           checked={sameAsShipping}
           onChange={(e) => setSameAsShipping(e.target.checked)}
-          className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded"
+          className="h-4 w-4 border-gray-300 rounded"
         />
         <label htmlFor="same_as_shipping" className="ml-2 text-sm text-gray-700">
           Billing address is the same as shipping address
@@ -254,8 +254,8 @@ export default function CheckoutForm({
             {...register('billing_address')}
             rows={3}
             disabled={sameAsShipping}
-            className={`w-full pl-10 pr-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none ${
-              errors.billing_address ? 'border-red-300' : 'border-gray-300'
+            className={`site-input w-full pl-10 pr-3 py-2.5 resize-none ${
+              errors.billing_address ? 'border-red-300' : ''
             } ${sameAsShipping ? 'bg-gray-50 text-gray-500' : ''}`}
             placeholder={sameAsShipping ? 'Same as shipping address' : 'Enter your billing address'}
           />
@@ -276,7 +276,7 @@ export default function CheckoutForm({
             id="notes"
             {...register('notes')}
             rows={3}
-            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+            className="site-input w-full pl-10 pr-3 py-2.5 resize-none"
             placeholder="Any special instructions or notes for your order"
           />
         </div>
@@ -286,7 +286,7 @@ export default function CheckoutForm({
       <button
         type="submit"
         disabled={isProcessing}
-        className="w-full bg-amber-600 text-white py-3 px-4 rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 font-medium"
+        className="site-primary-action w-full px-4 py-3 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isProcessing ? (
           <div className="flex items-center justify-center">

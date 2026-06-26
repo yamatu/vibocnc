@@ -51,25 +51,48 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Sign in to your account
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Or{' '}
-          <Link href="/register" className="font-medium text-amber-600 hover:text-amber-500">
-            create a new account
-          </Link>
-        </p>
-      </div>
+    <div className="site-auth-shell px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-12rem)] max-w-6xl items-center gap-10 lg:grid-cols-[1fr_28rem]">
+        <div className="text-white">
+          <span className="site-hero-kicker">Customer portal</span>
+          <h1 className="mt-5 max-w-2xl text-4xl font-bold leading-tight sm:text-5xl">
+            Access orders, quotes, and FANUC parts support in one place.
+          </h1>
+          <p className="mt-5 max-w-xl text-base leading-7 text-blue-100">
+            Sign in to review order history, track purchasing activity, and keep your industrial spare-parts requests moving.
+          </p>
+          <div className="mt-8 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
+            {['Order tracking', 'Saved details', 'Support history'].map((item) => (
+              <div key={item} className="site-stat-card">
+                <div className="text-sm font-semibold text-white">{item}</div>
+                <div className="mt-1 h-0.5 w-10 bg-orange-300" />
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+        <div className="w-full">
+          <div className="site-auth-card px-5 py-8 sm:px-8">
+            <div className="text-center">
+              <div className="site-auth-mark mx-auto">
+                <LockClosedIcon className="h-7 w-7" />
+              </div>
+              <h2 className="mt-5 text-2xl font-bold text-slate-950">
+                Sign in to your account
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                New customer?{' '}
+                <Link href="/register" className="site-link-accent">
+                  Create an account
+                </Link>
+              </p>
+            </div>
+
+            <div className="mt-8">
           <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
             {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-semibold text-slate-700">
                 Email address
               </label>
               <div className="mt-1 relative">
@@ -79,7 +102,7 @@ function LoginForm() {
                 <input
                   {...register('email')}
                   type="email"
-                  className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
+                  className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
                   placeholder="you@example.com"
                 />
               </div>
@@ -90,7 +113,7 @@ function LoginForm() {
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
                 Password
               </label>
               <div className="mt-1 relative">
@@ -100,8 +123,8 @@ function LoginForm() {
                 <input
                   {...register('password')}
                   type="password"
-                  className="pl-10 block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-amber-500 sm:text-sm"
-                  placeholder="••••••••"
+                  className="site-input pl-10 block w-full appearance-none px-3 py-2.5 placeholder-gray-400 sm:text-sm"
+                  placeholder="********"
                 />
               </div>
               {errors.password && (
@@ -116,7 +139,7 @@ function LoginForm() {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                  className="h-4 w-4 rounded border-gray-300"
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
                   Remember me
@@ -124,7 +147,7 @@ function LoginForm() {
               </div>
 
               <div className="text-sm">
-                <Link href="/forgot-password" className="font-medium text-amber-600 hover:text-amber-500">
+                <Link href="/forgot-password" className="site-link-accent">
                   Forgot password?
                 </Link>
               </div>
@@ -135,24 +158,26 @@ function LoginForm() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="site-primary-action w-full px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isLoading ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
           </form>
+            </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }
 
 function LoginFormFallback() {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="site-auth-shell flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-800"></div>
         </div>
       </div>
     </div>

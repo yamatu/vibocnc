@@ -105,7 +105,7 @@ export function CartSidebar() {
                               <p className="text-gray-500">Your cart is empty</p>
                               <Link
                                 href="/products"
-                                className="mt-4 inline-block bg-yellow-500 text-black px-6 py-2 rounded-md hover:bg-yellow-600 transition-colors"
+                                className="site-primary-action mt-4 px-6 py-2"
                                 onClick={closeCart}
                               >
                                 Continue Shopping
@@ -134,7 +134,7 @@ export function CartSidebar() {
                                              href={`/products/${toProductPathId(item.product.sku)}`}
 
                                             onClick={closeCart}
-                                            className="hover:text-yellow-600"
+                                            className="hover:text-[#0b3e75]"
                                           >
                                             {item.product.name}
                                           </Link>
@@ -200,7 +200,7 @@ export function CartSidebar() {
                         <div className="mt-6 space-y-3">
                           <Link
                             href="/checkout/guest"
-                            className="flex items-center justify-center rounded-md border border-transparent bg-yellow-500 px-6 py-3 text-base font-medium text-black shadow-sm hover:bg-yellow-600 transition-colors"
+                            className="site-primary-action px-6 py-3 text-base"
                             onClick={closeCart}
                           >
                             Buy Now
@@ -218,7 +218,7 @@ export function CartSidebar() {
                             or{' '}
                             <button
                               type="button"
-                              className="font-medium text-yellow-600 hover:text-yellow-500"
+                              className="site-link-accent"
                               onClick={closeCart}
                             >
                               Continue Shopping

@@ -15,15 +15,15 @@ const sizeClasses = {
 };
 
 const colorClasses = {
-  yellow: 'border-yellow-600',
-  blue: 'border-blue-600',
+  yellow: 'border-blue-700',
+  blue: 'border-blue-700',
   gray: 'border-gray-600',
   white: 'border-white'
 };
 
 export default function LoadingSpinner({
   size = 'md',
-  color = 'yellow',
+  color = 'blue',
   className = '',
   text
 }: LoadingSpinnerProps) {
@@ -33,7 +33,7 @@ export default function LoadingSpinner({
     return (
       <div className="flex flex-col items-center justify-center space-y-2">
         <div className={spinnerClasses} />
-        <p className="text-sm text-gray-600">{text}</p>
+        <p className="text-sm text-slate-600">{text}</p>
       </div>
     );
   }

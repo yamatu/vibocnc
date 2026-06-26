@@ -119,11 +119,12 @@ function ContactContent() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@graph": [contactPageSchema, breadcrumbSchema] }) }}
       />
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-r from-yellow-500 to-yellow-600 text-black py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="site-page-hero py-24">
+        <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
+            <div className="site-hero-kicker mb-5">Contact VIBO CNC</div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6">Contact Us</h1>
-            <p className="text-xl md:text-2xl text-yellow-900 max-w-3xl mx-auto">
+            <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto">
               Get in touch with our expert team for all your automation needs
             </p>
           </div>
@@ -131,7 +132,7 @@ function ContactContent() {
       </section>
 
       {/* Contact Information & Form */}
-      <section className="py-16 bg-gray-50">
+      <section className="site-page-shell py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
             
@@ -141,7 +142,7 @@ function ContactContent() {
               
               <div className="space-y-6">
                 <div className="flex items-start space-x-4">
-                  <MapPinIcon className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" />
+                  <MapPinIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">Address</h3>
                     <p className="text-gray-600">
@@ -152,7 +153,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <PhoneIcon className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" />
+                  <PhoneIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">Phone</h3>
                     <p className="text-gray-600">+86 13348028050</p>
@@ -160,7 +161,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <EnvelopeIcon className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" />
+                  <EnvelopeIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">Email</h3>
                     <p className="text-gray-600">sales@vcocncspare.com</p>
@@ -168,7 +169,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <ClockIcon className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" />
+                  <ClockIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">Business Hours</h3>
                     <p className="text-gray-600">
@@ -180,7 +181,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <BuildingOfficeIcon className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" />
+                  <BuildingOfficeIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">Facility</h3>
                     <p className="text-gray-600">5,000 sqm Workshop</p>
@@ -188,7 +189,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <GlobeAltIcon className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" />
+                  <GlobeAltIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">Service Area</h3>
                     <p className="text-gray-600">Worldwide Shipping</p>
@@ -199,7 +200,7 @@ function ContactContent() {
             
             {/* Contact Form */}
             <div className="lg:col-span-2">
-              <div className="bg-white rounded-lg shadow-lg p-8">
+              <div className="site-detail-panel p-8">
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Send us a Message</h2>
                 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -215,7 +216,7 @@ function ContactContent() {
                         required
                         value={formData.name}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                        className="site-input w-full px-4 py-3"
                         placeholder="Your full name"
                       />
                     </div>
@@ -231,7 +232,7 @@ function ContactContent() {
                         required
                         value={formData.email}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                        className="site-input w-full px-4 py-3"
                         placeholder="your.email@company.com"
                       />
                     </div>
@@ -248,7 +249,7 @@ function ContactContent() {
                         name="company"
                         value={formData.company}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                        className="site-input w-full px-4 py-3"
                         placeholder="Your company name"
                       />
                     </div>
@@ -263,7 +264,7 @@ function ContactContent() {
                         name="phone"
                         value={formData.phone}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                        className="site-input w-full px-4 py-3"
                         placeholder="+1 (555) 123-4567"
                       />
                     </div>
@@ -279,7 +280,7 @@ function ContactContent() {
                         name="inquiry_type"
                         value={formData.inquiry_type}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                        className="site-select w-full px-4 py-3"
                       >
                         <option value="general">General Inquiry</option>
                         <option value="parts">Parts Request</option>
@@ -300,7 +301,7 @@ function ContactContent() {
                         required
                         value={formData.subject}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                        className="site-input w-full px-4 py-3"
                         placeholder="Brief subject of your inquiry"
                       />
                     </div>
@@ -317,7 +318,7 @@ function ContactContent() {
                       rows={6}
                       value={formData.message}
                       onChange={handleChange}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                      className="site-input w-full px-4 py-3"
                       placeholder="Please provide details about your requirements, including part numbers if available..."
                     />
                   </div>
@@ -325,7 +326,7 @@ function ContactContent() {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full bg-yellow-500 text-black px-8 py-4 rounded-lg text-lg font-semibold hover:bg-yellow-600 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="site-primary-action w-full px-8 py-4 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? 'Sending Message...' : 'Send Message'}
                   </button>
@@ -347,8 +348,8 @@ function ContactContent() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center p-6">
-              <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <ClockIcon className="h-8 w-8 text-yellow-600" />
+              <div className="site-subtle-card w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <ClockIcon className="h-8 w-8 text-[#0b3e75]" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Fast Response</h3>
               <p className="text-gray-600">
@@ -357,8 +358,8 @@ function ContactContent() {
             </div>
 
             <div className="text-center p-6">
-              <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <BuildingOfficeIcon className="h-8 w-8 text-yellow-600" />
+              <div className="site-subtle-card w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <BuildingOfficeIcon className="h-8 w-8 text-[#0b3e75]" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Large Inventory</h3>
               <p className="text-gray-600">
@@ -367,8 +368,8 @@ function ContactContent() {
             </div>
 
             <div className="text-center p-6">
-              <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <GlobeAltIcon className="h-8 w-8 text-yellow-600" />
+              <div className="site-subtle-card w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <GlobeAltIcon className="h-8 w-8 text-[#0b3e75]" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Global Shipping</h3>
               <p className="text-gray-600">

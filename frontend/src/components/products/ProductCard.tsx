@@ -74,11 +74,11 @@ export default function ProductCard({
   const imageUrl = getProductImageUrl(product.image_urls || [], getDefaultProductImageWithSku(product.sku));
 
   return (
-    <div className={`bg-white rounded-lg shadow hover:shadow-lg transition-shadow duration-200 ${className}`}>
+    <div className={`bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-lg transition-shadow duration-200 ${className}`}>
       <div className="relative">
         {/* Product Image */}
         <Link href={`/products/${toProductPathId(product.sku)}`} className="block">
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-gray-200">
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-slate-200">
             {imageUrl && imageUrl !== '/images/placeholder.svg' ? (
               <Image
                 src={imageUrl}
@@ -88,8 +88,8 @@ export default function ProductCard({
                 className="object-cover object-center"
               />
             ) : (
-              <div className="absolute inset-0 bg-gray-200 flex items-center justify-center">
-                <span className="text-gray-400 text-sm">No Image</span>
+              <div className="absolute inset-0 bg-slate-200 flex items-center justify-center">
+                <span className="text-slate-400 text-sm">No Image</span>
               </div>
             )}
           </div>
@@ -111,7 +111,7 @@ export default function ProductCard({
 
         {/* Featured Badge */}
         {product.is_featured && (
-          <div className="absolute top-2 left-2 bg-yellow-500 text-white px-2 py-1 rounded-md text-xs font-medium z-10">
+          <div className="absolute top-2 left-2 bg-orange-500 text-white px-2 py-1 rounded-md text-xs font-medium z-10">
             Featured
           </div>
         )}
@@ -127,23 +127,23 @@ export default function ProductCard({
       {/* Product Info */}
       <div className="p-4">
         <Link href={`/products/${toProductPathId(product.sku)}`}>
-          <h3 className="text-lg font-medium text-gray-900 mb-2 line-clamp-2 hover:text-yellow-600 transition-colors cursor-pointer">
+          <h3 className="text-lg font-medium text-slate-950 mb-2 line-clamp-2 hover:text-[#003a78] transition-colors cursor-pointer">
             {product.name}
           </h3>
         </Link>
 
-        <p className="text-sm text-gray-500 mb-2">
+        <p className="text-sm text-slate-500 mb-2">
           SKU: {product.sku}
         </p>
 
         {product.brand && (
-          <p className="text-sm text-gray-500 mb-2">
+          <p className="text-sm text-slate-500 mb-2">
             Brand: {product.brand}
           </p>
         )}
 
         {product.short_description && (
-          <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+          <p className="text-sm text-slate-600 mb-4 line-clamp-2">
             {product.short_description}
           </p>
         )}
@@ -151,7 +151,7 @@ export default function ProductCard({
         {/* Price */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
-            <span className="text-xl font-bold text-yellow-600">
+            <span className="text-xl font-bold text-[#003a78]">
               {formatCurrency(product.price)}
             </span>
             {product.compare_price && product.compare_price > product.price && (
@@ -167,7 +167,7 @@ export default function ProductCard({
           <Link
              href={`/products/${toProductPathId(product.sku)}`}
 
-            className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center px-3 py-2 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 transition-colors"
           >
             <EyeIcon className="h-4 w-4 mr-1" />
             View Details
@@ -176,7 +176,7 @@ export default function ProductCard({
           <button
             onClick={handleAddToCart}
             disabled={isLoading}
-            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-black bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-500 hover:bg-[#003a78] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <ShoppingCartIcon className="h-4 w-4 mr-1" />
             {isLoading ? 'Adding...' : 'Add to Cart'}

@@ -13,11 +13,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(siteUrl),
     title: {
-      default: "FANUC Parts & Industrial Automation Components | Vcocnc",
-      template: "%s | Vcocnc FANUC Parts",
+      default: "Industrial Automation Components | VIBO CNC",
+      template: "%s | VIBO CNC",
     },
     description:
-      "Professional FANUC CNC parts supplier since 2005. 100,000+ items in stock, worldwide shipping. Servo motors, PCB boards, I/O modules, control units. Top 3 FANUC supplier in China.",
+      "Professional CNC and industrial automation parts supplier since 2005. 100,000+ items in stock, worldwide shipping. Servo motors, PCB boards, I/O modules, control units and power supplies.",
     keywords: [
       "FANUC parts",
       "CNC parts",
@@ -27,16 +27,15 @@ export async function generateMetadata(): Promise<Metadata> {
       "I/O modules",
       "control units",
       "power supplies",
-      "FANUC repair",
       "automation components",
-      "Vcocnc",
-      "China FANUC supplier",
+      "VIBO CNC",
+      "China CNC parts supplier",
       "industrial spare parts",
       "CNC machine parts",
     ].join(", "),
-    authors: [{ name: "Vcocnc", url: "https://vcocnc.shop" }],
-    creator: "Vcocnc Industrial Automation",
-    publisher: "Vcocnc",
+    authors: [{ name: "VIBO CNC", url: "https://vcocnc.shop" }],
+    creator: "VIBO CNC Industrial Automation",
+    publisher: "VIBO CNC",
     robots: {
       index: true,
       follow: true,
@@ -51,23 +50,23 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       type: "website",
       locale: "en_US",
-      siteName: "Vcocnc FANUC Parts",
-      title: "FANUC Parts & Industrial Automation Components | Vcocnc",
+      siteName: "VIBO CNC",
+      title: "Industrial Automation Components | VIBO CNC",
       description:
-        "Professional FANUC CNC parts supplier since 2005. 100,000+ items in stock, worldwide shipping. Top 3 FANUC supplier in China.",
+        "Professional CNC and industrial automation parts supplier since 2005. 100,000+ items in stock, worldwide shipping.",
       images: [
         {
           url: "/images/og-image.jpg",
           width: 1200,
           height: 630,
-          alt: "Vcocnc FANUC Parts - Industrial Automation Components",
+          alt: "VIBO CNC - Industrial Automation Components",
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "FANUC Parts & Industrial Automation Components | Vcocnc",
-      description: "Professional FANUC CNC parts supplier since 2005. 100,000+ items in stock, worldwide shipping.",
+      title: "Industrial Automation Components | VIBO CNC",
+      description: "Professional CNC and industrial automation parts supplier since 2005. 100,000+ items in stock, worldwide shipping.",
       images: ["/images/og-image.jpg"],
     },
     verification: {
@@ -89,7 +88,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="manifest" href="/site.webmanifest" />
-        <meta name="theme-color" content="#f59e0b" />
+        <meta name="theme-color" content="#0f766e" />
       </head>
       <body className={`${inter.className} antialiased`}>
         <ReactQueryProvider>
