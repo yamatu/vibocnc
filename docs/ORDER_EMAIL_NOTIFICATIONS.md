@@ -77,7 +77,7 @@ finance@yourdomain.com
 
 后端会在通知邮件里放“后台订单链接/订单追踪链接”。为了让链接是正确域名，建议设置：
 
-- `SITE_URL=https://www.vcocncspare.com`
+- `SITE_URL=https://www.vibocnc.com`
 
 不设置也能发邮件，只是链接可能根据请求头推断。
 

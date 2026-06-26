@@ -307,9 +307,9 @@ curl -fsS http://localhost:3006/api/v1/public/homepage-content | head
 
 1. 后台打开 `/admin/indexnow`
 2. 填入 Bing 生成的 key，例如 `dcc05b47d6dc45bbb885d7ad69062c57`
-3. 确认 `site_url` 为真实域名 `https://www.vcocncspare.com`
+3. 确认 `site_url` 为真实域名 `https://www.vibocnc.com`
 4. 保存后检查：
-   - `https://www.vcocncspare.com/{key}.txt`
+   - `https://www.vibocnc.com/{key}.txt`
 5. 再在后台手动提交一批 URL，或直接依赖产品保存后的自动提交
 
 ### 注意事项

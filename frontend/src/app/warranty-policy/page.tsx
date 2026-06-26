@@ -4,9 +4,9 @@ import { buildStaticPageMetadata } from '@/lib/seo';
 
 export const metadata: Metadata = buildStaticPageMetadata(
   '/warranty-policy',
-  'Warranty Policy | Vcocnc',
-  '1-year in-service warranty coverage, claims process, and contact details for Vcocnc FANUC parts.',
-  'warranty policy, FANUC parts warranty, CNC parts warranty, repair claims, Vcocnc warranty'
+  'Warranty Policy | VIBO CNC',
+  '1-year in-service warranty coverage, claims process, and contact details for VIBO CNC FANUC parts.',
+  'warranty policy, FANUC parts warranty, CNC parts warranty, repair claims, VIBO CNC warranty'
 );
 
 export default function WarrantyPolicyPage() {
@@ -37,7 +37,7 @@ export default function WarrantyPolicyPage() {
 
         <section className="space-y-2 mt-8">
           <h2 className="text-xl font-semibold">Contact</h2>
-          <p className="text-gray-700">Email: sales@vcocncspare.com • Phone: +86-13348028050</p>
+          <p className="text-gray-700">Email: sales@vibocnc.com • Phone: +86-13348028050</p>
           <p className="text-gray-500">Business hours: Mon–Fri, 8:00–18:00 (GMT+8)</p>
         </section>
       </main>

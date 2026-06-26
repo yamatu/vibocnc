@@ -17,12 +17,12 @@ import {
 export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = getSiteUrl();
   return {
-    title: 'About Vcocnc - Top 3 FANUC Parts Supplier in China Since 2005',
-    description: 'Vcocnc is a leading FANUC CNC parts supplier established in 2005 in Kunshan, China. With 100,000+ items in stock, 37 employees, and a 5,000 sqm workshop, we are one of the top 3 FANUC suppliers in China. Worldwide shipping.',
-    keywords: 'Vcocnc, about Vcocnc, FANUC supplier China, CNC parts supplier, industrial automation company, Kunshan, top FANUC supplier',
+    title: 'About VIBO CNC - Top 3 FANUC Parts Supplier in China Since 2005',
+    description: 'VIBO CNC is a leading FANUC CNC parts supplier established in 2005 in Kunshan, China. With 100,000+ items in stock, 37 employees, and a 5,000 sqm workshop, we are one of the top 3 FANUC suppliers in China. Worldwide shipping.',
+    keywords: 'VIBO CNC, about VIBO CNC, FANUC supplier China, CNC parts supplier, industrial automation company, Kunshan, top FANUC supplier',
     alternates: { canonical: `${baseUrl}/about` },
     openGraph: {
-      title: 'About Vcocnc - Top 3 FANUC Parts Supplier in China Since 2005',
+      title: 'About VIBO CNC - Top 3 FANUC Parts Supplier in China Since 2005',
       description: 'Leading FANUC CNC parts supplier since 2005. 100,000+ items in stock, 37 employees, 5,000 sqm workshop. Top 3 FANUC supplier in China with worldwide shipping.',
       url: `${baseUrl}/about`,
       type: 'website',
@@ -41,12 +41,12 @@ export default function About() {
   const aboutPageSchema = {
     "@context": "https://schema.org",
     "@type": "AboutPage",
-    "name": "About Vcocnc",
-    "description": "Learn about Vcocnc, a top 3 FANUC parts supplier in China since 2005.",
+    "name": "About VIBO CNC",
+    "description": "Learn about VIBO CNC, a top 3 FANUC parts supplier in China since 2005.",
     "url": `${baseUrl}/about`,
     "mainEntity": {
       "@type": "Organization",
-      "name": "Vcocnc",
+      "name": "VIBO CNC",
       "foundingDate": "2005",
       "foundingLocation": {
         "@type": "Place",
@@ -90,7 +90,7 @@ export default function About() {
         <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <div className="site-hero-kicker mb-5">About VIBO CNC</div>
-            <h1 className="text-4xl md:text-6xl font-bold mb-6">About Vcocnc</h1>
+            <h1 className="text-4xl md:text-6xl font-bold mb-6">About VIBO CNC</h1>
             <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto">
               Your trusted one-stop CNC solution supplier since 2005
             </p>
@@ -107,13 +107,13 @@ export default function About() {
                 Company Profile
               </h2>
               <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-                Vcocnc established in 2005 in Kunshan, China. We are selling automation components like 
-                System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive 
+                VIBO CNC established in 2005 in Kunshan, China. We are selling automation components like
+                System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive
                 etc of AB, ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.
               </p>
               <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-                Especially Fanuc, We are one of the top three suppliers in China. We now have 27 workers, 
-                10 sales and 100,000 items regularly stocked. Daily parcel around 50-100pcs, yearly turnover 
+                Especially Fanuc, We are one of the top three suppliers in China. We now have 27 workers,
+                10 sales and 100,000 items regularly stocked. Daily parcel around 50-100pcs, yearly turnover
                 around 200 million.
               </p>
               <div className="grid grid-cols-2 gap-4">
@@ -130,7 +130,7 @@ export default function About() {
             <div className="relative">
               <Image
                 src="https://s2.loli.net/2025/09/01/G1JcoeXWNTdpIfZ.jpg"
-                alt="Vcocnc Company Building"
+                alt="VIBO CNC Company Building"
                 width={600}
                 height={400}
                 className="w-full rounded-lg shadow-lg"
@@ -148,11 +148,11 @@ export default function About() {
               Warehouse & Items
             </h2>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-              We now have 27 workers, 10 sales and 100,000 items regularly stocked. 
+              We now have 27 workers, 10 sales and 100,000 items regularly stocked.
               Daily parcel around 50-100pcs, yearly turnover around 200 million.
             </p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="site-detail-panel text-center p-8">
               <BuildingOfficeIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
@@ -192,7 +192,7 @@ export default function About() {
               We have a professional team to provide services including sales, testing and maintenance
             </p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center p-6">
               <ChartBarIcon className="h-16 w-16 text-[#0b3e75] mx-auto mb-4" />

@@ -20,7 +20,7 @@ function getImageAlt(productName: string, productSku?: string, categoryName?: st
   const cat = categoryName || 'Industrial Component';
   switch (index) {
     case 0:
-      return `${sku} ${productName} - Front View | Vcocnc FANUC Parts`.trim();
+      return `${sku} ${productName} - Front View | VIBO CNC FANUC Parts`.trim();
     case 1:
       return `${sku} ${productName} - Detail View | ${cat}`.trim();
     default:
@@ -65,7 +65,7 @@ export default function ProductImageViewer({
 
   const handleImageChange = (direction: 'prev' | 'next') => {
     if (!images.length) return;
-    
+
     if (direction === 'prev') {
       const newIndex = selectedImageIndex === 0 ? images.length - 1 : selectedImageIndex - 1;
       onImageChange(newIndex);
@@ -108,7 +108,7 @@ export default function ProductImageViewer({
 
       {/* Main Image with Hover Zoom */}
       <div className="w-full aspect-w-1 aspect-h-1">
-        <div 
+        <div
           ref={imageRef}
           className="site-detail-panel relative h-96 sm:h-[500px] overflow-hidden cursor-zoom-in"
           onMouseMove={handleMouseMove}
@@ -127,7 +127,7 @@ export default function ProductImageViewer({
             }}
             priority
           />
-          
+
           {/* Image Navigation */}
           {images.length > 1 && (
             <>

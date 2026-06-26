@@ -281,3 +281,64 @@ func (pc *ProductController) BulkRemoveDefaultImage(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: gin.H{"updated": updated, "removed": removed, "skipped": skipped}})
 }
+
+// Admin: PUT /api/v1/admin/products/bulk-images/clear
+// Clears product image URLs so imported broken paths are treated as empty images.
+func (pc *ProductController) BulkClearImages(c *gin.Context) {
+	var req bulkDefaultImageReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+	batchSize := req.BatchSize
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+
+	db := config.GetDB()
+	selector := db.Model(&models.Product{}).Select("id", "sku", "image_urls")
+	if len(req.IDs) > 0 {
+		selector = selector.Where("id IN ?", req.IDs)
+	}
+	if len(req.SKUs) > 0 {
+		selector = selector.Or("sku IN ?", req.SKUs)
+	}
+	if len(req.IDs) == 0 && len(req.SKUs) == 0 {
+		selector = buildProductSelector(selector, req)
+	}
+
+	updated := int64(0)
+	skipped := int64(0)
+	removed := int64(0)
+
+	var batch []models.Product
+	if err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
+		for _, p := range batch {
+			rawImageURLs := strings.TrimSpace(p.ImageURLs)
+			if rawImageURLs == "" || rawImageURLs == "[]" || strings.EqualFold(rawImageURLs, "null") {
+				skipped++
+				continue
+			}
+			urls := parseImageURLsJSON(rawImageURLs)
+			if err := db.Model(&models.Product{}).Where("id = ?", p.ID).Update("image_urls", "[]").Error; err != nil {
+				return err
+			}
+			updated++
+			removedCount := len(urls)
+			if removedCount == 0 {
+				removedCount = 1
+			}
+			removed += int64(removedCount)
+		}
+		return nil
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to clear product images", Error: err.Error()})
+		return
+	}
+
+	if updated > 0 {
+		services.InvalidatePublicCaches(c.Request.Context(), "product:bulk-images:clear", nil)
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: gin.H{"updated": updated, "removed": removed, "skipped": skipped}})
+}

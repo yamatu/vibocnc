@@ -177,7 +177,7 @@ export function Header() {
               </div>
               <div className="hidden sm:flex items-center space-x-2">
                 <EnvelopeIcon className="h-4 w-4 text-orange-300" />
-                <span suppressHydrationWarning>sales@vcocncspare.com</span>
+                <span suppressHydrationWarning>sales@vibocnc.com</span>
 
               </div>
             </div>
@@ -382,7 +382,7 @@ export function Header() {
                 </Link>
               );
             })}
-            
+
             {/* Mobile Search */}
             <div className="pt-4 border-t border-gray-200" ref={mobileSearchDropdownRef}>
               <form onSubmit={handleSearch} className="flex">
@@ -419,7 +419,7 @@ export function Header() {
 
       {/* Search Overlay for mobile */}
       {searchOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={() => setSearchOpen(false)}
         />

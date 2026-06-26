@@ -17,19 +17,19 @@ interface CategoryPathPageProps {
 function getCategoryMetaDescription(categoryName: string, baseDescription?: string): string {
   const name = categoryName.toLowerCase();
   const templates: Record<string, string> = {
-    'servo': `Shop FANUC ${categoryName} for precise CNC motion control. Tested, 12-month warranty, fast worldwide shipping. In-stock parts ready to ship from Vcocnc.`,
-    'motor': `Buy FANUC ${categoryName} for high-torque CNC performance. Quality tested with 12-month warranty. Fast DHL/FedEx shipping worldwide from Vcocnc.`,
-    'pcb': `Find FANUC ${categoryName} for reliable CNC signal processing. All boards tested before shipping. 12-month warranty, worldwide delivery from Vcocnc.`,
-    'board': `Browse FANUC ${categoryName} for CNC control systems. Quality-tested circuit boards with 12-month warranty. Fast global shipping from Vcocnc.`,
-    'power': `Shop FANUC ${categoryName} for stable CNC power delivery. Industrial-grade units tested and ready to ship. 12-month warranty at Vcocnc.`,
-    'i/o': `Buy FANUC ${categoryName} for robust automation I/O control. Tested modules with 12-month warranty. Worldwide express shipping from Vcocnc.`,
-    'interface': `Find FANUC ${categoryName} for reliable CNC communication. All parts quality tested. 12-month warranty, DHL/FedEx shipping from Vcocnc.`,
-    'encoder': `Shop FANUC ${categoryName} for accurate CNC position feedback. Tested encoders with 12-month warranty. Fast worldwide delivery from Vcocnc.`,
-    'cable': `Buy FANUC ${categoryName} for reliable industrial connections. Quality cables with 12-month warranty. Fast express shipping worldwide at Vcocnc.`,
-    'display': `Find FANUC ${categoryName} for clear CNC operator interfaces. Tested displays with 12-month warranty. Worldwide shipping from Vcocnc.`,
-    'spindle': `Shop FANUC ${categoryName} for high-speed CNC spindle control. Tested drives with 12-month warranty. Express global shipping from Vcocnc.`,
-    'controller': `Buy FANUC ${categoryName} for advanced CNC machine control. All controllers tested. 12-month warranty, fast worldwide delivery at Vcocnc.`,
-    'robot': `Find FANUC ${categoryName} for industrial robot automation. Tested parts with 12-month warranty. Fast DHL/FedEx shipping worldwide from Vcocnc.`,
+    'servo': `Shop FANUC ${categoryName} for precise CNC motion control. Tested, 12-month warranty, fast worldwide shipping. In-stock parts ready to ship from VIBO CNC.`,
+    'motor': `Buy FANUC ${categoryName} for high-torque CNC performance. Quality tested with 12-month warranty. Fast DHL/FedEx shipping worldwide from VIBO CNC.`,
+    'pcb': `Find FANUC ${categoryName} for reliable CNC signal processing. All boards tested before shipping. 12-month warranty, worldwide delivery from VIBO CNC.`,
+    'board': `Browse FANUC ${categoryName} for CNC control systems. Quality-tested circuit boards with 12-month warranty. Fast global shipping from VIBO CNC.`,
+    'power': `Shop FANUC ${categoryName} for stable CNC power delivery. Industrial-grade units tested and ready to ship. 12-month warranty at VIBO CNC.`,
+    'i/o': `Buy FANUC ${categoryName} for robust automation I/O control. Tested modules with 12-month warranty. Worldwide express shipping from VIBO CNC.`,
+    'interface': `Find FANUC ${categoryName} for reliable CNC communication. All parts quality tested. 12-month warranty, DHL/FedEx shipping from VIBO CNC.`,
+    'encoder': `Shop FANUC ${categoryName} for accurate CNC position feedback. Tested encoders with 12-month warranty. Fast worldwide delivery from VIBO CNC.`,
+    'cable': `Buy FANUC ${categoryName} for reliable industrial connections. Quality cables with 12-month warranty. Fast express shipping worldwide at VIBO CNC.`,
+    'display': `Find FANUC ${categoryName} for clear CNC operator interfaces. Tested displays with 12-month warranty. Worldwide shipping from VIBO CNC.`,
+    'spindle': `Shop FANUC ${categoryName} for high-speed CNC spindle control. Tested drives with 12-month warranty. Express global shipping from VIBO CNC.`,
+    'controller': `Buy FANUC ${categoryName} for advanced CNC machine control. All controllers tested. 12-month warranty, fast worldwide delivery at VIBO CNC.`,
+    'robot': `Find FANUC ${categoryName} for industrial robot automation. Tested parts with 12-month warranty. Fast DHL/FedEx shipping worldwide from VIBO CNC.`,
   };
 
   for (const [key, template] of Object.entries(templates)) {
@@ -38,7 +38,7 @@ function getCategoryMetaDescription(categoryName: string, baseDescription?: stri
 
   if (baseDescription && baseDescription.length > 50) return baseDescription;
 
-  return `Browse ${categoryName} from Vcocnc. Quality FANUC CNC spare parts, tested with 12-month warranty. Fast worldwide shipping via DHL & FedEx.`;
+  return `Browse ${categoryName} from VIBO CNC. Quality FANUC CNC spare parts, tested with 12-month warranty. Fast worldwide shipping via DHL & FedEx.`;
 }
 
 export async function generateMetadata({ params }: CategoryPathPageProps): Promise<Metadata> {
@@ -50,10 +50,10 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
     const urlPath = category.path ? `/categories/${category.path}` : `/categories/${path}`;
     const metaDescription = getCategoryMetaDescription(category.name, category.description);
     return {
-      title: `${category.name} - FANUC CNC Parts | Buy Online | Vcocnc`,
+      title: `${category.name} - FANUC CNC Parts | Buy Online | VIBO CNC`,
       description: metaDescription,
       openGraph: {
-        title: `${category.name} - FANUC CNC Parts | Vcocnc`,
+        title: `${category.name} - FANUC CNC Parts | VIBO CNC`,
         description: metaDescription,
         type: 'website',
         url: `${baseUrl}${urlPath}`,
@@ -64,7 +64,7 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
     };
   } catch {
     return {
-      title: 'Category | Vcocnc',
+      title: 'Category | VIBO CNC',
       description: 'Browse FANUC automation parts by category.',
     };
   }
@@ -83,7 +83,7 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl }: { category: a
     "url": categoryUrl,
     "isPartOf": {
       "@type": "WebSite",
-      "name": "Vcocnc",
+      "name": "VIBO CNC",
       "url": baseUrl
     },
     "breadcrumb": {
@@ -115,7 +115,7 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl }: { category: a
         "name": `Where can I buy FANUC ${catName} online?`,
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": `You can buy genuine FANUC ${catName} online at Vcocnc (vcocncspare.com). We offer quality-tested parts with 12-month warranty and worldwide express shipping via DHL and FedEx.`
+          "text": `You can buy genuine FANUC ${catName} online at VIBO CNC (vibocnc.com). We offer quality-tested parts with 12-month warranty and worldwide express shipping via DHL and FedEx.`
         }
       },
       {
@@ -123,7 +123,7 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl }: { category: a
         "name": `Do you offer warranty on FANUC ${catName}?`,
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": `Yes, all FANUC ${catName} from Vcocnc come with a 12-month warranty. Every part is quality tested before shipment to ensure reliability.`
+          "text": `Yes, all FANUC ${catName} from VIBO CNC come with a 12-month warranty. Every part is quality tested before shipment to ensure reliability.`
         }
       },
       {

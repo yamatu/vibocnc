@@ -428,7 +428,7 @@ CREATE TRIGGER update_contact_messages_updated_at BEFORE UPDATE ON contact_messa
 
 -- 插入默认管理员用户 (密码: admin123)
 INSERT INTO admin_users (username, email, password_hash, full_name, role, is_active)
-VALUES ('admin', 'admin@vcocnc.shop', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE)
+VALUES ('admin', 'admin@vibocnc.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE)
 ON CONFLICT (username) DO NOTHING;
 
 -- 插入默认语言
@@ -455,12 +455,12 @@ INSERT INTO company_profiles (
     description_1, description_2, achievement,
     stats, expertise, workshop_facilities
 ) VALUES (
-    'Vcocnc',
+    'VIBO CNC',
     'Industrial Automation Specialists',
     '2005',
     'Kunshan, China',
     '5,000sqm',
-    'Vcocnc established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.',
+    'VIBO CNC established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.',
     'Especially Fanuc, We are one of the top three suppliers in China. We now have 27 workers, 10 sales and 100,000 items regularly stocked. Daily parcel around 50-100pcs, yearly turnover around 200 million.',
     'Top 3 FANUC Supplier in China',
     '[{"icon":"CalendarIcon","value":"2005","label":"Established","description":"Years of experience"},{"icon":"UserGroupIcon","value":"27","label":"Workers","description":"Professional team"},{"icon":"UserGroupIcon","value":"10","label":"Sales Staff","description":"Dedicated sales team"},{"icon":"ArchiveBoxIcon","value":"100,000","label":"Items Stocked","description":"Regular inventory"},{"icon":"TruckIcon","value":"50-100","label":"Daily Parcels","description":"Shipments per day"},{"icon":"CurrencyDollarIcon","value":"200M","label":"Yearly Turnover","description":"Annual revenue"}]'::jsonb,

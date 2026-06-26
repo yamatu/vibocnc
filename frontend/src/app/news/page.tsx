@@ -10,11 +10,11 @@ export async function generateMetadata({ searchParams }: {
   const params = await searchParams;
   const search = params.search;
 
-  let title = 'News & Articles | Vcocnc';
-  let description = 'Latest news, insights, and technical articles about industrial automation, FANUC parts, and CNC equipment from Vcocnc.';
+  let title = 'News & Articles | VIBO CNC';
+  let description = 'Latest news, insights, and technical articles about industrial automation, FANUC parts, and CNC equipment from VIBO CNC.';
 
   if (search) {
-    title = `Search: ${search} - News | Vcocnc`;
+    title = `Search: ${search} - News | VIBO CNC`;
     description = `Search results for "${search}" in news and articles.`;
   }
 
@@ -85,12 +85,12 @@ export default async function NewsPage({
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'Blog',
-    'name': 'Vcocnc News & Articles',
+    'name': 'VIBO CNC News & Articles',
     'description': 'Latest news and insights about industrial automation and FANUC parts.',
     'url': `${baseUrl}/news`,
     'publisher': {
       '@type': 'Organization',
-      'name': 'Vcocnc',
+      'name': 'VIBO CNC',
       'url': baseUrl,
     },
     'blogPost': serverData.articles.slice(0, 10).map((article: any) => ({
@@ -103,7 +103,7 @@ export default async function NewsPage({
       'image': article.featured_image || undefined,
       'author': {
         '@type': 'Person',
-        'name': article.author?.full_name || 'Vcocnc',
+        'name': article.author?.full_name || 'VIBO CNC',
       },
     })),
   };

@@ -200,6 +200,9 @@ func ConnectDatabase() {
 
 	// Create default company profile
 	createDefaultCompanyProfile()
+
+	// Clean legacy brand/domain text left by older imports or previous SEO generation.
+	sanitizeLegacyBrandReferences()
 }
 
 func createDefaultAdmin() {
@@ -224,7 +227,7 @@ func createDefaultAdmin() {
 	}
 	email := os.Getenv("DEFAULT_ADMIN_EMAIL")
 	if email == "" {
-		email = "admin@vcocnc.shop"
+		email = "admin@vibocnc.com"
 	}
 	fullName := os.Getenv("DEFAULT_ADMIN_FULLNAME")
 	if fullName == "" {
@@ -301,6 +304,94 @@ func createDefaultAdmin() {
 		return
 	}
 	log.Printf("默认管理员已创建（用户名：%s）。密码来自 DEFAULT_ADMIN_PASSWORD（未输出明文）", username)
+}
+
+func sanitizeLegacyBrandReferences() {
+	if os.Getenv("DISABLE_LEGACY_BRAND_SANITIZE") == "true" {
+		return
+	}
+	silentDB := DB.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
+
+	type tableColumns struct {
+		table   string
+		columns []string
+	}
+
+	targets := []tableColumns{
+		{"admin_users", []string{"email", "full_name"}},
+		{"products", []string{
+			"name", "short_description", "description",
+			"meta_title", "meta_description", "meta_keywords",
+			"packaging_info", "compatibility_info", "installation_guide", "maintenance_tips",
+			"datasheet_url", "manual_url",
+		}},
+		{"product_translations", []string{"name", "short_description", "description", "meta_title", "meta_description", "meta_keywords"}},
+		{"product_faqs", []string{"question", "answer"}},
+		{"categories", []string{"name", "description", "image_url"}},
+		{"category_translations", []string{"name", "description"}},
+		{"articles", []string{"title", "custom_path", "summary", "content", "featured_image", "image_urls", "meta_title", "meta_description", "meta_keywords"}},
+		{"article_translations", []string{"title", "slug", "summary", "content", "meta_title", "meta_description", "meta_keywords"}},
+		{"homepage_contents", []string{"title", "subtitle", "description", "image_url", "button_text", "button_url"}},
+		{"company_profiles", []string{"company_name", "company_subtitle", "location", "description1", "description2", "description_1", "description_2", "achievement"}},
+		{"email_settings", []string{"from_name", "from_email", "reply_to", "smtp_host", "smtp_username", "order_notification_emails"}},
+		{"hotlink_protection_settings", []string{"allowed_hosts"}},
+		{"index_now_settings", []string{"site_url", "last_submission_host", "last_submission_note"}},
+		{"seo_redirects", []string{"old_url", "new_url"}},
+		{"ebay_import_drafts", []string{"source_url", "source_title", "source_description", "name", "description", "meta_title", "meta_description", "meta_keywords"}},
+	}
+
+	legacyCompact := "vco" + "cnc"
+	legacySpareHost := legacyCompact + "spare.com"
+	legacyShopHost := legacyCompact + ".shop"
+	replacements := [][2]string{
+		{"sales@" + legacySpareHost, "sales@vibocnc.com"},
+		{"admin@" + legacyShopHost, "admin@vibocnc.com"},
+		{"https://www." + legacySpareHost, "https://www.vibocnc.com"},
+		{"http://www." + legacySpareHost, "https://www.vibocnc.com"},
+		{"https://" + legacySpareHost, "https://www.vibocnc.com"},
+		{"http://" + legacySpareHost, "https://www.vibocnc.com"},
+		{"www." + legacySpareHost, "www.vibocnc.com"},
+		{legacySpareHost, "vibocnc.com"},
+		{"https://www." + legacyShopHost, "https://www.vibocnc.com"},
+		{"https://" + legacyShopHost, "https://www.vibocnc.com"},
+		{"www." + legacyShopHost, "www.vibocnc.com"},
+		{legacyShopHost, "vibocnc.com"},
+		{"VCO" + "CNC", "VIBO CNC"},
+		{"VCO " + "CNC", "VIBO CNC"},
+		{"Vco" + "cnc", "VIBO CNC"},
+		{legacyCompact, "vibocnc"},
+	}
+
+	totalUpdated := int64(0)
+	for _, target := range targets {
+		if !silentDB.Migrator().HasTable(target.table) {
+			continue
+		}
+		for _, column := range target.columns {
+			if !silentDB.Migrator().HasColumn(target.table, column) {
+				continue
+			}
+			for _, pair := range replacements {
+				oldValue := pair[0]
+				newValue := pair[1]
+				result := silentDB.Exec(
+					fmt.Sprintf("UPDATE `%s` SET `%s` = REPLACE(`%s`, ?, ?) WHERE `%s` LIKE ?", target.table, column, column, column),
+					oldValue,
+					newValue,
+					"%"+oldValue+"%",
+				)
+				if result.Error != nil {
+					log.Printf("Legacy brand sanitize skipped %s.%s: %v", target.table, column, result.Error)
+					continue
+				}
+				totalUpdated += result.RowsAffected
+			}
+		}
+	}
+
+	if totalUpdated > 0 {
+		log.Printf("Legacy brand/domain references sanitized: %d field update(s)", totalUpdated)
+	}
 }
 
 func createDefaultCategories() {
@@ -380,12 +471,12 @@ func createDefaultCompanyProfile() {
 
 	// Create default company profile
 	defaultProfile := models.CompanyProfile{
-		CompanyName:       "Vcocnc",
+		CompanyName:       "VIBO CNC",
 		CompanySubtitle:   "Industrial Automation Specialists",
 		EstablishmentYear: "2005",
 		Location:          "Kunshan, China",
 		WorkshopSize:      "5,000sqm",
-		Description1:      "Vcocnc established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.",
+		Description1:      "VIBO CNC established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.",
 		Description2:      "Especially Fanuc, We are one of the top three suppliers in China. We now have 27 workers, 10 sales and 100,000 items regularly stocked. Daily parcel around 50-100pcs, yearly turnover around 200 million.",
 		Achievement:       "Top 3 FANUC Supplier in China",
 		Stats: models.CompanyStatsArray{

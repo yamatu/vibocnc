@@ -1,9 +1,9 @@
 import { apiClient } from '@/lib/api';
-import { 
-  APIResponse, 
-  PaginationResponse, 
-  Product, 
-  ProductCreateRequest 
+import {
+  APIResponse,
+  PaginationResponse,
+  Product,
+  ProductCreateRequest
 } from '@/types';
 import type { AxiosProgressEvent } from 'axios';
 
@@ -332,11 +332,11 @@ export class ProductService {
     const response = await apiClient.get<APIResponse<Product>>(
       `/public/products/${id}`
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
+
     throw new Error(response.data.message || 'Product not found');
   }
 
@@ -390,7 +390,7 @@ export class ProductService {
   // Admin: Get products
   static async getAdminProducts(filters: ProductFilters = {}): Promise<PaginationResponse<Product>> {
     const params = new URLSearchParams();
-    
+
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== '') {
         params.append(key, value.toString());
@@ -400,11 +400,11 @@ export class ProductService {
     const response = await apiClient.get<APIResponse<PaginationResponse<Product>>>(
       `/admin/products?${params.toString()}`
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
+
     throw new Error(response.data.message || 'Failed to fetch products');
   }
 
@@ -413,11 +413,11 @@ export class ProductService {
     const response = await apiClient.get<APIResponse<Product>>(
       `/admin/products/${id}`
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
+
     throw new Error(response.data.message || 'Product not found');
   }
 
@@ -427,11 +427,11 @@ export class ProductService {
       '/admin/products',
       productData
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
+
     throw new Error(response.data.message || 'Failed to create product');
   }
 
@@ -441,11 +441,11 @@ export class ProductService {
       `/admin/products/${id}`,
       productData
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
+
     throw new Error(response.data.message || 'Failed to update product');
   }
 
@@ -454,7 +454,7 @@ export class ProductService {
     const response = await apiClient.delete<APIResponse<void>>(
       `/admin/products/${id}`
     );
-    
+
     if (!response.data.success) {
       throw new Error(response.data.message || 'Failed to delete product');
     }
@@ -465,11 +465,11 @@ export class ProductService {
     const response = await apiClient.patch<APIResponse<Product>>(
       `/admin/products/${id}/toggle-status`
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
+
     throw new Error(response.data.message || 'Failed to toggle product status');
   }
 
@@ -478,11 +478,11 @@ export class ProductService {
     const response = await apiClient.patch<APIResponse<Product>>(
       `/admin/products/${id}/toggle-featured`
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
+
     throw new Error(response.data.message || 'Failed to toggle featured status');
   }
 
@@ -538,6 +538,21 @@ export class ProductService {
     const response = await apiClient.put<APIResponse<{ updated: number; removed: number; skipped: number }>>('/admin/products/bulk-default-image/remove', payload);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to remove default images');
+  }
+
+  static async bulkClearProductImages(payload: {
+    ids?: number[];
+    skus?: string[];
+    search?: string;
+    category_id?: string;
+    include_descendants?: boolean;
+    status?: 'active' | 'inactive' | 'all' | '';
+    featured?: 'true' | 'false' | '';
+    batch_size?: number;
+  }): Promise<{ updated: number; removed: number; skipped: number }> {
+    const response = await apiClient.put<APIResponse<{ updated: number; removed: number; skipped: number }>>('/admin/products/bulk-images/clear', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to clear product images');
   }
 
   static async bulkAutoCategorize(payload: {

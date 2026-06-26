@@ -4,9 +4,9 @@ import { buildStaticPageMetadata } from '@/lib/seo';
 
 export const metadata: Metadata = buildStaticPageMetadata(
   '/technical-support',
-  'Technical Support | Vcocnc',
+  'Technical Support | VIBO CNC',
   'Product consultation, troubleshooting, and remote diagnostics for FANUC parts.',
-  'technical support, FANUC troubleshooting, CNC support, industrial automation diagnostics, Vcocnc support'
+  'technical support, FANUC troubleshooting, CNC support, industrial automation diagnostics, VIBO CNC support'
 );
 
 export default function TechnicalSupportPage() {
@@ -28,7 +28,7 @@ export default function TechnicalSupportPage() {
 
         <section className="space-y-2 mt-8">
           <h2 className="text-xl font-semibold">Contact</h2>
-          <p className="text-gray-700">Email: sales@vcocncspare.com • Phone: +86-13348028050</p>
+          <p className="text-gray-700">Email: sales@vibocnc.com • Phone: +86-13348028050</p>
           <p className="text-gray-500">24/7 priority support available for urgent production issues</p>
         </section>
       </main>

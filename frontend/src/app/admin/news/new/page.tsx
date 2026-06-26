@@ -250,7 +250,7 @@ export default function NewArticlePage() {
                         {watchMetaTitle || watchTitle || 'Article Title'}
                       </div>
                       <div className="text-[#202124] text-sm mt-0.5 truncate">
-                        vcocncspare.com <span className="text-gray-400">{'>'}</span> news <span className="text-gray-400">{'>'}</span> {watchSlug || 'article-slug'}
+                        vibocnc.com <span className="text-gray-400">{'>'}</span> news <span className="text-gray-400">{'>'}</span> {watchSlug || 'article-slug'}
                       </div>
                       <div className="text-[#4d5156] text-sm mt-1 line-clamp-2">
                         {watchMetaDesc || watch('summary') || 'Article description will appear here...'}

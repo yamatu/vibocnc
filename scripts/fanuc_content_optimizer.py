@@ -364,7 +364,7 @@ def main():
                 # Enhance the content
                 enhanced_content = {
                     'description': content_data.get('description', ''),
-                    'meta_title': f"{product['name']} - {content_data.get('title', product['name'])} | Vcocnc FANUC Parts",
+                    'meta_title': f"{product['name']} - {content_data.get('title', product['name'])} | VIBO CNC FANUC Parts",
                     'meta_description': content_data.get('description', '')[:155] + '...' if len(content_data.get('description', '')) > 155 else content_data.get('description', ''),
                     'meta_keywords': content_data.get('meta_keywords', []) + ['FANUC parts', 'CNC parts', 'industrial automation', product['sku']],
                     'short_description': content_data.get('description', '')[:200] + '...' if len(content_data.get('description', '')) > 200 else content_data.get('description', ''),

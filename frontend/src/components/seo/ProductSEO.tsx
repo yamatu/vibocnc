@@ -3,7 +3,7 @@
 import { Product, Category } from '@/types';
 import { toProductPathId } from '@/lib/utils';
 
-const DEFAULT_SITE_NAME = 'Vcocnc';
+const DEFAULT_SITE_NAME = 'VIBO CNC';
 const GENERIC_BRAND_LABEL = 'industrial automation';
 const GENERIC_MANUFACTURER_LABEL = 'industrial automation parts manufacturer';
 
@@ -88,7 +88,7 @@ function buildAnswerFirstSummary(product: Product, category?: Category): string 
   return `${brandLabel} ${product.sku} is a ${categoryName.toLowerCase()} used for CNC repair, replacement, and industrial automation maintenance. ${stockText} ${warrantyText}`;
 }
 
-export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'https://www.vcocncspare.com' }: ProductSEOProps) {
+export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'https://www.vibocnc.com' }: ProductSEOProps) {
   const productUrl = `${baseUrl}/products/${toProductPathId(product.sku)}`;
   const productId = `${productUrl}#product`;
   const brandLabel = getBrandLabel(product);
@@ -168,7 +168,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
         : "https://schema.org/OutOfStock",
       "seller": {
         "@type": "Organization",
-        "name": "Vcocnc",
+        "name": "VIBO CNC",
         "url": baseUrl
       },
       "eligibleQuantity": product.minimum_order_quantity ? {
@@ -323,8 +323,8 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = 'h
           "acceptedAnswer": {
             "@type": "Answer",
             "text": product.compatibility_info
-              ? `${product.compatibility_info} Contact our technical team at sales@vcocncspare.com for further compatibility verification.`
-              : `The ${product.name} should be matched against the original machine, controller, and option configuration before ordering. Contact our technical team at sales@vcocncspare.com for compatibility verification.`
+              ? `${product.compatibility_info} Contact our technical team at sales@vibocnc.com for further compatibility verification.`
+              : `The ${product.name} should be matched against the original machine, controller, and option configuration before ordering. Contact our technical team at sales@vibocnc.com for compatibility verification.`
           }
         },
         {

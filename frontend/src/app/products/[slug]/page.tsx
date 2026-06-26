@@ -7,7 +7,7 @@ import type { Product, ProductImage } from '@/types';
 import ProductDetailClient from './ProductDetailClient';
 import { redirect, notFound } from 'next/navigation';
 
-const DEFAULT_SITE_NAME = 'Vcocnc';
+const DEFAULT_SITE_NAME = 'VIBO CNC';
 const GENERIC_BRAND_LABEL = 'industrial automation';
 const GENERIC_SUPPLIER_LABEL = 'industrial automation parts supplier';
 
@@ -103,7 +103,7 @@ function buildMetadataTitle(product: Product): string {
   if (!title) {
     title = [product.sku, product.category?.name || 'industrial automation part'].filter(Boolean).join(' ');
   }
-  return trimMetaTitle(`${title} | Vcocnc`, 69);
+  return trimMetaTitle(`${title} | VIBO CNC`, 69);
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -159,7 +159,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       product.part_number && product.part_number !== product.sku ? `Part number ${product.part_number}.` : '',
       product.category?.name ? `${product.category.name} for CNC and industrial automation systems.` : 'Industrial automation component.',
       product.compatibility_info ? 'Compatibility guidance available on the product page.' : '',
-      `Source from Vcocnc, professional ${supplierLabel} since 2005.`,
+      `Source from VIBO CNC, professional ${supplierLabel} since 2005.`,
     ].filter(Boolean).join(' ');
     const enhancedDescription = trimMetaDescription(`${baseDescription} ${availabilityText} ${supportingText}`, 160);
 
@@ -197,7 +197,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
         title,
         description: metaDescription || enhancedDescription,
         images: images.map(i => i.url),
-        creator: '@vcocnc',
+        creator: '@vibocnc',
       },
       other: {
         'product:price:amount': product.price?.toString() || '',
@@ -213,7 +213,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   } catch (error) {
     console.error('Error generating product metadata:', error);
     return {
-      title: 'Product | Vcocnc',
+      title: 'Product | VIBO CNC',
       description: 'Professional industrial automation parts and components.',
     };
   }

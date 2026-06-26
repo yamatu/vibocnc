@@ -90,7 +90,7 @@ func GenericEnrich(model string) EnrichedProduct {
 		Description:       description,
 		MetaTitle:         buildMetaTitle("Industrial Automation", upper, inference.PartType),
 		MetaDescription:   BuildSafeMetaDescription(fmt.Sprintf("%s %s for repair, replacement, and industrial automation support. Compatibility check, 12-month warranty, fast worldwide shipping.", upper, inference.PartType)),
-		MetaKeywords:      strings.Join(dedupeStrings([]string{upper, inference.PartType, "industrial automation parts", "CNC replacement parts", "Vcocnc"}), ", "),
+		MetaKeywords:      strings.Join(dedupeStrings([]string{upper, inference.PartType, "industrial automation parts", "CNC replacement parts", "VIBO CNC"}), ", "),
 		CompatibilityInfo: fmt.Sprintf("Confirm compatibility for %s against your original part number, controller model, machine model, and option code before ordering.", upper),
 		InstallationGuide: fmt.Sprintf("Install %s according to your machine maintenance procedure after isolating power and checking connector orientation.", upper),
 		MaintenanceTips:   fmt.Sprintf("Keep %s clean, dry, and properly stored to support reliable industrial operation.", upper),

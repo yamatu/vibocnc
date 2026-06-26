@@ -33,7 +33,7 @@ func loadHotlinkSetting(db *gorm.DB) (*models.HotlinkProtectionSetting, error) {
 	var s models.HotlinkProtectionSetting
 	if err := db.First(&s, 1).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			s = models.HotlinkProtectionSetting{ID: 1, Enabled: true, AllowedHosts: "www.vcocncspare.com,vcocncspare.com,localhost,127.0.0.1", AllowEmptyReferer: true, AllowSameHost: true}
+			s = models.HotlinkProtectionSetting{ID: 1, Enabled: true, AllowedHosts: "www.vibocnc.com,vibocnc.com,localhost,127.0.0.1", AllowEmptyReferer: true, AllowSameHost: true}
 			_ = db.Create(&s).Error
 		} else {
 			return nil, err

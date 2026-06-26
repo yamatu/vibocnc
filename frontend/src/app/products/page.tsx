@@ -98,7 +98,7 @@ export async function generateMetadata({ searchParams }: {
   const searchQuery = getFirstParamValue(params.search);
   const hasSearch = !!searchQuery;
 
-  let title = 'Industrial Automation Parts & Components | Vcocnc';
+  let title = 'Industrial Automation Parts & Components | VIBO CNC';
   let description = 'Professional CNC parts supplier since 2005. 100,000+ items in stock, worldwide shipping. Servo motors, PCB boards, I/O modules, control units.';
   const baseUrl = getSiteUrl();
 
@@ -107,7 +107,7 @@ export async function generateMetadata({ searchParams }: {
     const categoryPath = getCategoryPath(category);
 
     if (category && categoryPath) {
-      title = `${category.name} - Parts | Vcocnc`;
+      title = `${category.name} - Parts | VIBO CNC`;
       description = `Professional ${category.name} for CNC systems. High-quality industrial automation components with worldwide shipping.`;
       const catUrl = `${baseUrl}${categoryPath}`;
 
@@ -133,7 +133,7 @@ export async function generateMetadata({ searchParams }: {
   }
 
   if (hasSearch) {
-    title = `Search: ${searchQuery} - Parts | Vcocnc`;
+    title = `Search: ${searchQuery} - Parts | VIBO CNC`;
     description = `Search results for "${searchQuery}" in industrial automation parts and components. Professional supplier since 2005.`;
   }
 
@@ -249,7 +249,7 @@ export default async function ProductsPage({
             'sku': product.sku,
             'brand': {
               '@type': 'Brand',
-              'name': product.brand || 'Vcocnc',
+              'name': product.brand || 'VIBO CNC',
             },
             'image': product.image_urls && product.image_urls.length > 0
               ? product.image_urls[0]
@@ -264,7 +264,7 @@ export default async function ProductsPage({
                 : 'https://schema.org/PreOrder',
               'seller': {
                 '@type': 'Organization',
-                'name': 'Vcocnc',
+                'name': 'VIBO CNC',
               },
             },
           },

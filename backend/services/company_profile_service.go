@@ -138,12 +138,12 @@ func (s *CompanyProfileService) InitializeDefaultProfile() error {
 
 	// Create default profile
 	defaultProfile := &models.CompanyProfile{
-		CompanyName:       "Vcocnc",
+		CompanyName:       "VIBO CNC",
 		CompanySubtitle:   "Industrial Automation Specialists",
 		EstablishmentYear: "2005",
 		Location:          "Kunshan, China",
 		WorkshopSize:      "5,000sqm",
-		Description1:      "Vcocnc established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.",
+		Description1:      "VIBO CNC established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.",
 		Description2:      "Especially Fanuc, We are one of the top three suppliers in China. We now have 27 workers, 10 sales and 100,000 items regularly stocked. Daily parcel around 50-100pcs, yearly turnover around 200 million.",
 		Achievement:       "Top 3 FANUC Supplier in China",
 		Stats: models.CompanyStatsArray{

@@ -37,11 +37,11 @@ export function baseTwoColumnTemplate(opts: {
     modulesHtml,
     rightCardTitle = 'Quick Info',
     rightLines = ['Shipping: 24-72h dispatch (most items)', 'Warranty: 3-12 months', 'Service: repair / exchange'],
-    primaryUrl = 'https://www.vcocncspare.com/products',
+    primaryUrl = 'https://www.vibocnc.com/products',
     primaryLabel = 'Browse Products',
-    secondaryUrl = 'https://www.vcocncspare.com/contact',
+    secondaryUrl = 'https://www.vibocnc.com/contact',
     secondaryLabel = 'Contact Us',
-    footerEmail = 'sales@vcocncspare.com',
+    footerEmail = 'sales@vibocnc.com',
     footerPhone = '+86 13348028050',
   } = opts;
 
@@ -77,7 +77,7 @@ export function baseTwoColumnTemplate(opts: {
           <table role="presentation" class="container" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
             <tr>
               <td class="pad" style="padding:22px 24px;background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#111827;">
-                <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;">Vcocnc Spare Parts</div>
+                <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;">VIBO CNC Spare Parts</div>
                 <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;opacity:0.9;margin-top:4px;">FANUC CNC Parts • Repair • Exchange</div>
               </td>
             </tr>
@@ -109,7 +109,7 @@ export function baseTwoColumnTemplate(opts: {
                             <div style="margin-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#374151;line-height:1.6;">
                               <div><b>Email:</b> ${escapeHtml(footerEmail)}</div>
                               <div><b>WhatsApp:</b> ${escapeHtml(footerPhone)}</div>
-                              <div><b>Website:</b> vcocncspare.com</div>
+                              <div><b>Website:</b> vibocnc.com</div>
                             </div>
                             <div style="margin-top:14px;">
                               <a href="${escapeAttr(secondaryUrl)}" style="display:block;text-align:center;background:#f59e0b;color:#111827;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-weight:800;font-size:13px;padding:10px 12px;border-radius:10px;">${escapeHtml(secondaryLabel)}</a>
@@ -125,8 +125,8 @@ export function baseTwoColumnTemplate(opts: {
 
             <tr>
               <td style="padding:16px 24px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-                <div style="font-family:Arial,Helvetica,sans-serif;color:#6b7280;font-size:12px;line-height:1.6;">Vcocnc Spare Parts • ${escapeHtml(footerEmail)}</div>
-                <div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;color:#9ca3af;font-size:11px;line-height:1.6;">You received this email because you are a customer of Vcocnc.</div>
+                <div style="font-family:Arial,Helvetica,sans-serif;color:#6b7280;font-size:12px;line-height:1.6;">VIBO CNC Spare Parts • ${escapeHtml(footerEmail)}</div>
+                <div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;color:#9ca3af;font-size:11px;line-height:1.6;">You received this email because you are a customer of VIBO CNC.</div>
               </td>
             </tr>
           </table>
@@ -178,7 +178,7 @@ export function defaultModule(type: EmailModuleType): Omit<EmailModule, 'id'> {
         body: 'We just added fresh FANUC stock. If you need quick delivery, reply with part numbers and quantities.',
         bullets: ['Servo drives / amplifiers', 'PCB boards', 'I/O modules', 'Motors & encoders'],
         ctaLabel: 'View new stock',
-        ctaUrl: 'https://www.vcocncspare.com/products',
+        ctaUrl: 'https://www.vibocnc.com/products',
       };
     case 'promotion':
       return {
@@ -189,7 +189,7 @@ export function defaultModule(type: EmailModuleType): Omit<EmailModule, 'id'> {
         bullets: ['Bulk discount available', 'Fast worldwide shipping', 'Warranty included'],
         highlight: 'TIP: Add your coupon code / discount details here.',
         ctaLabel: 'Get a quote',
-        ctaUrl: 'https://www.vcocncspare.com/contact',
+        ctaUrl: 'https://www.vibocnc.com/contact',
       };
     case 'replacement':
       return {
@@ -199,7 +199,7 @@ export function defaultModule(type: EmailModuleType): Omit<EmailModule, 'id'> {
         body: 'If your part is discontinued or unavailable, we can recommend compatible alternatives or exchange units.',
         bullets: ['Compatibility check by part number', 'Cross-reference options', 'Exchange & repair available'],
         ctaLabel: 'Send part number',
-        ctaUrl: 'https://www.vcocncspare.com/contact',
+        ctaUrl: 'https://www.vibocnc.com/contact',
       };
     case 'repair_quote':
       return {
@@ -210,7 +210,7 @@ export function defaultModule(type: EmailModuleType): Omit<EmailModule, 'id'> {
         bullets: ['Diagnostics + repair', 'Turnaround 3-7 working days', 'Warranty after repair'],
         highlight: 'TIP: Add target model and symptoms here.',
         ctaLabel: 'Request repair quote',
-        ctaUrl: 'https://www.vcocncspare.com/contact',
+        ctaUrl: 'https://www.vibocnc.com/contact',
       };
   }
 }
@@ -224,7 +224,7 @@ export function buildEmailHtml(subject: string, modules: EmailModule[]): { html:
   });
 
   const textLines: string[] = [];
-  textLines.push('Vcocnc Spare Parts');
+  textLines.push('VIBO CNC Spare Parts');
   textLines.push('');
   for (const m of modules) {
     textLines.push(m.title);
@@ -235,7 +235,7 @@ export function buildEmailHtml(subject: string, modules: EmailModule[]): { html:
     textLines.push(m.ctaLabel + ': ' + m.ctaUrl);
     textLines.push('');
   }
-  textLines.push('Contact: sales@vcocncspare.com');
+  textLines.push('Contact: sales@vibocnc.com');
 
   return { html, text: textLines.join('\n') };
 }

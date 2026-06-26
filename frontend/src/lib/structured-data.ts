@@ -7,8 +7,8 @@ export function generateOrganizationSchema() {
     "@context": "https://schema.org",
     "@type": "Organization",
     "@id": `${baseUrl}/#organization`,
-    "name": "Vcocnc",
-    "alternateName": "VCOCNC Industrial Automation",
+    "name": "VIBO CNC",
+    "alternateName": "VIBO CNC Industrial Automation",
     "description": "Professional FANUC CNC parts supplier since 2005. Leading provider of industrial automation components with over 100,000 items in stock.",
     "url": baseUrl,
     "logo": {
@@ -28,7 +28,7 @@ export function generateOrganizationSchema() {
     "foundingDate": "2005",
     "founder": {
       "@type": "Person",
-      "name": "Vcocnc Founder"
+      "name": "VIBO CNC Founder"
     },
     "numberOfEmployees": {
       "@type": "QuantitativeValue",
@@ -47,7 +47,7 @@ export function generateOrganizationSchema() {
         "@type": "ContactPoint",
         "contactType": "sales",
         "telephone": "+86-13348028050",
-        "email": "sales@vcocncspare.com",
+        "email": "sales@vibocnc.com",
 
         "availableLanguage": ["en", "zh"],
         "areaServed": "Worldwide"
@@ -56,15 +56,15 @@ export function generateOrganizationSchema() {
         "@type": "ContactPoint",
         "contactType": "technical support",
         "telephone": "+86-13348028050",
-        "email": "sales@vcocncspare.com",
+        "email": "sales@vibocnc.com",
 
         "availableLanguage": ["en", "zh"],
         "areaServed": "Worldwide"
       }
     ],
     "sameAs": [
-      "https://www.linkedin.com/company/vcocnc",
-      "https://twitter.com/vcocnc"
+      "https://www.linkedin.com/company/vibocnc",
+      "https://twitter.com/vibocnc"
     ],
     "slogan": "Your Trusted FANUC Parts Partner Since 2005",
     "knowsAbout": [
@@ -111,20 +111,20 @@ export function generateWebsiteSchema() {
     "@context": "https://schema.org",
     "@type": "WebSite",
     "@id": `${baseUrl}/#website`,
-    "name": "Vcocnc FANUC Parts",
+    "name": "VIBO CNC FANUC Parts",
     "alternateName": "FANUC Parts & Industrial Automation Components",
     "url": baseUrl,
     "description": "Professional FANUC CNC parts supplier since 2005. 100,000+ items in stock, worldwide shipping. Servo motors, PCB boards, I/O modules, control units.",
     "publisher": {
       "@type": "Organization",
       "@id": `${baseUrl}/#organization`,
-      "name": "Vcocnc",
+      "name": "VIBO CNC",
       "url": baseUrl
     },
     "mainEntity": {
       "@type": "ItemList",
       "name": "FANUC Parts Categories",
-      "description": "Main product categories available at Vcocnc",
+      "description": "Main product categories available at VIBO CNC",
       "itemListElement": [
         {
           "@type": "ListItem",
@@ -226,7 +226,7 @@ export function generateFAQSchema() {
         "name": "How can I get technical support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Our technical support team is available via email at sales@vcocncspare.com or phone at +86-13348028050. We provide installation guidance, troubleshooting, compatibility assistance, and replacement recommendations."
+          "text": "Our technical support team is available via email at sales@vibocnc.com or phone at +86-13348028050. We provide installation guidance, troubleshooting, compatibility assistance, and replacement recommendations."
         }
       },
       {
@@ -280,13 +280,13 @@ export function generateLocalBusinessSchema() {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
     "@id": `${baseUrl}/#organization`,
-    "name": "Vcocnc",
+    "name": "VIBO CNC",
     "image": [
       `${baseUrl}/images/company-banner.jpg`,
       `${baseUrl}/android-chrome-512x512.png`
     ],
     "telephone": "+86-13348028050",
-    "email": "sales@vcocncspare.com",
+    "email": "sales@vibocnc.com",
 
     "address": {
       "@type": "PostalAddress",

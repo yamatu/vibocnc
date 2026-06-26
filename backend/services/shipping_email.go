@@ -74,7 +74,7 @@ func BuildShipmentNotificationEmail(siteURL string, order models.Order) (subject
 	}
 
 	text = fmt.Sprintf(
-		"Vcocnc\n\nGood news - your order %s has shipped.\n\nCarrier: %s\nTracking number: %s\n%s\nTrack your order: %s\n%s\n\nIf you have any questions, reply to this email.\n\n--\nVcocnc Spare Parts\n",
+		"VIBO CNC\n\nGood news - your order %s has shipped.\n\nCarrier: %s\nTracking number: %s\n%s\nTrack your order: %s\n%s\n\nIf you have any questions, reply to this email.\n\n--\nVIBO CNC Spare Parts\n",
 		orderNo,
 		fallbackStr(carrier, "(not specified)"),
 		fallbackStr(tracking, "(not specified)"),
@@ -122,7 +122,7 @@ func BuildShipmentNotificationEmail(siteURL string, order models.Order) (subject
 
 	html = "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;line-height:1.6;color:#111827\">" +
 		"<div style=\"padding:18px 20px;background:linear-gradient(135deg,#f59e0b,#fbbf24);border-radius:14px 14px 0 0;\">" +
-		"<div style=\"font-size:18px;font-weight:800\">Vcocnc Spare Parts</div>" +
+		"<div style=\"font-size:18px;font-weight:800\">VIBO CNC Spare Parts</div>" +
 		"<div style=\"font-size:13px;opacity:0.9;margin-top:4px\">Shipping update</div>" +
 		"</div>" +
 		"<div style=\"border:1px solid #e5e7eb;border-top:none;border-radius:0 0 14px 14px;padding:18px 20px;background:#fff\">" +

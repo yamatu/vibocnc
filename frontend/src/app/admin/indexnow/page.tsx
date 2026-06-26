@@ -307,7 +307,7 @@ export default function AdminIndexNowPage() {
                     value={siteUrl}
                     onChange={(e) => setSiteUrl(e.target.value)}
                     className="block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-yellow-500 focus:ring-yellow-500"
-                    placeholder="https://www.vcocncspare.com"
+                    placeholder="https://www.vibocnc.com"
                   />
                 </label>
               </div>
@@ -344,7 +344,7 @@ export default function AdminIndexNowPage() {
                   )}
                 </div>
                 <div className="font-mono text-sm text-gray-800 break-all">
-                  {keyFileUrl || `${siteUrl || 'https://www.vcocncspare.com'}/${keyPreview}`}
+                  {keyFileUrl || `${siteUrl || 'https://www.vibocnc.com'}/${keyPreview}`}
                 </div>
               </div>
 
@@ -455,7 +455,7 @@ export default function AdminIndexNowPage() {
                     onChange={(e) => setUrlInput(e.target.value)}
                     rows={8}
                     className="block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-yellow-500 focus:ring-yellow-500"
-                    placeholder={`https://www.vcocncspare.com/products/A06B-6290-H205\nhttps://www.vcocncspare.com/shipping-policy`}
+                    placeholder={`https://www.vibocnc.com/products/A06B-6290-H205\nhttps://www.vibocnc.com/shipping-policy`}
                   />
                 </label>
 

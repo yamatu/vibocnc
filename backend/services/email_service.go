@@ -141,7 +141,7 @@ func GetOrCreateEmailSetting(db *gorm.DB) (*models.EmailSetting, error) {
 				Provider:                         "smtp",
 				SMTPTLSMode:                      "starttls",
 				SMTPPort:                         587,
-				FromName:                         "Vcocnc",
+				FromName:                         "VIBO CNC",
 				CodeExpiryMinutes:                10,
 				CodeResendSeconds:                60,
 				VerificationEnabled:              false,
@@ -335,23 +335,23 @@ func CreateAndSendVerificationCode(db *gorm.DB, email string, purpose Verificati
 		return err
 	}
 
-	subject := "Your Vcocnc verification code"
+	subject := "Your VIBO CNC verification code"
 	if purpose == PurposeReset || purpose == PurposeAdminReset {
-		subject = "Reset your Vcocnc password"
+		subject = "Reset your VIBO CNC password"
 	}
 
 	text := fmt.Sprintf(
-		"Vcocnc\n\nYour verification code is: %s\n\nThis code expires in %d minutes.\nIf you did not request this, you can ignore this email.\n\n--\nVcocnc Spare Parts\n",
+		"VIBO CNC\n\nYour verification code is: %s\n\nThis code expires in %d minutes.\nIf you did not request this, you can ignore this email.\n\n--\nVIBO CNC Spare Parts\n",
 		code, expMin,
 	)
 	html := fmt.Sprintf(
 		"<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;line-height:1.5;color:#111\">"+
-			"<h2 style=\"margin:0 0 12px 0\">Vcocnc Verification Code</h2>"+
+			"<h2 style=\"margin:0 0 12px 0\">VIBO CNC Verification Code</h2>"+
 			"<p style=\"margin:0 0 14px 0\">Use the code below to continue:</p>"+
 			"<div style=\"font-size:28px;font-weight:700;letter-spacing:6px;background:#fff8e1;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;display:inline-block\">%s</div>"+
 			"<p style=\"margin:14px 0 0 0;font-size:13px;color:#555\">Expires in %d minutes. If you did not request this, you can ignore this email.</p>"+
 			"<hr style=\"border:none;border-top:1px solid #eee;margin:18px 0\"/>"+
-			"<div style=\"font-size:12px;color:#777\">Vcocnc Spare Parts</div>"+
+			"<div style=\"font-size:12px;color:#777\">VIBO CNC Spare Parts</div>"+
 			"</div>",
 		code, expMin,
 	)

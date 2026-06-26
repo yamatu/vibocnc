@@ -76,10 +76,10 @@ function buildDefaultSeoValues(input: {
   const model = sku || partNumber || normalizeWhitespace(input.name);
   const categoryName = normalizeWhitespace(input.categoryName) || 'Industrial Automation Part';
   const titleBase = [brand, model, categoryName].filter(Boolean).join(' ') || normalizeWhitespace(input.name) || 'Product';
-  const metaTitle = trimMetaTitle(`${titleBase} | Vcocnc`);
+  const metaTitle = trimMetaTitle(`${titleBase} | VIBO CNC`);
   const subject = [brand, model].filter(Boolean).join(' ') || model || normalizeWhitespace(input.name) || 'This product';
   const metaDescription = trimMetaDescription(
-    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, 12-month warranty, and fast worldwide shipping from Vcocnc.`
+    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, 12-month warranty, and fast worldwide shipping from VIBO CNC.`
   );
   const metaKeywords = [
     normalizeWhitespace(input.sku),
@@ -88,7 +88,7 @@ function buildDefaultSeoValues(input: {
     [brand, categoryName].filter(Boolean).join(' '),
     brand ? `${brand} parts` : 'industrial automation parts',
     'CNC replacement parts',
-    'Vcocnc',
+    'VIBO CNC',
   ]
     .map(normalizeWhitespace)
     .filter(Boolean)
@@ -266,7 +266,7 @@ export default function NewProductPage() {
               {/* Basic Information */}
               <div className="bg-white shadow rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">{t('products.basic.title', locale === 'zh' ? '基础信息' : 'Basic Information')}</h3>
-                
+
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
@@ -307,7 +307,7 @@ export default function NewProductPage() {
                         <span className="text-gray-500 sm:text-sm">$</span>
                       </div>
                       <input
-                        {...register('price', { 
+                        {...register('price', {
                           required: t('products.validation.priceRequired', locale === 'zh' ? '请输入价格' : 'Price is required'),
                           min: { value: 0, message: t('products.validation.pricePositive', locale === 'zh' ? '价格必须大于等于 0' : 'Price must be positive') }
                         })}
@@ -518,7 +518,7 @@ export default function NewProductPage() {
               {/* Product Images */}
               <div className="bg-white shadow rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">{t('products.images.title', locale === 'zh' ? '产品图片' : 'Product Images')}</h3>
-                
+
                 <div className="space-y-4">
 
 
@@ -642,7 +642,7 @@ export default function NewProductPage() {
               {/* Status */}
               <div className="bg-white shadow rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">{t('products.status.title', locale === 'zh' ? '状态' : 'Status')}</h3>
-                
+
                 <div className="space-y-4">
                   <div className="flex items-center">
                     <input

@@ -364,6 +364,26 @@ function AdminProductsContent() {
     },
   });
 
+  const bulkClearProductImagesMutation = useMutation({
+    mutationFn: () => ProductService.bulkClearProductImages({ batch_size: 500, status: 'all' }),
+    onSuccess: (data) => {
+      toast.success(
+        t(
+          'products.images.clearedAll',
+          locale === 'zh'
+            ? `已清空产品图片：更新 ${data?.updated || 0} 个产品，移除 ${data?.removed || 0} 条图片路径`
+            : `Product images cleared: ${data?.updated || 0} products updated, ${data?.removed || 0} image paths removed`
+        )
+      );
+      setSelectedIds([]);
+      setSelectAllResults(false);
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.images.clearFailed', locale === 'zh' ? '清空产品图片失败' : 'Failed to clear product images')));
+    },
+  });
+
   const bulkCategoryImageMutation = useMutation({
     mutationFn: (payload: {
       ids?: number[];
@@ -1189,14 +1209,35 @@ function AdminProductsContent() {
     <AdminLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{t('nav.products', 'Products')}</h1>
             <p className="mt-1 text-sm text-gray-500">
 				{t('products.page.subtitle', locale === 'zh' ? '管理工业自动化产品库存' : 'Manage your industrial automation product inventory')}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    locale === 'zh'
+                      ? '确认清空所有产品的图片路径吗？这会把产品图片字段改为空图状态，但不会删除媒体库文件。此操作不可撤销。'
+                      : 'Clear image paths from every product? This makes all products appear image-empty, but does not delete media library files. This cannot be undone.'
+                  )
+                )
+                  return;
+                bulkClearProductImagesMutation.mutate();
+              }}
+              disabled={bulkClearProductImagesMutation.isPending}
+              className="inline-flex items-center px-4 py-2 border border-red-200 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
+            >
+              <TrashIcon className="h-4 w-4 mr-2" />
+              {bulkClearProductImagesMutation.isPending
+                ? (locale === 'zh' ? '清空中...' : 'Clearing...')
+                : (locale === 'zh' ? '清空全部产品图片' : 'Clear All Images')}
+            </button>
             <button
               onClick={() => {
                 setShowImportModal(true);

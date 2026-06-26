@@ -71,7 +71,7 @@ NEXT_PUBLIC_PAYPAL_ENVIRONMENT=sandbox
 **关键配置：**
 ```bash
 # API 地址指向生产后端
-NEXT_PUBLIC_API_BASE_URL=https://www.vcocncspare.com
+NEXT_PUBLIC_API_BASE_URL=https://www.vibocnc.com
 
 # PayPal 生产环境
 NEXT_PUBLIC_PAYPAL_CLIENT_ID=YOUR_LIVE_CLIENT_ID_HERE

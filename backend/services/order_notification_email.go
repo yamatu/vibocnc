@@ -199,7 +199,7 @@ func BuildOrderNotificationEmail(siteURL string, order models.Order, event strin
 
 	html = "<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:720px;margin:0 auto;line-height:1.6;color:#111827\">" +
 		"<div style=\"padding:18px 20px;background:linear-gradient(135deg,#0ea5e9,#22c55e);border-radius:14px 14px 0 0;\">" +
-		"<div style=\"font-size:18px;font-weight:800\">Vcocnc Spare Parts</div>" +
+		"<div style=\"font-size:18px;font-weight:800\">VIBO CNC Spare Parts</div>" +
 		"<div style=\"font-size:13px;opacity:0.9;margin-top:4px\">" + escapeHTML(headerLine) + "</div>" +
 		"</div>" +
 		"<div style=\"border:1px solid #e5e7eb;border-top:none;border-radius:0 0 14px 14px;padding:18px 20px;background:#fff\">" +

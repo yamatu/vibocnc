@@ -14,7 +14,7 @@ type EmailSetting struct {
 	Enabled  bool   `json:"enabled" gorm:"default:false"`
 	Provider string `json:"provider" gorm:"size:32;default:'smtp'"`
 
-	FromName  string `json:"from_name" gorm:"size:128;default:'Vcocnc'"`
+	FromName  string `json:"from_name" gorm:"size:128;default:'VIBO CNC'"`
 	FromEmail string `json:"from_email" gorm:"size:255;default:''"`
 	ReplyTo   string `json:"reply_to" gorm:"size:255;default:''"`
 

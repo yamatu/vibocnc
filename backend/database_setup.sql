@@ -6,8 +6,8 @@
 -- =====================================================
 
 -- 创建数据库
-CREATE DATABASE IF NOT EXISTS fanuc_sales 
-CHARACTER SET utf8mb4 
+CREATE DATABASE IF NOT EXISTS fanuc_sales
+CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
 USE fanuc_sales;
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS admin_users (
     last_login TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_username (username),
     INDEX idx_email (email),
     INDEX idx_role (role),
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS languages (
     is_default BOOLEAN DEFAULT FALSE,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
+
     INDEX idx_code (code),
     INDEX idx_is_active (is_active),
     INDEX idx_is_default (is_default)
@@ -65,12 +65,12 @@ CREATE TABLE IF NOT EXISTS categories (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_slug (slug),
     INDEX idx_parent_id (parent_id),
     INDEX idx_sort_order (sort_order),
     INDEX idx_is_active (is_active),
-    
+
     FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -86,11 +86,11 @@ CREATE TABLE IF NOT EXISTS category_translations (
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_category_id (category_id),
     INDEX idx_language_code (language_code),
     UNIQUE KEY unique_category_language (category_id, language_code),
-    
+
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS products (
     image_urls JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_sku (sku),
     INDEX idx_slug (slug),
     INDEX idx_brand (brand),
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS products (
     INDEX idx_is_active (is_active),
     INDEX idx_is_featured (is_featured),
     INDEX idx_stock_quantity (stock_quantity),
-    
+
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -149,11 +149,11 @@ CREATE TABLE IF NOT EXISTS product_images (
     is_primary BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_product_id (product_id),
     INDEX idx_is_primary (is_primary),
     INDEX idx_sort_order (sort_order),
-    
+
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -167,11 +167,11 @@ CREATE TABLE IF NOT EXISTS product_attributes (
     attribute_value TEXT NOT NULL,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
+
     INDEX idx_product_id (product_id),
     INDEX idx_attribute_name (attribute_name),
     INDEX idx_sort_order (sort_order),
-    
+
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -191,11 +191,11 @@ CREATE TABLE IF NOT EXISTS product_translations (
     meta_keywords TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_product_id (product_id),
     INDEX idx_language_code (language_code),
     UNIQUE KEY unique_product_language (product_id, language_code),
-    
+
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -214,11 +214,11 @@ CREATE TABLE IF NOT EXISTS purchase_links (
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_product_id (product_id),
     INDEX idx_platform (platform),
     INDEX idx_is_active (is_active),
-    
+
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS seo_redirects (
     redirect_type ENUM('301', '302') DEFAULT '301',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
+
     INDEX idx_old_url (old_url(255)),
     INDEX idx_is_active (is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -258,14 +258,14 @@ CREATE TABLE IF NOT EXISTS orders (
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_order_number (order_number),
     INDEX idx_user_id (user_id),
     INDEX idx_customer_email (customer_email),
     INDEX idx_status (status),
     INDEX idx_payment_status (payment_status),
     INDEX idx_created_at (created_at),
-    
+
     FOREIGN KEY (user_id) REFERENCES admin_users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -281,10 +281,10 @@ CREATE TABLE IF NOT EXISTS order_items (
     total_price DECIMAL(10,2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_order_id (order_id),
     INDEX idx_product_id (product_id),
-    
+
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -305,12 +305,12 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
     payment_data TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_order_id (order_id),
     INDEX idx_transaction_id (transaction_id),
     INDEX idx_status (status),
     INDEX idx_payment_method (payment_method),
-    
+
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS banners (
     end_date TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_position (position),
     INDEX idx_content_type (content_type),
     INDEX idx_is_active (is_active),
@@ -360,7 +360,7 @@ CREATE TABLE IF NOT EXISTS homepage_contents (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_section_key (section_key),
     INDEX idx_is_active (is_active),
     INDEX idx_sort_order (sort_order)
@@ -407,13 +407,13 @@ CREATE TABLE IF NOT EXISTS contact_messages (
     admin_notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
+
     INDEX idx_email (email),
     INDEX idx_inquiry_type (inquiry_type),
     INDEX idx_status (status),
     INDEX idx_priority (priority),
     INDEX idx_created_at (created_at),
-    
+
     FOREIGN KEY (replied_by) REFERENCES admin_users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -422,8 +422,8 @@ CREATE TABLE IF NOT EXISTS contact_messages (
 -- =====================================================
 
 -- 插入默认管理员用户 (密码: admin123)
-INSERT IGNORE INTO admin_users (username, email, password_hash, full_name, role, is_active) 
-VALUES ('admin', 'admin@vcocnc.shop', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE);
+INSERT IGNORE INTO admin_users (username, email, password_hash, full_name, role, is_active)
+VALUES ('admin', 'admin@vibocnc.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'admin', TRUE);
 
 -- 插入默认语言
 INSERT IGNORE INTO languages (code, name, native_name, is_active, is_default, sort_order) VALUES
@@ -447,12 +447,12 @@ INSERT IGNORE INTO company_profiles (
     description_1, description_2, achievement,
     stats, expertise, workshop_facilities
 ) VALUES (
-    'Vcocnc',
+    'VIBO CNC',
     'Industrial Automation Specialists',
     '2005',
     'Kunshan, China',
     '5,000sqm',
-    'Vcocnc established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.',
+    'VIBO CNC established in 2005 in Kunshan, China. We are selling automation components like System unit, Circuit board, PLC, HMI, Inverter, Encoder, Amplifier, Servomotor, Servodrive etc of AB ABB, Fanuc, Mitsubishi, Siemens and other manufacturers in our own 5,000sqm workshop.',
     'Especially Fanuc, We are one of the top three suppliers in China. We now have 27 workers, 10 sales and 100,000 items regularly stocked. Daily parcel around 50-100pcs, yearly turnover around 200 million.',
     'Top 3 FANUC Supplier in China',
     '[{"icon":"CalendarIcon","value":"2005","label":"Established","description":"Years of experience"},{"icon":"UserGroupIcon","value":"27","label":"Workers","description":"Professional team"},{"icon":"UserGroupIcon","value":"10","label":"Sales Staff","description":"Dedicated sales team"},{"icon":"ArchiveBoxIcon","value":"100,000","label":"Items Stocked","description":"Regular inventory"},{"icon":"TruckIcon","value":"50-100","label":"Daily Parcels","description":"Shipments per day"},{"icon":"CurrencyDollarIcon","value":"200M","label":"Yearly Turnover","description":"Annual revenue"}]',
@@ -466,13 +466,13 @@ INSERT IGNORE INTO company_profiles (
 
 -- 产品库存视图
 CREATE OR REPLACE VIEW product_inventory_view AS
-SELECT 
+SELECT
     p.id,
     p.sku,
     p.name,
     p.stock_quantity,
     p.min_stock_level,
-    CASE 
+    CASE
         WHEN p.stock_quantity <= p.min_stock_level THEN 'Low Stock'
         WHEN p.stock_quantity = 0 THEN 'Out of Stock'
         ELSE 'In Stock'
@@ -484,7 +484,7 @@ WHERE p.is_active = TRUE;
 
 -- 订单统计视图
 CREATE OR REPLACE VIEW order_statistics_view AS
-SELECT 
+SELECT
     DATE(created_at) as order_date,
     COUNT(*) as total_orders,
     SUM(total_amount) as total_revenue,

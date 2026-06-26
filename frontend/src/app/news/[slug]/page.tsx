@@ -18,11 +18,11 @@ export async function generateMetadata({
     const baseUrl = getSiteUrl();
     const canonicalUrl = `${baseUrl}/news/${article.slug}`;
 
-    const metaTitle = (article.meta_title || '').trim() || `${article.title} | Vcocnc`;
+    const metaTitle = (article.meta_title || '').trim() || `${article.title} | VIBO CNC`;
     const metaDescription =
       (article.meta_description || '').trim() ||
       article.summary ||
-      `${article.title} - Read the latest from Vcocnc.`;
+      `${article.title} - Read the latest from VIBO CNC.`;
     const metaKeywords =
       (article.meta_keywords || '').trim() ||
       [article.title, 'FANUC', 'industrial automation', 'CNC news'].join(', ');
@@ -41,7 +41,7 @@ export async function generateMetadata({
         images,
         publishedTime: article.published_at || article.created_at,
         modifiedTime: article.updated_at,
-        authors: article.author?.full_name ? [article.author.full_name] : ['Vcocnc'],
+        authors: article.author?.full_name ? [article.author.full_name] : ['VIBO CNC'],
       },
       alternates: { canonical: canonicalUrl },
       twitter: {
@@ -53,7 +53,7 @@ export async function generateMetadata({
     };
   } catch {
     return {
-      title: 'Article Not Found | Vcocnc',
+      title: 'Article Not Found | VIBO CNC',
       description: 'The requested article could not be found.',
     };
   }
@@ -85,11 +85,11 @@ export default async function ArticlePage({
     url: `${baseUrl}/news/${article.slug}`,
     author: {
       '@type': 'Person',
-      name: article.author?.full_name || 'Vcocnc',
+      name: article.author?.full_name || 'VIBO CNC',
     },
     publisher: {
       '@type': 'Organization',
-      name: 'Vcocnc',
+      name: 'VIBO CNC',
       url: baseUrl,
     },
     mainEntityOfPage: {

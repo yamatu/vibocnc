@@ -17,14 +17,14 @@ import {
 const contactPageSchema = {
   "@context": "https://schema.org",
   "@type": "ContactPage",
-  "name": "Contact Vcocnc",
-  "description": "Get in touch with Vcocnc for FANUC parts inquiries, technical support, and quotes.",
-  "url": "https://www.vcocncspare.com/contact",
+  "name": "Contact VIBO CNC",
+  "description": "Get in touch with VIBO CNC for FANUC parts inquiries, technical support, and quotes.",
+  "url": "https://www.vibocnc.com/contact",
   "mainEntity": {
     "@type": "Organization",
-    "name": "Vcocnc",
+    "name": "VIBO CNC",
     "telephone": "+86-13348028050",
-    "email": "sales@vcocncspare.com",
+    "email": "sales@vibocnc.com",
     "address": {
       "@type": "PostalAddress",
       "addressLocality": "Kunshan",
@@ -52,8 +52,8 @@ const breadcrumbSchema = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
-    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.vcocncspare.com" },
-    { "@type": "ListItem", "position": 2, "name": "Contact", "item": "https://www.vcocncspare.com/contact" }
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.vibocnc.com" },
+    { "@type": "ListItem", "position": 2, "name": "Contact", "item": "https://www.vibocnc.com/contact" }
   ]
 };
 
@@ -135,11 +135,11 @@ function ContactContent() {
       <section className="site-page-shell py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-            
+
             {/* Contact Information */}
             <div className="lg:col-span-1">
               <h2 className="text-2xl font-bold text-gray-900 mb-8">Get in Touch</h2>
-              
+
               <div className="space-y-6">
                 <div className="flex items-start space-x-4">
                   <MapPinIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
@@ -164,7 +164,7 @@ function ContactContent() {
                   <EnvelopeIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">Email</h3>
-                    <p className="text-gray-600">sales@vcocncspare.com</p>
+                    <p className="text-gray-600">sales@vibocnc.com</p>
                   </div>
                 </div>
 
@@ -197,12 +197,12 @@ function ContactContent() {
                 </div>
               </div>
             </div>
-            
+
             {/* Contact Form */}
             <div className="lg:col-span-2">
               <div className="site-detail-panel p-8">
                 <h2 className="text-2xl font-bold text-gray-900 mb-6">Send us a Message</h2>
-                
+
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -220,7 +220,7 @@ function ContactContent() {
                         placeholder="Your full name"
                       />
                     </div>
-                    
+
                     <div>
                       <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                         Email Address *
@@ -237,7 +237,7 @@ function ContactContent() {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-2">
@@ -253,7 +253,7 @@ function ContactContent() {
                         placeholder="Your company name"
                       />
                     </div>
-                    
+
                     <div>
                       <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
                         Phone Number
@@ -269,7 +269,7 @@ function ContactContent() {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label htmlFor="inquiry_type" className="block text-sm font-medium text-gray-700 mb-2">
@@ -289,7 +289,7 @@ function ContactContent() {
                         <option value="quote">Request Quote</option>
                       </select>
                     </div>
-                    
+
                     <div>
                       <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-2">
                         Subject *
@@ -306,7 +306,7 @@ function ContactContent() {
                       />
                     </div>
                   </div>
-                  
+
                   <div>
                     <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-2">
                       Message *
@@ -322,7 +322,7 @@ function ContactContent() {
                       placeholder="Please provide details about your requirements, including part numbers if available..."
                     />
                   </div>
-                  
+
                   <button
                     type="submit"
                     disabled={isSubmitting}
@@ -342,10 +342,10 @@ function ContactContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Why Choose Vcocnc?
+              Why Choose VIBO CNC?
             </h2>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center p-6">
               <div className="site-subtle-card w-16 h-16 flex items-center justify-center mx-auto mb-4">

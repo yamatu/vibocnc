@@ -20,5 +20,5 @@ export function normalizeSiteUrl(input?: string | null): string | null {
 export function getSiteUrl(): string {
   // Prefer a server-only env var to avoid Next.js inlining NEXT_PUBLIC_* at build time.
   const raw = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL;
-  return normalizeSiteUrl(raw) || 'https://www.vcocncspare.com';
+  return normalizeSiteUrl(raw) || 'https://www.vibocnc.com';
 }

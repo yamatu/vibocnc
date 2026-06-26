@@ -26,6 +26,7 @@ import (
 	"golang.org/x/image/math/fixed"
 	"golang.org/x/image/webp"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func GetOrCreateWatermarkSetting(db *gorm.DB) (*models.WatermarkSetting, error) {
@@ -97,8 +98,9 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 	fileName := cacheKey + ".jpg"
 	relPath := filepath.ToSlash(filepath.Join("media", fileName))
 
+	silentDB := db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
 	var existing models.MediaAsset
-	if err := db.Where("relative_path = ?", relPath).First(&existing).Error; err == nil {
+	if err := silentDB.Where("relative_path = ?", relPath).Take(&existing).Error; err == nil {
 		return &WatermarkResult{Asset: existing, CreatedNew: false, SHA256: existing.SHA256}, nil
 	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -172,7 +174,7 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 
 	if err := db.Create(&asset).Error; err != nil {
 		var again models.MediaAsset
-		if e2 := db.Where("relative_path = ?", relPath).First(&again).Error; e2 == nil {
+		if e2 := silentDB.Where("relative_path = ?", relPath).Take(&again).Error; e2 == nil {
 			return &WatermarkResult{Asset: again, CreatedNew: false, SHA256: again.SHA256}, nil
 		}
 		return nil, err

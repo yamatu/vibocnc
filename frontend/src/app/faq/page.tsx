@@ -4,8 +4,8 @@ import { generateFAQSchema, generateBreadcrumbSchema } from '@/lib/structured-da
 import { getSiteUrl } from '@/lib/url';
 
 export const metadata: Metadata = {
-  title: 'FAQ - Frequently Asked Questions | Vcocnc FANUC Parts',
-  description: 'Find answers to common questions about FANUC parts, shipping, warranty, technical support, and more. Professional industrial automation support from Vcocnc.',
+  title: 'FAQ - Frequently Asked Questions | VIBO CNC FANUC Parts',
+  description: 'Find answers to common questions about FANUC parts, shipping, warranty, technical support, and more. Professional industrial automation support from VIBO CNC.',
   keywords: 'FANUC parts FAQ, industrial automation support, CNC parts questions, technical support, warranty information, FANUC shipping, FANUC compatibility',
   robots: {
     index: true,
@@ -97,7 +97,7 @@ export default function FAQPage() {
                   How can I get technical support?
                 </h2>
                 <p className="text-gray-700 leading-relaxed">
-                  Our technical support team is available via email at sales@vcocncspare.com or phone. We provide installation guidance, troubleshooting, compatibility assistance, and replacement recommendations.
+                  Our technical support team is available via email at sales@vibocnc.com or phone. We provide installation guidance, troubleshooting, compatibility assistance, and replacement recommendations.
                 </p>
               </div>
 
@@ -163,7 +163,7 @@ export default function FAQPage() {
                   Contact Us
                 </a>
                 <a
-                  href="mailto:sales@vcocncspare.com"
+                  href="mailto:sales@vibocnc.com"
                   className="site-secondary-action px-6 py-3"
                 >
                   Email Support

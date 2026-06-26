@@ -84,10 +84,10 @@ function buildDefaultSeoValues(input: {
   const model = sku || partNumber || normalizeWhitespace(input.name);
   const categoryName = normalizeWhitespace(input.categoryName) || 'Industrial Automation Part';
   const titleBase = [brand, model, categoryName].filter(Boolean).join(' ') || normalizeWhitespace(input.name) || 'Product';
-  const metaTitle = trimMetaTitle(`${titleBase} | Vcocnc`);
+  const metaTitle = trimMetaTitle(`${titleBase} | VIBO CNC`);
   const subject = [brand, model].filter(Boolean).join(' ') || model || normalizeWhitespace(input.name) || 'This product';
   const metaDescription = trimMetaDescription(
-    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, 12-month warranty, and fast worldwide shipping from Vcocnc.`
+    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, 12-month warranty, and fast worldwide shipping from VIBO CNC.`
   );
   const metaKeywords = [
     normalizeWhitespace(input.sku),
@@ -96,7 +96,7 @@ function buildDefaultSeoValues(input: {
     [brand, categoryName].filter(Boolean).join(' '),
     brand ? `${brand} parts` : 'industrial automation parts',
     'CNC replacement parts',
-    'Vcocnc',
+    'VIBO CNC',
   ]
     .map(normalizeWhitespace)
     .filter(Boolean)
@@ -114,7 +114,7 @@ export default function EditProductPage() {
   const queryClient = useQueryClient();
   const productId = Number(params.id);
   const returnTo = searchParams?.get('returnTo') || '';
-  
+
   const [imageUrl, setImageUrl] = useState<string>('');
   const [images, setImages] = useState<any[]>([]);
   const [showImageForm, setShowImageForm] = useState<boolean>(false);
@@ -149,7 +149,7 @@ export default function EditProductPage() {
 
   // Update product mutation
   const updateProductMutation = useMutation({
-    mutationFn: (data: Partial<ProductCreateRequest>) => 
+    mutationFn: (data: Partial<ProductCreateRequest>) =>
       ProductService.updateProduct(productId, data),
     onSuccess: () => {
       toast.success(t('products.toast.updated', 'Product updated successfully!'));
@@ -573,7 +573,7 @@ export default function EditProductPage() {
               {/* Basic Information */}
               <div className="bg-white shadow rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">{t('products.basic.title', locale === 'zh' ? '基础信息' : 'Basic Information')}</h3>
-                
+
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
@@ -614,7 +614,7 @@ export default function EditProductPage() {
                         <span className="text-gray-500 sm:text-sm">$</span>
                       </div>
                         <input
-                          {...register('price', { 
+                          {...register('price', {
                             required: t('products.validation.priceRequired', locale === 'zh' ? '请输入价格' : 'Price is required'),
                             min: { value: 0, message: t('products.validation.pricePositive', locale === 'zh' ? '价格必须大于等于 0' : 'Price must be positive') }
                           })}
@@ -657,7 +657,7 @@ export default function EditProductPage() {
                       {t('products.field.stock', locale === 'zh' ? '库存数量' : 'Stock Quantity')}
                     </label>
                     <input
-                      {...register('stock_quantity', { 
+                      {...register('stock_quantity', {
                         min: { value: 0, message: t('products.validation.stockPositive', locale === 'zh' ? '库存必须大于等于 0' : 'Stock quantity must be positive') }
                       })}
                       type="number"
@@ -839,7 +839,7 @@ export default function EditProductPage() {
           {/* Product Images */}
           <div className="bg-white shadow rounded-lg p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">{t('products.images.title', locale === 'zh' ? '产品图片' : 'Product Images')}</h3>
-                
+
                 <div className="space-y-4">
 
 
@@ -1098,7 +1098,7 @@ https://dz.yamatu.xyz/i/2025/09/22/A06B-6079-H121_-_57-5.webp`}
               {/* Status */}
               <div className="bg-white shadow rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">{t('products.status.title', locale === 'zh' ? '状态' : 'Status')}</h3>
-                
+
                 <div className="space-y-4">
                   <div className="flex items-center">
                     <input

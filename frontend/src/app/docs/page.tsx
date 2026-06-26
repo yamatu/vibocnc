@@ -4,9 +4,9 @@ import { buildStaticPageMetadata } from '@/lib/seo';
 
 export const metadata: Metadata = buildStaticPageMetadata(
   '/docs',
-  'Documentation | Vcocnc',
-  'Documentation and technical resources for Vcocnc products.',
-  'documentation, FANUC manuals, CNC technical resources, product documents, Vcocnc docs'
+  'Documentation | VIBO CNC',
+  'Documentation and technical resources for VIBO CNC products.',
+  'documentation, FANUC manuals, CNC technical resources, product documents, VIBO CNC docs'
 );
 
 export default function DocsPage() {

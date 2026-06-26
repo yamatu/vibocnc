@@ -315,7 +315,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                               (product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []),
                               getDefaultProductImageWithSku(product.sku)
                             )}
-                            alt={`${product.name} - ${product.sku} | Professional ${product.category?.name || 'Industrial'} Part | In Stock at Vcocnc`}
+                            alt={`${product.name} - ${product.sku} | Professional ${product.category?.name || 'Industrial'} Part | In Stock at VIBO CNC`}
                             width={300}
                             height={300}
                             sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
@@ -390,7 +390,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                               (product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []),
                               getDefaultProductImageWithSku(product.sku)
                             )}
-                            alt={`${product.name} - ${product.sku} | Professional ${product.category?.name || 'Industrial'} Part | In Stock at Vcocnc`}
+                            alt={`${product.name} - ${product.sku} | Professional ${product.category?.name || 'Industrial'} Part | In Stock at VIBO CNC`}
                             width={120}
                             height={120}
                             sizes="120px"

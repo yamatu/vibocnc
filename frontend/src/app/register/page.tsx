@@ -129,7 +129,7 @@ export default function RegisterPage() {
               Build a faster purchasing workflow for FANUC spare parts.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-blue-100">
-              Create an account for repeat ordering, verified contact details, and cleaner communication with the VCO CNC team.
+              Create an account for repeat ordering, verified contact details, and cleaner communication with the VIBO CNC team.
             </p>
             <div className="mt-8 space-y-3 text-sm text-blue-50">
               {['Centralized order details', 'Email verification support', 'Company purchasing profile'].map((item) => (

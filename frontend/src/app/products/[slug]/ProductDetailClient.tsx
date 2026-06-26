@@ -360,7 +360,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
     ? product.description
     : getFallbackDescription();
   const introBrandPrefix = brandName ? `${brandName} ` : '';
-  const introParagraph = `${computedHeading} is a ${introBrandPrefix}${categoryName.toLowerCase()} supplied by Vcocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}`.replace(/\s+/g, ' ').trim();
+  const introParagraph = `${computedHeading} is a ${introBrandPrefix}${categoryName.toLowerCase()} supplied by VIBO CNC for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}`.replace(/\s+/g, ' ').trim();
   const normalizedIntro = normalizeComparisonText(introParagraph);
   const normalizedDescription = normalizeComparisonText(descriptionToShow);
   const shouldRenderIntroParagraph = normalizedIntro !== '' && !normalizedDescription.includes(normalizedIntro);
@@ -383,8 +383,8 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
           {
             question: `How can I confirm compatibility for ${product.sku}?`,
             answer: product.compatibility_info
-              ? `${stripHtml(product.compatibility_info)} Contact sales@vcocncspare.com for final compatibility confirmation before ordering.`
-              : `Share your machine model or original part number with sales@vcocncspare.com and we will verify compatibility before shipment.`,
+              ? `${stripHtml(product.compatibility_info)} Contact sales@vibocnc.com for final compatibility confirmation before ordering.`
+              : `Share your machine model or original part number with sales@vibocnc.com and we will verify compatibility before shipment.`,
           },
         ];
   const partHighlights = [
@@ -467,7 +467,7 @@ export default function ProductDetailClient({ productSku, initialProduct }: Prod
                 {categoryName}
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-slate-950">{computedHeading}</h1>
-              
+
               <div className="mt-3">
                 <h2 className="sr-only">Product information</h2>
                 <p className="text-3xl font-bold tracking-tight text-[#0b3e75]">{formatCurrency(product.price)}</p>

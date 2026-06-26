@@ -33,7 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
       "industrial spare parts",
       "CNC machine parts",
     ].join(", "),
-    authors: [{ name: "VIBO CNC", url: "https://vcocnc.shop" }],
+    authors: [{ name: "VIBO CNC", url: "https://www.vibocnc.com" }],
     creator: "VIBO CNC Industrial Automation",
     publisher: "VIBO CNC",
     robots: {
