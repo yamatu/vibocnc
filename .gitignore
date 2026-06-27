@@ -5,6 +5,8 @@
 
 # 依赖目录
 **/node_modules/
+.npm-cache/
+.gocache/
 
 # 前端构建产物（Next.js）
 **/.next/
