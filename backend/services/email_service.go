@@ -142,6 +142,7 @@ func GetOrCreateEmailSetting(db *gorm.DB) (*models.EmailSetting, error) {
 				SMTPTLSMode:                      "starttls",
 				SMTPPort:                         587,
 				FromName:                         "VIBO CNC",
+				AliMailEndpoint:                  defaultAliMailEndpoint,
 				CodeExpiryMinutes:                10,
 				CodeResendSeconds:                60,
 				VerificationEnabled:              false,
@@ -184,6 +185,9 @@ func SendEmail(db *gorm.DB, opts EmailSendOptions) error {
 	}
 	if provider == "resend" {
 		return sendResendEmail(db, s, opts)
+	}
+	if provider == "alimail" {
+		return sendAliMailEmail(s, opts)
 	}
 	if provider != "smtp" {
 		return fmt.Errorf("unsupported email provider: %s", s.Provider)
@@ -415,6 +419,15 @@ func UpdateResendWebhookSecret(db *gorm.DB, setting *models.EmailSetting, secret
 	return nil
 }
 
+func UpdateAliMailClientSecret(db *gorm.DB, setting *models.EmailSetting, secret string) error {
+	enc, err := encryptString(secret)
+	if err != nil {
+		return err
+	}
+	setting.AliMailClientSecret = enc
+	return nil
+}
+
 func GetDecryptedResendAPIKey(setting *models.EmailSetting) (string, error) {
 	if setting == nil {
 		return "", errors.New("missing settings")
@@ -428,4 +441,19 @@ func GetDecryptedResendAPIKey(setting *models.EmailSetting) (string, error) {
 		return "", errors.New("resend api key is not configured")
 	}
 	return apiKey, nil
+}
+
+func GetDecryptedAliMailClientSecret(setting *models.EmailSetting) (string, error) {
+	if setting == nil {
+		return "", errors.New("missing settings")
+	}
+	secret, err := decryptString(setting.AliMailClientSecret)
+	if err != nil {
+		return "", err
+	}
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return "", errors.New("alimail secret is not configured")
+	}
+	return secret, nil
 }

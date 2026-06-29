@@ -57,8 +57,9 @@ func (ec *EmailController) SendCode(c *gin.Context) {
 
 type EmailSettingsResponse struct {
 	models.EmailSetting
-	HasSMTPPassword bool `json:"has_smtp_password"`
-	HasResendAPIKey bool `json:"has_resend_api_key"`
+	HasSMTPPassword        bool `json:"has_smtp_password"`
+	HasResendAPIKey        bool `json:"has_resend_api_key"`
+	HasAliMailClientSecret bool `json:"has_alimail_client_secret"`
 }
 
 // Admin: GET /api/v1/admin/email/settings
@@ -71,11 +72,13 @@ func (ec *EmailController) GetSettings(c *gin.Context) {
 	}
 	hasPass := strings.TrimSpace(s.SMTPPassword) != ""
 	hasResend := strings.TrimSpace(s.ResendAPIKey) != ""
+	hasAliMailSecret := strings.TrimSpace(s.AliMailClientSecret) != ""
 	// Do not return the password.
 	s.SMTPPassword = ""
 	s.ResendAPIKey = ""
 	s.ResendWebhookSecret = ""
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: EmailSettingsResponse{EmailSetting: *s, HasSMTPPassword: hasPass, HasResendAPIKey: hasResend}})
+	s.AliMailClientSecret = ""
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: EmailSettingsResponse{EmailSetting: *s, HasSMTPPassword: hasPass, HasResendAPIKey: hasResend, HasAliMailClientSecret: hasAliMailSecret}})
 }
 
 type updateEmailSettingsRequest struct {
@@ -91,6 +94,10 @@ type updateEmailSettingsRequest struct {
 	SMTPTLSMode                      *string `json:"smtp_tls_mode"`
 	ResendAPIKey                     *string `json:"resend_api_key"`
 	ResendWebhookSecret              *string `json:"resend_webhook_secret"`
+	AliMailEndpoint                  *string `json:"alimail_endpoint"`
+	AliMailClientID                  *string `json:"alimail_client_id"`
+	AliMailClientSecret              *string `json:"alimail_client_secret"`
+	AliMailAccountEmail              *string `json:"alimail_account_email"`
 	VerificationEnabled              *bool   `json:"verification_enabled"`
 	MarketingEnabled                 *bool   `json:"marketing_enabled"`
 	ShippingNotificationsEnabled     *bool   `json:"shipping_notifications_enabled"`
@@ -208,6 +215,31 @@ func (ec *EmailController) UpdateSettings(c *gin.Context) {
 			}
 		}
 	}
+	if req.AliMailEndpoint != nil {
+		endpoint := strings.TrimSpace(*req.AliMailEndpoint)
+		if endpoint == "" {
+			endpoint = "https://alimail-cn.aliyuncs.com"
+		}
+		s.AliMailEndpoint = endpoint
+	}
+	if req.AliMailClientID != nil {
+		s.AliMailClientID = strings.TrimSpace(*req.AliMailClientID)
+	}
+	if req.AliMailAccountEmail != nil {
+		s.AliMailAccountEmail = strings.TrimSpace(*req.AliMailAccountEmail)
+	}
+	if req.AliMailClientSecret != nil {
+		if *req.AliMailClientSecret == "" {
+			if c.Query("allow_clear") == "1" {
+				s.AliMailClientSecret = ""
+			}
+		} else {
+			if err := services.UpdateAliMailClientSecret(db, s, strings.TrimSpace(*req.AliMailClientSecret)); err != nil {
+				c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to save AliMail secret", Error: err.Error()})
+				return
+			}
+		}
+	}
 	if req.VerificationEnabled != nil {
 		s.VerificationEnabled = *req.VerificationEnabled
 	}
@@ -261,10 +293,12 @@ func (ec *EmailController) UpdateSettings(c *gin.Context) {
 
 	hasPass := strings.TrimSpace(s.SMTPPassword) != ""
 	hasResend := strings.TrimSpace(s.ResendAPIKey) != ""
+	hasAliMailSecret := strings.TrimSpace(s.AliMailClientSecret) != ""
 	s.SMTPPassword = ""
 	s.ResendAPIKey = ""
 	s.ResendWebhookSecret = ""
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Saved", Data: EmailSettingsResponse{EmailSetting: *s, HasSMTPPassword: hasPass, HasResendAPIKey: hasResend}})
+	s.AliMailClientSecret = ""
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Saved", Data: EmailSettingsResponse{EmailSetting: *s, HasSMTPPassword: hasPass, HasResendAPIKey: hasResend, HasAliMailClientSecret: hasAliMailSecret}})
 }
 
 type sendTestEmailRequest struct {

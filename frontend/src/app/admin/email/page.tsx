@@ -33,6 +33,10 @@ export default function AdminEmailPage() {
     smtp_tls_mode: 'starttls',
     resend_api_key: '',
     resend_webhook_secret: '',
+    alimail_endpoint: 'https://alimail-cn.aliyuncs.com',
+    alimail_client_id: '',
+    alimail_client_secret: '',
+    alimail_account_email: '',
     verification_enabled: false,
     marketing_enabled: false,
     shipping_notifications_enabled: true,
@@ -44,6 +48,7 @@ export default function AdminEmailPage() {
     code_resend_seconds: 60,
     has_smtp_password: false,
     has_resend_api_key: false,
+    has_alimail_client_secret: false,
   });
 
   useEffect(() => {
@@ -66,6 +71,9 @@ export default function AdminEmailPage() {
         smtp_port: Number(form.smtp_port || 587),
         smtp_username: String(form.smtp_username || ''),
         smtp_tls_mode: String(form.smtp_tls_mode || 'starttls'),
+        alimail_endpoint: String(form.alimail_endpoint || 'https://alimail-cn.aliyuncs.com'),
+        alimail_client_id: String(form.alimail_client_id || ''),
+        alimail_account_email: String(form.alimail_account_email || ''),
         verification_enabled: Boolean(form.verification_enabled),
         marketing_enabled: Boolean(form.marketing_enabled),
         code_expiry_minutes: Number(form.code_expiry_minutes || 10),
@@ -89,6 +97,9 @@ export default function AdminEmailPage() {
       if (String(form.resend_webhook_secret || '').trim() !== '') {
         payload.resend_webhook_secret = String(form.resend_webhook_secret);
       }
+      if (String(form.alimail_client_secret || '').trim() !== '') {
+        payload.alimail_client_secret = String(form.alimail_client_secret);
+      }
       return EmailService.updateSettings(payload);
     },
     onSuccess: async () => {
@@ -96,7 +107,7 @@ export default function AdminEmailPage() {
       await qc.invalidateQueries({ queryKey: ['email'] });
       await qc.invalidateQueries({ queryKey: ['public', 'email'] });
       refetch();
-      setForm((p: any) => ({ ...p, smtp_password: '', resend_api_key: '', resend_webhook_secret: '' }));
+      setForm((p: any) => ({ ...p, smtp_password: '', resend_api_key: '', resend_webhook_secret: '', alimail_client_secret: '' }));
     },
     onError: (e: any) => toast.error(e?.message || t('common.saveFailed', locale === 'zh' ? '保存失败' : 'Failed to save')),
   });
@@ -291,12 +302,17 @@ export default function AdminEmailPage() {
                   >
                     <option value="smtp">{t('email.settings.provider.smtp', locale === 'zh' ? 'SMTP（Poste.io / AliMail）' : 'SMTP (Poste.io / AliMail)')}</option>
                     <option value="resend">{t('email.settings.provider.resend', locale === 'zh' ? 'Resend API' : 'Resend API')}</option>
+                    <option value="alimail">{t('email.settings.provider.alimail', locale === 'zh' ? '阿里邮箱 API 开放平台' : 'AliMail API Open Platform')}</option>
                   </select>
                 </div>
               </div>
 
               <div className="text-sm font-semibold text-gray-900 mb-3">
-                {t('email.settings.smtp.title', locale === 'zh' ? 'SMTP（Poste.io / AliMail / 自定义）' : 'SMTP (Poste.io / AliMail / Custom)')}
+                {String(form.provider || 'smtp') === 'resend'
+                  ? t('email.settings.resend.title', locale === 'zh' ? 'Resend API' : 'Resend API')
+                  : String(form.provider || 'smtp') === 'alimail'
+                    ? t('email.settings.alimail.title', locale === 'zh' ? '阿里邮箱 API 开放平台' : 'AliMail API Open Platform')
+                    : t('email.settings.smtp.title', locale === 'zh' ? 'SMTP（Poste.io / AliMail / 自定义）' : 'SMTP (Poste.io / AliMail / Custom)')}
               </div>
               {String(form.provider || 'smtp') === 'resend' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -334,6 +350,88 @@ export default function AdminEmailPage() {
                     <p className="mt-1 text-xs text-gray-500">
                       {t('email.settings.resend.webhookHint', locale === 'zh' ? '用于校验回调事件（预留）。' : 'Used to verify inbound events (future).')}
                     </p>
+                  </div>
+                </div>
+              ) : String(form.provider || 'smtp') === 'alimail' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {t('email.settings.alimail.endpoint', locale === 'zh' ? '调用域名' : 'Endpoint')}
+                    </label>
+                    <select
+                      value={form.alimail_endpoint || 'https://alimail-cn.aliyuncs.com'}
+                      onChange={(e) => setForm((p: any) => ({ ...p, alimail_endpoint: e.target.value }))}
+                      className="block w-full rounded-md border border-gray-300 px-3 py-2"
+                    >
+                      <option value="https://alimail-cn.aliyuncs.com">alimail-cn.aliyuncs.com</option>
+                      <option value="https://mail-open.xc.aliyun.com">mail-open.xc.aliyun.com</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {t(
+                        'email.settings.alimail.endpointHint',
+                        locale === 'zh'
+                          ? '标准版使用 alimail-cn.aliyuncs.com；国产化版本使用 mail-open.xc.aliyun.com。'
+                          : 'Use alimail-cn.aliyuncs.com for the standard service, or mail-open.xc.aliyun.com for the domestic edition.'
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {t('email.settings.alimail.account', locale === 'zh' ? '邮箱账号' : 'Mailbox Account')}
+                    </label>
+                    <input
+                      value={form.alimail_account_email || ''}
+                      onChange={(e) => setForm((p: any) => ({ ...p, alimail_account_email: e.target.value }))}
+                      className="block w-full rounded-md border border-gray-300 px-3 py-2"
+                      placeholder={form.from_email || 'sales@vibocnc.com'}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      {t(
+                        'email.settings.alimail.accountHint',
+                        locale === 'zh' ? '用于调用 /v2/users/{邮箱}/messages；留空默认使用发件邮箱。' : 'Used for /v2/users/{email}/messages; leave blank to use From Email.'
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {t('email.settings.alimail.appId', locale === 'zh' ? '应用 ID / AppID' : 'Application ID / AppID')}
+                    </label>
+                    <input
+                      value={form.alimail_client_id || ''}
+                      onChange={(e) => setForm((p: any) => ({ ...p, alimail_client_id: e.target.value }))}
+                      className="block w-full rounded-md border border-gray-300 px-3 py-2"
+                      placeholder="AppID"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {t('email.settings.alimail.secret', locale === 'zh' ? 'Secret' : 'Secret')}
+                    </label>
+                    <input
+                      type="password"
+                      value={form.alimail_client_secret || ''}
+                      onChange={(e) => setForm((p: any) => ({ ...p, alimail_client_secret: e.target.value }))}
+                      className="block w-full rounded-md border border-gray-300 px-3 py-2"
+                      placeholder={
+                        form.has_alimail_client_secret
+                          ? t('common.savedKeepBlank', locale === 'zh' ? '已保存（留空则不修改）' : 'Saved (leave blank to keep)')
+                          : 'Secret'
+                      }
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      {t(
+                        'email.settings.encryptionHint',
+                        locale === 'zh' ? '如设置 SETTINGS_ENCRYPTION_KEY，则会加密存储。' : 'Stored encrypted if SETTINGS_ENCRYPTION_KEY is set.'
+                      )}
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    {t(
+                      'email.settings.alimail.hint',
+                      locale === 'zh'
+                        ? '请在阿里邮箱 API 开放平台给应用开启 Mail.Send.All 权限。若开启了 IP 限制，请把当前后端服务器出口 IP 加入白名单。'
+                        : 'Enable Mail.Send.All for this app in AliMail API Open Platform. If IP restriction is enabled, add the backend server egress IP to the allowlist.'
+                    )}
                   </div>
                 </div>
               ) : (

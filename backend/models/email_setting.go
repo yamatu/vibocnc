@@ -5,7 +5,7 @@ import "time"
 // EmailSetting stores outbound email configuration.
 // This is a single-row table (ID=1) managed from the admin panel.
 //
-// Provider currently supports "smtp" (works with Poste.io, AliMail, etc.).
+// Provider currently supports "smtp", "resend", and "alimail".
 // Secrets (smtp_password) are stored in DB; if SETTINGS_ENCRYPTION_KEY is set,
 // the backend will store them encrypted.
 type EmailSetting struct {
@@ -30,6 +30,13 @@ type EmailSetting struct {
 	ResendAPIKey string `json:"resend_api_key" gorm:"type:text"`
 	// Optional: used to verify inbound webhook signatures.
 	ResendWebhookSecret string `json:"resend_webhook_secret" gorm:"type:text"`
+
+	// AliMail API provider (Alibaba Mail API Open Platform)
+	AliMailEndpoint     string `json:"alimail_endpoint" gorm:"size:255;default:'https://alimail-cn.aliyuncs.com'"`
+	AliMailClientID     string `json:"alimail_client_id" gorm:"size:255;default:''"`
+	AliMailClientSecret string `json:"alimail_client_secret" gorm:"type:text"`
+	// Optional mailbox account used in /v2/users/{email}/messages. Defaults to FromEmail.
+	AliMailAccountEmail string `json:"alimail_account_email" gorm:"size:255;default:''"`
 
 	VerificationEnabled          bool `json:"verification_enabled" gorm:"default:false"`
 	MarketingEnabled             bool `json:"marketing_enabled" gorm:"default:false"`

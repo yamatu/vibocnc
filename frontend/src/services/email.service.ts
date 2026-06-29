@@ -25,6 +25,10 @@ export interface EmailSettings {
 
   resend_api_key?: string;
   resend_webhook_secret?: string;
+  alimail_endpoint?: string;
+  alimail_client_id?: string;
+  alimail_client_secret?: string;
+  alimail_account_email?: string;
   verification_enabled: boolean;
   marketing_enabled: boolean;
   shipping_notifications_enabled?: boolean;
@@ -37,6 +41,7 @@ export interface EmailSettings {
   code_resend_seconds: number;
   has_smtp_password?: boolean;
   has_resend_api_key?: boolean;
+  has_alimail_client_secret?: boolean;
 }
 
 export class EmailService {
