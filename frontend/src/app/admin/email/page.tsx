@@ -7,17 +7,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { buildEmailHtml, defaultModule, type EmailModule, type EmailModuleType } from '@/lib/email-templates';
 import { useAdminI18n } from '@/lib/admin-i18n';
+import { useAuth } from '@/hooks/useAuth';
 
-type Tab = 'settings' | 'send' | 'marketing' | 'webhooks';
+type Tab = 'mailbox' | 'settings' | 'send' | 'marketing' | 'webhooks';
 
 export default function AdminEmailPage() {
   const { locale, t } = useAdminI18n();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>('settings');
+  const [tab, setTab] = useState<Tab>('mailbox');
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['email', 'settings'],
     queryFn: () => EmailService.getSettings(),
+    enabled: isAdmin,
   });
 
   const [form, setForm] = useState<any>({
@@ -58,6 +62,12 @@ export default function AdminEmailPage() {
       smtp_password: '', // never hydrate password
     });
   }, [data]);
+
+  useEffect(() => {
+    if (!isAdmin && (tab === 'settings' || tab === 'marketing' || tab === 'webhooks')) {
+      setTab('mailbox');
+    }
+  }, [isAdmin, tab]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -152,7 +162,7 @@ export default function AdminEmailPage() {
   const webhooksQuery = useQuery({
     queryKey: ['email', 'resend', 'webhooks'],
     queryFn: () => EmailService.resendWebhooksList(),
-    enabled: Boolean((form.provider || 'smtp') === 'resend'),
+    enabled: Boolean(isAdmin && (form.provider || 'smtp') === 'resend'),
   });
 
   const [whCreate, setWhCreate] = useState({ endpoint: '', events: 'email.sent,email.delivered' });
@@ -203,8 +213,8 @@ export default function AdminEmailPage() {
             {t(
               'email.subtitle',
               locale === 'zh'
-                ? '配置 SMTP（Poste.io / AliMail 等）、订单通知、验证码与营销邮件。'
-                : 'Configure SMTP (Poste.io / AliMail / etc.), order notifications, verification codes, and marketing emails.'
+                ? '员工可在这里使用邮局收发邮件；管理员可配置 SMTP / Resend / 阿里邮箱 API、订单通知、验证码与营销邮件。'
+                : 'Staff can use the mailbox here. Admins can configure SMTP / Resend / AliMail API, order notifications, verification codes, and marketing emails.'
             )}
           </p>
         </div>
@@ -212,11 +222,20 @@ export default function AdminEmailPage() {
         <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
           <button
             type="button"
+            onClick={() => setTab('mailbox')}
+            className={`px-3 py-2 text-sm rounded-md ${tab === 'mailbox' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+          >
+            {t('email.tab.mailbox', locale === 'zh' ? '邮局' : 'Mailbox')}
+          </button>
+          {isAdmin ? (
+          <button
+            type="button"
             onClick={() => setTab('settings')}
             className={`px-3 py-2 text-sm rounded-md ${tab === 'settings' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
           >
             {t('email.tab.settings', locale === 'zh' ? '设置' : 'Settings')}
           </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setTab('send')}
@@ -224,6 +243,7 @@ export default function AdminEmailPage() {
           >
             {t('email.tab.send', locale === 'zh' ? '发送' : 'Send')}
           </button>
+          {isAdmin ? (
           <button
             type="button"
             onClick={() => setTab('marketing')}
@@ -231,6 +251,8 @@ export default function AdminEmailPage() {
           >
             {t('email.tab.marketing', locale === 'zh' ? '营销' : 'Marketing')}
           </button>
+          ) : null}
+          {isAdmin ? (
           <button
             type="button"
             onClick={() => setTab('webhooks')}
@@ -238,9 +260,12 @@ export default function AdminEmailPage() {
           >
             {t('email.tab.webhooks', locale === 'zh' ? 'Webhooks' : 'Webhooks')}
           </button>
+          ) : null}
         </div>
 
-        {isLoading ? (
+        {tab === 'mailbox' ? (
+          <MailboxPanel />
+        ) : isAdmin && isLoading ? (
           <div className="bg-white rounded-lg shadow p-6">{t('common.loading', locale === 'zh' ? '加载中...' : 'Loading...')}</div>
         ) : tab === 'settings' ? (
           <div className="bg-white rounded-lg shadow p-6 space-y-6">
@@ -890,6 +915,321 @@ export default function AdminEmailPage() {
       </div>
     </AdminLayout>
   );
+}
+
+function MailboxPanel() {
+  const { locale, t } = useAdminI18n();
+  const [folderId, setFolderId] = useState('2');
+  const [cursor, setCursor] = useState('');
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [compose, setCompose] = useState({ to: '', subject: '', html: '', text: '' });
+
+  const configQuery = useQuery({
+    queryKey: ['email', 'mailbox', 'config'],
+    queryFn: () => EmailService.mailboxConfig(),
+  });
+
+  const messagesQuery = useQuery({
+    queryKey: ['email', 'mailbox', 'messages', folderId, cursor],
+    queryFn: () => EmailService.mailboxMessages(folderId, { cursor, size: 30 }),
+    enabled: Boolean(configQuery.data?.can_read),
+  });
+
+  const selectedMessage = useQuery({
+    queryKey: ['email', 'mailbox', 'message', selectedId],
+    queryFn: () => EmailService.mailboxMessage(selectedId),
+    enabled: Boolean(configQuery.data?.can_read && selectedId),
+  });
+
+  const attachmentsQuery = useQuery({
+    queryKey: ['email', 'mailbox', 'attachments', selectedId],
+    queryFn: () => EmailService.mailboxAttachments(selectedId),
+    enabled: Boolean(configQuery.data?.can_read && selectedId && hasAttachments(unwrapMessage(selectedMessage.data))),
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: async () => EmailService.send(compose),
+    onSuccess: () => {
+      toast.success(t('email.send.sent', locale === 'zh' ? '邮件已发送' : 'Email sent'));
+      setCompose({ to: '', subject: '', html: '', text: '' });
+      messagesQuery.refetch();
+    },
+    onError: (e: any) => toast.error(e?.message || t('email.send.failed', locale === 'zh' ? '发送失败' : 'Failed to send')),
+  });
+
+  const folders = configQuery.data?.folders?.length ? configQuery.data.folders : [
+    { id: '2', key: 'inbox', name: '收件箱', label: 'Inbox' },
+    { id: '1', key: 'sent', name: '发件箱', label: 'Sent' },
+    { id: '5', key: 'drafts', name: '草稿箱', label: 'Drafts' },
+    { id: '3', key: 'junk', name: '垃圾箱', label: 'Junk' },
+    { id: '6', key: 'deleted', name: '已删除', label: 'Deleted' },
+  ];
+  const messages = normalizeMessages(messagesQuery.data);
+  const nextCursor = String((messagesQuery.data as any)?.nextCursor || '');
+  const hasMore = Boolean((messagesQuery.data as any)?.hasMore);
+  const message = unwrapMessage(selectedMessage.data) || messages.find((m: any) => getMessageId(m) === selectedId);
+  const attachments = normalizeAttachments(attachmentsQuery.data);
+
+  const switchFolder = (id: string) => {
+    setFolderId(id);
+    setCursor('');
+    setCursorStack([]);
+    setSelectedId('');
+  };
+
+  const goNext = () => {
+    if (!nextCursor) return;
+    setCursorStack((prev) => [...prev, cursor]);
+    setCursor(nextCursor);
+    setSelectedId('');
+  };
+
+  const goPrev = () => {
+    setCursorStack((prev) => {
+      const copy = [...prev];
+      const previous = copy.pop() || '';
+      setCursor(previous);
+      return copy;
+    });
+    setSelectedId('');
+  };
+
+  const downloadAttachment = async (attachment: any) => {
+    const attachmentId = String(attachment?.id || '');
+    if (!selectedId || !attachmentId) return;
+    try {
+      const { blob, filename } = await EmailService.downloadAttachment(selectedId, attachmentId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = String(attachment?.name || filename || 'attachment');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast.error(e?.message || (locale === 'zh' ? '附件下载失败' : 'Failed to download attachment'));
+    }
+  };
+
+  if (configQuery.isLoading) {
+    return <div className="bg-white rounded-lg shadow p-6">{t('common.loading', locale === 'zh' ? '加载中...' : 'Loading...')}</div>;
+  }
+
+  if (configQuery.error || !configQuery.data?.enabled || !configQuery.data?.can_read) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="text-sm font-semibold text-gray-900">{locale === 'zh' ? '邮局未启用' : 'Mailbox is not enabled'}</div>
+        <p className="mt-2 text-sm text-gray-600">
+          {locale === 'zh'
+            ? '请让管理员在邮件设置里启用邮件，并选择“阿里邮箱 API 开放平台”作为服务商。读取邮件需要 Mail.Read.All 或 Mail.ReadWrite.All 权限。'
+            : 'Ask an admin to enable Email and select AliMail API Open Platform as the provider. Reading messages requires Mail.Read.All or Mail.ReadWrite.All.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="border-b border-gray-200 px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-gray-900">{locale === 'zh' ? '企业邮局' : 'Company Mailbox'}</div>
+          <div className="text-xs text-gray-500">{configQuery.data.account_email || configQuery.data.from_email}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => messagesQuery.refetch()}
+          className="self-start sm:self-auto rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          {t('common.refresh', locale === 'zh' ? '刷新' : 'Refresh')}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[160px_minmax(260px,360px)_1fr] min-h-[620px]">
+        <aside className="border-b lg:border-b-0 lg:border-r border-gray-200 p-3">
+          <div className="space-y-1">
+            {folders.map((folder: any) => (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => switchFolder(String(folder.id))}
+                className={`w-full rounded-md px-3 py-2 text-left text-sm ${String(folder.id) === folderId ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'}`}
+              >
+                {locale === 'zh' ? folder.name : folder.label}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <section className="border-b lg:border-b-0 lg:border-r border-gray-200">
+          <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
+            <div className="text-xs text-gray-500">
+              {messagesQuery.isFetching ? (locale === 'zh' ? '刷新中...' : 'Refreshing...') : `${messages.length} ${locale === 'zh' ? '封邮件' : 'messages'}`}
+            </div>
+            <div className="flex gap-1">
+              <button type="button" onClick={goPrev} disabled={cursorStack.length === 0} className="rounded border border-gray-200 px-2 py-1 text-xs disabled:opacity-50">
+                {locale === 'zh' ? '上一页' : 'Prev'}
+              </button>
+              <button type="button" onClick={goNext} disabled={!hasMore || !nextCursor} className="rounded border border-gray-200 px-2 py-1 text-xs disabled:opacity-50">
+                {locale === 'zh' ? '下一页' : 'Next'}
+              </button>
+            </div>
+          </div>
+
+          <div className="max-h-[560px] overflow-y-auto">
+            {messages.length === 0 ? (
+              <div className="p-6 text-center text-sm text-gray-500">{locale === 'zh' ? '暂无邮件' : 'No messages'}</div>
+            ) : messages.map((mail: any) => {
+              const id = getMessageId(mail);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSelectedId(id)}
+                  className={`block w-full border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 ${selectedId === id ? 'bg-amber-50' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-gray-900">{getSubject(mail)}</div>
+                      <div className="mt-1 truncate text-xs text-gray-500">{getSender(mail)}</div>
+                    </div>
+                    {hasAttachments(mail) ? <span className="text-xs text-amber-600">ATT</span> : null}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-400">{formatMailTime(getMailTime(mail))}</div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <main className="min-w-0">
+          <div className="border-b border-gray-200 p-4">
+            {message ? (
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">{getSubject(message)}</h2>
+                <div className="mt-2 grid gap-1 text-xs text-gray-500">
+                  <div>{locale === 'zh' ? '发件人：' : 'From: '}{getSender(message)}</div>
+                  <div>{locale === 'zh' ? '时间：' : 'Time: '}{formatMailTime(getMailTime(message))}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500">{locale === 'zh' ? '请选择一封邮件查看内容' : 'Select a message to read'}</div>
+            )}
+          </div>
+
+          <div className="h-[340px] overflow-auto p-4">
+            {selectedMessage.isFetching ? (
+              <div className="text-sm text-gray-500">{t('common.loading', locale === 'zh' ? '加载中...' : 'Loading...')}</div>
+            ) : message ? (
+              getMessageHtml(message) ? (
+                <iframe
+                  title="mail-content"
+                  sandbox=""
+                  className="h-full w-full rounded border border-gray-200 bg-white"
+                  srcDoc={getMessageHtml(message)}
+                />
+              ) : (
+                <pre className="whitespace-pre-wrap text-sm text-gray-800">{getMessageText(message)}</pre>
+              )
+            ) : null}
+          </div>
+
+          {attachments.length > 0 ? (
+            <div className="border-t border-gray-200 p-4">
+              <div className="mb-2 text-sm font-semibold text-gray-900">{locale === 'zh' ? '附件' : 'Attachments'}</div>
+              <div className="flex flex-wrap gap-2">
+                {attachments.map((att: any) => (
+                  <button
+                    key={att.id || att.name}
+                    type="button"
+                    onClick={() => downloadAttachment(att)}
+                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                  >
+                    {att.name || att.fileName || att.id}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="border-t border-gray-200 p-4">
+            <div className="mb-3 text-sm font-semibold text-gray-900">{locale === 'zh' ? '写信' : 'Compose'}</div>
+            <div className="grid grid-cols-1 gap-3">
+              <input value={compose.to} onChange={(e) => setCompose((p) => ({ ...p, to: e.target.value }))} className="rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder={locale === 'zh' ? '收件人' : 'To'} />
+              <input value={compose.subject} onChange={(e) => setCompose((p) => ({ ...p, subject: e.target.value }))} className="rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder={locale === 'zh' ? '主题' : 'Subject'} />
+              <textarea value={compose.text} onChange={(e) => setCompose((p) => ({ ...p, text: e.target.value, html: '' }))} rows={5} className="rounded-md border border-gray-300 px-3 py-2 text-sm" placeholder={locale === 'zh' ? '正文' : 'Message'} />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => sendMutation.mutate()}
+                  disabled={sendMutation.isPending || !compose.to || !compose.subject}
+                  className="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-60"
+                >
+                  {sendMutation.isPending ? t('common.sending', locale === 'zh' ? '发送中...' : 'Sending...') : t('email.send.sendEmail', locale === 'zh' ? '发送邮件' : 'Send email')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function normalizeMessages(data: any): any[] {
+  if (Array.isArray(data?.messages)) return data.messages;
+  if (Array.isArray(data?.data?.messages)) return data.data.messages;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
+function normalizeAttachments(data: any): any[] {
+  if (Array.isArray(data?.attachments)) return data.attachments;
+  if (Array.isArray(data?.data?.attachments)) return data.data.attachments;
+  return [];
+}
+
+function unwrapMessage(data: any): any {
+  return data?.message || data?.data?.message || data;
+}
+
+function getMessageId(mail: any): string {
+  return String(mail?.id || mail?.messageId || mail?.mailId || '');
+}
+
+function getSubject(mail: any): string {
+  return String(mail?.subject || mail?.title || '(no subject)');
+}
+
+function getSender(mail: any): string {
+  const sender = mail?.from || mail?.sender || mail?.senderEmail || mail?.fromEmail;
+  if (typeof sender === 'string') return sender;
+  if (sender?.email) return sender?.name ? `${sender.name} <${sender.email}>` : sender.email;
+  return '';
+}
+
+function getMailTime(mail: any): string {
+  return String(mail?.sentDateTime || mail?.receivedDateTime || mail?.createdDateTime || mail?.date || '');
+}
+
+function formatMailTime(value: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function hasAttachments(mail: any): boolean {
+  return Boolean(mail?.hasAttachments || mail?.attachments?.length);
+}
+
+function getMessageHtml(mail: any): string {
+  return String(mail?.body?.bodyHtml || mail?.bodyHtml || mail?.html || '');
+}
+
+function getMessageText(mail: any): string {
+  return String(mail?.body?.bodyText || mail?.bodyText || mail?.text || mail?.summary || '');
 }
 
 function ModuleEditor({

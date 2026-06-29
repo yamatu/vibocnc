@@ -9,8 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -236,6 +239,142 @@ func (c *AliMailClient) SendDraft(ctx context.Context, accountEmail, messageID s
 	return nil
 }
 
+func (c *AliMailClient) ListMessages(ctx context.Context, accountEmail, folderID, cursor string, size int) (map[string]interface{}, error) {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if size <= 0 || size > 100 {
+		size = 30
+	}
+
+	u, err := url.Parse(fmt.Sprintf("%s/v2/users/%s/mailFolders/%s/messages", c.Endpoint, url.PathEscape(strings.TrimSpace(accountEmail)), url.PathEscape(strings.TrimSpace(folderID))))
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("cursor", cursor)
+	q.Set("size", strconv.Itoa(size))
+	q.Set("orderby", "DES")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	body, status, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse alimail list messages response: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		return nil, fmt.Errorf("alimail list messages failed: status=%d message=%s", status, firstNonEmpty(mapString(out, "message"), mapString(out, "error_description"), string(body)))
+	}
+	return out, nil
+}
+
+func (c *AliMailClient) GetMessage(ctx context.Context, accountEmail, messageID string) (map[string]interface{}, error) {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("%s/v2/users/%s/messages/%s", c.Endpoint, url.PathEscape(strings.TrimSpace(accountEmail)), url.PathEscape(strings.TrimSpace(messageID)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	body, status, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse alimail get message response: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		return nil, fmt.Errorf("alimail get message failed: status=%d message=%s", status, firstNonEmpty(mapString(out, "message"), mapString(out, "error_description"), string(body)))
+	}
+	return out, nil
+}
+
+func (c *AliMailClient) ListAttachments(ctx context.Context, accountEmail, messageID string) (map[string]interface{}, error) {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("%s/v2/users/%s/messages/%s/attachments", c.Endpoint, url.PathEscape(strings.TrimSpace(accountEmail)), url.PathEscape(strings.TrimSpace(messageID)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	body, status, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("failed to parse alimail attachments response: %w", err)
+	}
+	if status < 200 || status >= 300 {
+		return nil, fmt.Errorf("alimail list attachments failed: status=%d message=%s", status, firstNonEmpty(mapString(out, "message"), mapString(out, "error_description"), string(body)))
+	}
+	return out, nil
+}
+
+func (c *AliMailClient) DownloadAttachment(ctx context.Context, accountEmail, messageID, attachmentID string) ([]byte, string, string, error) {
+	token, err := c.getAccessToken(ctx)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	path := fmt.Sprintf("%s/v2/users/%s/messages/%s/attachments/%s/$value", c.Endpoint, url.PathEscape(strings.TrimSpace(accountEmail)), url.PathEscape(strings.TrimSpace(messageID)), url.PathEscape(strings.TrimSpace(attachmentID)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, "", "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, "", "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", "", fmt.Errorf("alimail download attachment failed: status=%d message=%s", resp.StatusCode, string(body))
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	filename := "attachment"
+	if _, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition")); err == nil {
+		if name := strings.TrimSpace(params["filename"]); name != "" {
+			filename = filepath.Base(name)
+		}
+	}
+	return body, contentType, filename, nil
+}
+
 func (c *AliMailClient) do(req *http.Request) ([]byte, int, error) {
 	httpClient := c.HTTPClient
 	if httpClient == nil {
@@ -334,6 +473,16 @@ func firstNonEmpty(values ...string) string {
 		if value != "" {
 			return value
 		}
+	}
+	return ""
+}
+
+func mapString(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	if value, ok := m[key]; ok {
+		return fmt.Sprint(value)
 	}
 	return ""
 }

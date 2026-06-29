@@ -367,18 +367,27 @@ func SetupRoutes(r *gin.Engine) {
 				news.DELETE("/:id", middleware.AdminOnly(), newsController.DeleteArticle)
 			}
 
-			// Email settings + marketing (admin only)
+			// Email mailbox (editor/admin) + settings/marketing (admin only)
 			email := admin.Group("/email")
-			email.Use(middleware.AdminOnly())
+			email.Use(middleware.EditorOrAdmin())
 			{
-				email.GET("/settings", emailController.GetSettings)
-				email.PUT("/settings", emailController.UpdateSettings)
+				email.GET("/mailbox/config", emailController.MailboxConfig)
+				email.GET("/mailbox/folders", emailController.MailboxFolders)
+				email.GET("/mailbox/folders/:folderID/messages", emailController.MailboxMessages)
+				email.GET("/mailbox/messages/:messageID", emailController.MailboxMessage)
+				email.GET("/mailbox/messages/:messageID/attachments", emailController.MailboxAttachments)
+				email.GET("/mailbox/messages/:messageID/attachments/:attachmentID/download", emailController.MailboxAttachmentDownload)
+
 				email.POST("/test", emailController.SendTest)
 				email.POST("/send", emailController.Send)
-				email.POST("/broadcast", emailController.Broadcast)
+
+				email.GET("/settings", middleware.AdminOnly(), emailController.GetSettings)
+				email.PUT("/settings", middleware.AdminOnly(), emailController.UpdateSettings)
+				email.POST("/broadcast", middleware.AdminOnly(), emailController.Broadcast)
 
 				// Resend webhook management (proxy to Resend API)
 				resend := email.Group("/resend")
+				resend.Use(middleware.AdminOnly())
 				{
 					resend.GET("/webhooks", resendWebhookController.List)
 					resend.POST("/webhooks", resendWebhookController.Create)
