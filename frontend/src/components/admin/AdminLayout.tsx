@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, ReactNode, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   Bars3Icon,
@@ -275,9 +276,13 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
         }`}>
           <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-6">
             <div className="flex items-center space-x-3">
-              <div className="bg-blue-600 text-white px-3 py-1 rounded font-bold text-lg">
-                FANUC
-              </div>
+              <Image
+                src="/images/vibocnc-logo.png"
+                alt="ViboCNC"
+                width={96}
+                height={26}
+                className="h-7 w-auto object-contain"
+              />
               <span className="text-gray-900 font-semibold">{t('admin.panel', '管理后台')}</span>
             </div>
             <button

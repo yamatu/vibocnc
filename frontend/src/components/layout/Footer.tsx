@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { getSiteUrl } from '@/lib/url';
 import {
   PhoneIcon,
@@ -76,8 +77,14 @@ export function Footer() {
           {/* Company Info */}
           <div className="lg:col-span-2">
             <div className="flex items-center space-x-3 mb-6">
-              <div className="bg-white text-slate-950 px-4 py-2 rounded-md font-black text-xl tracking-wide">
-                <span className="text-[#003a78]">Vibo</span><span className="text-orange-500">cnc</span>
+              <div className="rounded-md bg-white px-3 py-2">
+                <Image
+                  src="/images/vibocnc-logo.png"
+                  alt="ViboCNC"
+                  width={150}
+                  height={40}
+                  className="h-9 w-auto object-contain"
+                />
               </div>
               <div>
                 <div className="text-xl font-bold">CNC Parts Hub</div>

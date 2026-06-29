@@ -194,9 +194,14 @@ export function Header() {
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-3">
-              <div className="bg-white px-4 py-2 rounded-md text-lg font-black tracking-wide ring-2 ring-orange-400/30">
-                <span className="text-[#003a78]">Vibo</span><span className="text-orange-500">cnc</span>
-              </div>
+              <Image
+                src="/images/vibocnc-logo.png"
+                alt="ViboCNC"
+                width={186}
+                height={50}
+                priority
+                className="h-10 w-auto object-contain sm:h-12"
+              />
               <div className="hidden sm:block">
                 <div className="text-xl font-bold text-slate-950">CNC Parts Hub</div>
                 <div className="text-sm text-slate-500">Automation Supply</div>
