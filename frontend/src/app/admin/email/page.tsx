@@ -48,6 +48,8 @@ export default function AdminEmailPage() {
     order_created_notifications_enabled: false,
     order_paid_notifications_enabled: false,
     order_notification_emails: '',
+    contact_notifications_enabled: true,
+    contact_notification_emails: '',
     code_expiry_minutes: 10,
     code_resend_seconds: 60,
     has_smtp_password: false,
@@ -94,6 +96,8 @@ export default function AdminEmailPage() {
         order_created_notifications_enabled: Boolean(form.order_created_notifications_enabled),
         order_paid_notifications_enabled: Boolean(form.order_paid_notifications_enabled),
         order_notification_emails: String(form.order_notification_emails || ''),
+        contact_notifications_enabled: Boolean(form.contact_notifications_enabled),
+        contact_notification_emails: String(form.contact_notification_emails || ''),
       };
       // only send password if user typed something
       if (String(form.smtp_password || '').trim() !== '') {
@@ -619,6 +623,48 @@ export default function AdminEmailPage() {
                     locale === 'zh' ? '可用逗号/分号/换行分隔；需先开启“启用邮件”。' : 'Separate by comma / semicolon / new line. Requires Enable Email = on.'
                   )}
                 </p>
+              </div>
+
+              <div className="mt-6 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">{t('email.settings.contactNotice', locale === 'zh' ? '联系消息通知' : 'Contact Notifications')}</div>
+                    <div className="text-xs text-gray-500">
+                      {t(
+                        'email.settings.contactNoticeHint',
+                        locale === 'zh' ? '客户提交联系表单后，自动邮件通知管理员' : 'Email admins when a customer submits the contact form'
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.contact_notifications_enabled)}
+                    onChange={(e) => setForm((p) => ({ ...p, contact_notifications_enabled: e.target.checked }))}
+                    className="h-4 w-4"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('email.settings.contactNotice.emails', locale === 'zh' ? '联系消息通知收件人' : 'Contact notification emails')}
+                  </label>
+                  <textarea
+                    value={form.contact_notification_emails || ''}
+                    onChange={(e) => setForm((p) => ({ ...p, contact_notification_emails: e.target.value }))}
+                    rows={3}
+                    disabled={!Boolean(form.contact_notifications_enabled)}
+                    className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                    placeholder="owner@yourdomain.com, sales@yourdomain.com"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    {t(
+                      'email.settings.contactNotice.emailsHint',
+                      locale === 'zh'
+                        ? '可用逗号/分号/换行分隔；留空时会复用订单通知收件人。'
+                        : 'Separate by comma / semicolon / new line. Leave blank to reuse order notification recipients.'
+                    )}
+                  </p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">

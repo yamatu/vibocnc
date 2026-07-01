@@ -116,6 +116,8 @@ type updateEmailSettingsRequest struct {
 	OrderCreatedNotificationsEnabled *bool   `json:"order_created_notifications_enabled"`
 	OrderPaidNotificationsEnabled    *bool   `json:"order_paid_notifications_enabled"`
 	OrderNotificationEmails          *string `json:"order_notification_emails"`
+	ContactNotificationsEnabled      *bool   `json:"contact_notifications_enabled"`
+	ContactNotificationEmails        *string `json:"contact_notification_emails"`
 	CodeExpiryMinutes                *int    `json:"code_expiry_minutes"`
 	CodeResendSeconds                *int    `json:"code_resend_seconds"`
 }
@@ -289,6 +291,17 @@ func (ec *EmailController) UpdateSettings(c *gin.Context) {
 			return
 		}
 		s.OrderNotificationEmails = normalized
+	}
+	if req.ContactNotificationsEnabled != nil {
+		s.ContactNotificationsEnabled = *req.ContactNotificationsEnabled
+	}
+	if req.ContactNotificationEmails != nil {
+		normalized, _, err := services.NormalizeEmailRecipients(*req.ContactNotificationEmails)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid contact notification emails", Error: err.Error()})
+			return
+		}
+		s.ContactNotificationEmails = normalized
 	}
 	if req.CodeExpiryMinutes != nil {
 		s.CodeExpiryMinutes = *req.CodeExpiryMinutes

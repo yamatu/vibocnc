@@ -152,6 +152,8 @@ func GetOrCreateEmailSetting(db *gorm.DB) (*models.EmailSetting, error) {
 				OrderCreatedNotificationsEnabled: false,
 				OrderPaidNotificationsEnabled:    false,
 				OrderNotificationEmails:          "",
+				ContactNotificationsEnabled:      true,
+				ContactNotificationEmails:        "",
 			}
 			if e := db.Create(&s).Error; e != nil {
 				return nil, e

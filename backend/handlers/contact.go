@@ -1,10 +1,15 @@
 package handlers
 
 import (
-	"fanuc-backend/models"
+	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
+
+	"fanuc-backend/models"
+	"fanuc-backend/services"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -45,10 +50,37 @@ func (h *ContactHandler) SubmitContact(c *gin.Context) {
 		return
 	}
 
+	siteURL := contactSiteURL(c)
+	go func(messageID uint, baseURL string) {
+		if err := services.NotifyAdminContactMessage(h.db, baseURL, messageID); err != nil {
+			log.Printf("contact notification: %v", err)
+		}
+	}(req.ID, siteURL)
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Contact message submitted successfully",
 		"id":      req.ID,
 	})
+}
+
+func contactSiteURL(c *gin.Context) string {
+	siteURL := os.Getenv("SITE_URL")
+	if siteURL != "" {
+		return siteURL
+	}
+
+	proto := c.GetHeader("X-Forwarded-Proto")
+	if proto == "" {
+		proto = "https"
+	}
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	if host == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s://%s", proto, host)
 }
 
 // GetContacts 获取联系消息列表（管理员）
