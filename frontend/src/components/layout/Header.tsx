@@ -189,7 +189,7 @@ export function Header() {
       </div>
 
       {/* Main Header */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[90rem] px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-4 py-4">
           {/* Logo */}
           <div className="flex flex-shrink-0 items-center">
@@ -202,7 +202,7 @@ export function Header() {
                 priority
                 className="h-10 w-auto object-contain sm:h-12"
               />
-              <div className="hidden sm:block">
+              <div className="hidden 2xl:block">
                 <div className="text-xl font-bold text-slate-950">CNC Parts Hub</div>
                 <div className="text-sm text-slate-500">Automation Supply</div>
               </div>
@@ -210,7 +210,7 @@ export function Header() {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-5 lg:flex xl:gap-8">
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-5 lg:flex 2xl:gap-8">
             {navigation.map((item) => {
               if (item.name === 'Categories') {
                 return (
@@ -230,7 +230,7 @@ export function Header() {
           </nav>
 
           {/* Right Side Actions */}
-          <div className="flex flex-shrink-0 items-center gap-3 pl-3 xl:gap-4 xl:pl-5">
+          <div className="flex flex-shrink-0 items-center gap-3 pl-4 2xl:gap-4 2xl:pl-6">
             {/* Search */}
             <div className="relative" ref={searchDropdownRef}>
               <button
