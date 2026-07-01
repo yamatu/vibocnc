@@ -106,6 +106,51 @@ export default function ContactsPage() {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    const s = String(status || '').toLowerCase();
+    const map: Record<string, string> = {
+      new: t('contacts.status.new', locale === 'zh' ? '新消息' : 'New'),
+      read: t('contacts.status.read', locale === 'zh' ? '已读' : 'Read'),
+      replied: t('contacts.status.replied', locale === 'zh' ? '已回复' : 'Replied'),
+      closed: t('contacts.status.closed', locale === 'zh' ? '已关闭' : 'Closed'),
+    };
+    return map[s] || status || '-';
+  };
+
+  const getPriorityLabel = (priority: string) => {
+    const p = String(priority || '').toLowerCase();
+    const map: Record<string, string> = {
+      urgent: t('contacts.priority.urgent', locale === 'zh' ? '紧急' : 'Urgent'),
+      high: t('contacts.priority.high', locale === 'zh' ? '高' : 'High'),
+      medium: t('contacts.priority.medium', locale === 'zh' ? '中' : 'Medium'),
+      low: t('contacts.priority.low', locale === 'zh' ? '低' : 'Low'),
+    };
+    return map[p] || priority || '-';
+  };
+
+  const getInquiryTypeLabel = (type: string) => {
+    const x = String(type || '').toLowerCase();
+    const map: Record<string, string> = {
+      general: t('contacts.type.general', locale === 'zh' ? '常规' : 'General'),
+      parts: t('contacts.type.parts', locale === 'zh' ? '配件' : 'Parts'),
+      repair: t('contacts.type.repair', locale === 'zh' ? '维修' : 'Repair'),
+      support: t('contacts.type.support', locale === 'zh' ? '技术支持' : 'Support'),
+      quote: t('contacts.type.quote', locale === 'zh' ? '报价' : 'Quote'),
+    };
+    return map[x] || type || '-';
+  };
+
+  const formatContactTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value || '-';
+    }
+    return formatDistanceToNow(date, {
+      addSuffix: true,
+      locale: locale === 'zh' ? zhCN : undefined,
+    });
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -262,10 +307,7 @@ export default function ContactsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex items-center">
                         <CalendarIcon className="h-4 w-4 mr-1" />
-                        {formatDistanceToNow(new Date(contact.created_at), {
-                          addSuffix: true,
-                          locale: locale === 'zh' ? zhCN : undefined,
-                        })}
+                        {formatContactTime(contact.created_at)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -451,35 +493,3 @@ export default function ContactsPage() {
     </AdminLayout>
   );
 }
-  const getStatusLabel = (status: string) => {
-    const s = String(status || '').toLowerCase();
-    const map: Record<string, string> = {
-      new: t('contacts.status.new', locale === 'zh' ? '新消息' : 'New'),
-      read: t('contacts.status.read', locale === 'zh' ? '已读' : 'Read'),
-      replied: t('contacts.status.replied', locale === 'zh' ? '已回复' : 'Replied'),
-      closed: t('contacts.status.closed', locale === 'zh' ? '已关闭' : 'Closed'),
-    };
-    return map[s] || status;
-  };
-
-  const getPriorityLabel = (priority: string) => {
-    const p = String(priority || '').toLowerCase();
-    const map: Record<string, string> = {
-      urgent: t('contacts.priority.urgent', locale === 'zh' ? '紧急' : 'Urgent'),
-      high: t('contacts.priority.high', locale === 'zh' ? '高' : 'High'),
-      medium: t('contacts.priority.medium', locale === 'zh' ? '中' : 'Medium'),
-      low: t('contacts.priority.low', locale === 'zh' ? '低' : 'Low'),
-    };
-    return map[p] || priority;
-  };
-
-  const getInquiryTypeLabel = (type: string) => {
-    const x = String(type || '').toLowerCase();
-    const map: Record<string, string> = {
-      parts: t('contacts.type.parts', locale === 'zh' ? '配件' : 'Parts'),
-      repair: t('contacts.type.repair', locale === 'zh' ? '维修' : 'Repair'),
-      support: t('contacts.type.support', locale === 'zh' ? '技术支持' : 'Support'),
-      quote: t('contacts.type.quote', locale === 'zh' ? '报价' : 'Quote'),
-    };
-    return map[x] || type;
-  };
