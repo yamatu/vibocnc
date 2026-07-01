@@ -190,9 +190,9 @@ export function Header() {
 
       {/* Main Header */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-4">
+        <div className="flex items-center justify-between gap-4 py-4">
           {/* Logo */}
-          <div className="flex items-center">
+          <div className="flex flex-shrink-0 items-center">
             <Link href="/" className="flex items-center space-x-3">
               <Image
                 src="/images/vibocnc-logo.png"
@@ -210,7 +210,7 @@ export function Header() {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center space-x-8">
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-5 lg:flex xl:gap-8">
             {navigation.map((item) => {
               if (item.name === 'Categories') {
                 return (
@@ -230,7 +230,7 @@ export function Header() {
           </nav>
 
           {/* Right Side Actions */}
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-shrink-0 items-center gap-3 pl-3 xl:gap-4 xl:pl-5">
             {/* Search */}
             <div className="relative" ref={searchDropdownRef}>
               <button
