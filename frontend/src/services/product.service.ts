@@ -38,6 +38,7 @@ export interface ProductImportResult {
   template: string;
   overwrite: boolean;
   create_missing: boolean;
+  categories_created?: number;
 }
 
 export interface ProductImportTaskSnapshot {

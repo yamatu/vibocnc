@@ -918,8 +918,8 @@ function AdminProductsContent() {
         t(
           'products.import.completed',
           locale === 'zh'
-            ? `导入完成：新增 ${task.created || 0}，更新 ${task.updated || 0}`
-            : `Import completed: ${task.created || 0} created, ${task.updated || 0} updated`
+            ? `导入完成：新增 ${task.created || 0}，更新 ${task.updated || 0}，新建分类 ${task.result?.categories_created || 0}`
+            : `Import completed: ${task.created || 0} created, ${task.updated || 0} updated, ${task.result?.categories_created || 0} categories created`
         )
       );
       queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
@@ -1268,7 +1268,7 @@ function AdminProductsContent() {
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <div>
 				  <div className="text-lg font-semibold text-gray-900">{t('products.import.modalTitle', locale === 'zh' ? '批量导入产品（XLSX）' : 'Bulk Import Products (XLSX)')}</div>
-				  <div className="text-xs text-gray-500">{t('products.import.columns', locale === 'zh' ? '模板列：型号 / 价格 / 数量 / 重量kg' : 'Template columns: Model, Price, Quantity, WeightKg')}</div>
+				  <div className="text-xs text-gray-500">{t('products.import.columns', locale === 'zh' ? '模板列：型号 / 价格 / 数量 / 重量kg / 分类' : 'Template columns: Model, Price, Quantity, WeightKg, Category')}</div>
                 </div>
                 <button
                   onClick={() => {
@@ -1322,7 +1322,7 @@ function AdminProductsContent() {
                     }}
                     className="block w-full text-sm"
                   />
-				  <p className="mt-1 text-xs text-gray-500">{t('products.import.hint', locale === 'zh' ? '系统会按 SKU/型号/料号匹配；更新价格/库存/重量，并可补全 SEO 字段。' : 'We will match by SKU/model/part number; then update price/stock/weight, and fill missing SEO fields.')}</p>
+				  <p className="mt-1 text-xs text-gray-500">{t('products.import.hint', locale === 'zh' ? '系统会按 SKU/型号/料号匹配；更新价格/库存/重量。表格分类列支持“父级 > 子级”，分类不存在时会自动创建。' : 'We will match by SKU/model/part number, then update price/stock/weight. The Category column supports Parent > Child and missing categories are created automatically.')}</p>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -1390,8 +1390,8 @@ function AdminProductsContent() {
 					<div className="text-sm font-semibold text-gray-900">{t('common.result', locale === 'zh' ? '结果' : 'Result')}</div>
                     <div className="mt-1 text-sm text-gray-700">
 						{t('products.import.summary', locale === 'zh'
-							? `总行数：${importResult.total_rows} | 新增：${importResult.created} | 更新：${importResult.updated} | 失败：${importResult.failed}`
-							: `Total rows: ${importResult.total_rows} | Created: ${importResult.created} | Updated: ${importResult.updated} | Failed: ${importResult.failed}`)}
+							? `总行数：${importResult.total_rows} | 新增：${importResult.created} | 更新：${importResult.updated} | 新建分类：${importResult.categories_created || 0} | 失败：${importResult.failed}`
+							: `Total rows: ${importResult.total_rows} | Created: ${importResult.created} | Updated: ${importResult.updated} | Categories created: ${importResult.categories_created || 0} | Failed: ${importResult.failed}`)}
                     </div>
 
                     {Array.isArray(importResult.items) && importResult.items.length > 0 && (
