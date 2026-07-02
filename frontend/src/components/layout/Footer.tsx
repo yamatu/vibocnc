@@ -13,11 +13,11 @@ import { useState } from 'react';
 
 const footerNavigation = {
   products: [
-    { name: 'FANUC Amplifiers', href: '/categories/servo-motors' },
-    { name: 'Servo Motors', href: '/categories/servo-motors' },
-    { name: 'Encoders', href: '/categories/servo-motors' },
-    { name: 'PLC Modules', href: '/categories/io-modules' },
-    { name: 'CNC Inverters', href: '/categories/power-supplies' },
+    { name: 'FANUC Amplifiers', href: '/categories/fanuc/fanuc-servo-amplifier-drive' },
+    { name: 'Servo Motors', href: '/categories/fanuc/fanuc-servo-motor' },
+    { name: 'Encoders', href: '/categories/fanuc/fanuc-encoder-feedback' },
+    { name: 'PLC Modules', href: '/categories/fanuc/fanuc-i-o-module' },
+    { name: 'Power Supplies', href: '/categories/fanuc/fanuc-power-supply' },
   ],
   services: [
     { name: 'FANUC Parts Sales', href: '/about' },

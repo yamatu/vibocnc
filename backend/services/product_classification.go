@@ -16,6 +16,7 @@ type ProductCategoryInference struct {
 }
 
 var (
+	reLikelyFanucModel       = regexp.MustCompile(`(?i)^(A0[234568]B|A1[3467]B|A20B|A230|A250|A290|A300|A370|A[0-9]{2}L|A660|A860|A980|A990|F0?6B|F660|CAB|CABLE|CONNECTOR|CONN|18-MB)`)
 	reGenericCableIndicators = regexp.MustCompile(`(?i)(CABLE|CAB|CONN|CONNECTOR|HARNESS|WIRE|PLUG|SOCKET|TERMINAL|#L-?\d|-\d+(\.\d+)?M$)`)
 	reGenericPowerIndicators = regexp.MustCompile(`(?i)(POWER|PSU|FUSE|TRANSISTOR|MODULE)`)
 	reGenericIOIndicators    = regexp.MustCompile(`(?i)(I/?O|INPUT|OUTPUT|PLC)`)
@@ -54,7 +55,7 @@ func NormalizeBrandKey(brand string) string {
 		return ""
 	case "fanuc":
 		return "fanuc"
-	case "mitsubishi", "melsec":
+	case "mitsubishi", "misubishi", "melsec":
 		return "mitsubishi"
 	case "siemens":
 		return "siemens"
@@ -87,14 +88,23 @@ func CanonicalBrandName(brand string) string {
 }
 
 func InferProductCategory(brand string, model string) ProductCategoryInference {
-	switch NormalizeBrandKey(brand) {
+	brandKey := NormalizeBrandKey(brand)
+	switch brandKey {
 	case "fanuc":
 		return inferFanucCategoryInference(model)
 	case "mitsubishi":
 		return inferGenericCategoryInference("mitsubishi", model)
 	default:
+		if (brandKey == "" || brandKey == "unknown") && IsLikelyFanucModel(model) {
+			return inferFanucCategoryInference(model)
+		}
 		return inferGenericCategoryInference(brand, model)
 	}
+}
+
+func IsLikelyFanucModel(model string) bool {
+	upper := NormalizeProductModel(model)
+	return upper != "" && reLikelyFanucModel.MatchString(upper)
 }
 
 func inferGenericCategoryInference(brand string, model string) ProductCategoryInference {

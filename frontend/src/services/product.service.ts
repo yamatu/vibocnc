@@ -236,8 +236,9 @@ export class ProductService {
         category_id: 1,
         category: {
           id: 1,
-          name: 'Servo Drives',
-          slug: 'servo-drives',
+          name: 'FANUC Servo Amplifier / Drive',
+          slug: 'fanuc-servo-amplifier-drive',
+          path: 'fanuc/fanuc-servo-amplifier-drive',
           description: 'FANUC servo drives and amplifiers',
           image_url: '',
           sort_order: 1,
@@ -272,8 +273,9 @@ export class ProductService {
         category_id: 2,
         category: {
           id: 2,
-          name: 'Servo Motors',
-          slug: 'servo-motors',
+          name: 'FANUC Servo Motor',
+          slug: 'fanuc-servo-motor',
+          path: 'fanuc/fanuc-servo-motor',
           description: 'FANUC servo motors and spindle motors',
           image_url: '',
           sort_order: 2,

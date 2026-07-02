@@ -28,6 +28,7 @@
 *.swo
 *.bak
 *.backup
+backups/
 *~
 
 # 系统文件

@@ -23,11 +23,14 @@ type EnrichedProduct struct {
 }
 
 var (
-	reFanucA02B  = regexp.MustCompile(`(?i)^A02B`)
-	reFanucA03B  = regexp.MustCompile(`(?i)^A03B`)
-	reFanucA06B  = regexp.MustCompile(`(?i)^A06B`)
-	reFanucA14B  = regexp.MustCompile(`(?i)^A14B`)
-	reFanucCable = regexp.MustCompile(`(?i)^(A66[0-9A-Z]-|CAB|CABLE|CONNECTOR|CONN)`)
+	reFanucA02B               = regexp.MustCompile(`(?i)^A02B`)
+	reFanucA03B               = regexp.MustCompile(`(?i)^A03B`)
+	reFanucA06B               = regexp.MustCompile(`(?i)^A06B`)
+	reFanucA06BServoAmplifier = regexp.MustCompile(`(?i)^A06B-6`)
+	reFanucA06BServoMotor     = regexp.MustCompile(`(?i)^A06B-(0[0-6]|2[0-9]|3[0-9]|4[0-9]|5[0-9])`)
+	reFanucA06BSpindleMotor   = regexp.MustCompile(`(?i)^A06B-(0[78]|1[0-8])`)
+	reFanucA14B               = regexp.MustCompile(`(?i)^A14B`)
+	reFanucCable              = regexp.MustCompile(`(?i)^(A66[0-9A-Z]-|CAB|CABLE|CONNECTOR|CONN)`)
 	// Common FANUC PCB-ish prefixes
 	reFanucPCB = regexp.MustCompile(`(?i)^(A16B|A20B|A17B|A18B)`)
 )
@@ -74,38 +77,92 @@ func inferFanucCategoryInference(model string) ProductCategoryInference {
 			BrandKey:     "fanuc",
 			BrandName:    "FANUC",
 			PartType:     "Spare Part",
-			CategorySlug: "control-units",
+			CategorySlug: "fanuc-accessories-others",
 			MatchRule:    "fanuc:empty-model",
 		}
 	}
 
 	switch {
+	case strings.HasPrefix(upper, "A05B") || strings.HasPrefix(upper, "18-MB") || strings.Contains(upper, "MDI") || strings.Contains(upper, "PENDANT"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Operator Panel / MDI", CategorySlug: "fanuc-operator-panel-mdi", MatchRule: "fanuc:operator-panel"}
+	case strings.HasPrefix(upper, "A61L") || strings.Contains(upper, "DISPLAY") || strings.Contains(upper, "MONITOR") || strings.Contains(upper, "CRT") || strings.Contains(upper, "LCD"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Display / Monitor", CategorySlug: "fanuc-display-monitor", MatchRule: "fanuc:display"}
+	case strings.HasPrefix(upper, "A860") || strings.Contains(upper, "ENCODER") || strings.Contains(upper, "PULSE-CODER") || strings.Contains(upper, "PULSECODER"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Encoder / Feedback", CategorySlug: "fanuc-encoder-feedback", MatchRule: "fanuc:encoder"}
 	case reFanucCable.MatchString(upper) || reGenericCableIndicators.MatchString(upper) || strings.Contains(upper, "#L-"):
-		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Cable / Connector", CategorySlug: "cables-connectors", MatchRule: "fanuc:cable"}
-	case strings.HasPrefix(upper, "A97L") || strings.HasPrefix(upper, "A98L") || strings.HasPrefix(upper, "A90L") || strings.HasPrefix(upper, "A86L") || strings.HasPrefix(upper, "A63L") || strings.HasPrefix(upper, "A66L") || strings.HasPrefix(upper, "A76L") || strings.HasPrefix(upper, "A40L") || strings.HasPrefix(upper, "A42L") || strings.HasPrefix(upper, "A44L") || strings.HasPrefix(upper, "A45L") || strings.HasPrefix(upper, "A55L") || strings.HasPrefix(upper, "A57L") || strings.HasPrefix(upper, "A61L") || strings.HasPrefix(upper, "A65L") || strings.HasPrefix(upper, "A70L") || strings.HasPrefix(upper, "A74L") || strings.HasPrefix(upper, "A80L") || strings.HasPrefix(upper, "A81L") || strings.HasPrefix(upper, "A91L") || strings.HasPrefix(upper, "A13L"):
-		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Power Supply Unit", CategorySlug: "power-supplies", MatchRule: "fanuc:l-series-power"}
-	case strings.HasPrefix(upper, "A03B") || strings.HasPrefix(upper, "A02B-00") || strings.HasPrefix(upper, "A02B-02") || strings.HasPrefix(upper, "A08B") || strings.HasPrefix(upper, "A04B"):
-		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "I/O Module", CategorySlug: "io-modules", MatchRule: "fanuc:io"}
-	case strings.HasPrefix(upper, "A06B") || strings.HasPrefix(upper, "A860") || strings.HasPrefix(upper, "A290") || strings.HasPrefix(upper, "A660") || strings.HasPrefix(upper, "F660") || strings.HasPrefix(upper, "F06B") || strings.HasPrefix(upper, "A57L") || strings.HasPrefix(upper, "A86L"):
-		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Servo Motor / Drive", CategorySlug: "servo-motors", MatchRule: "fanuc:servo"}
-	case strings.HasPrefix(upper, "A14B") || strings.HasPrefix(upper, "A50L") || strings.HasPrefix(upper, "A60L") || strings.HasPrefix(upper, "A58L"):
-		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Power Supply Unit", CategorySlug: "power-supplies", MatchRule: "fanuc:power"}
-	case strings.HasPrefix(upper, "A230") || strings.HasPrefix(upper, "A250") || strings.HasPrefix(upper, "A13B") || strings.HasPrefix(upper, "A05B") || strings.HasPrefix(upper, "A87L") || strings.HasPrefix(upper, "A990") || strings.HasPrefix(upper, "A980"):
-		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Control Unit", CategorySlug: "control-units", MatchRule: "fanuc:control"}
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Cable / Connector", CategorySlug: "fanuc-cables-connectors", MatchRule: "fanuc:cable"}
+	case strings.HasPrefix(upper, "A90L") || strings.Contains(upper, "FAN") || strings.Contains(upper, "FILTER") || strings.Contains(upper, "COOL"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Fan / Cooling Unit", CategorySlug: "fanuc-filters-fan-unit-cooling", MatchRule: "fanuc:cooling"}
+	case strings.Contains(upper, "BATTERY"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Battery", CategorySlug: "fanuc-battery", MatchRule: "fanuc:battery"}
+	case strings.HasPrefix(upper, "A50L") || strings.HasPrefix(upper, "A60L") || strings.HasPrefix(upper, "A58L") || reFanucA14B.MatchString(upper):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Power Supply Unit", CategorySlug: "fanuc-power-supply", MatchRule: "fanuc:power"}
+	case reFanucA03B.MatchString(upper) || strings.HasPrefix(upper, "A04B"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "I/O Module", CategorySlug: "fanuc-i-o-module", MatchRule: "fanuc:io"}
+	case reFanucA06BServoAmplifier.MatchString(upper):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Servo Amplifier / Drive", CategorySlug: "fanuc-servo-amplifier-drive", MatchRule: "fanuc:servo-amplifier"}
+	case reFanucA06BSpindleMotor.MatchString(upper):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Spindle Motor", CategorySlug: "fanuc-spindle-motor", MatchRule: "fanuc:spindle-motor"}
+	case reFanucA06BServoMotor.MatchString(upper) || reFanucA06B.MatchString(upper):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Servo Motor", CategorySlug: "fanuc-servo-motor", MatchRule: "fanuc:servo-motor"}
+	case strings.HasPrefix(upper, "A87L") || strings.HasPrefix(upper, "A48L"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "Memory / Storage", CategorySlug: "fanuc-memory-storage", MatchRule: "fanuc:memory"}
 	case reFanucA02B.MatchString(upper) || reFanucPCB.MatchString(upper) || strings.HasPrefix(upper, "A20B") || strings.HasPrefix(upper, "A16B") || strings.HasPrefix(upper, "A17B") || strings.HasPrefix(upper, "A20B") || strings.HasPrefix(upper, "A15L") || strings.HasPrefix(upper, "F02B"):
-		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "PCB Board", CategorySlug: "pcb-boards", MatchRule: "fanuc:pcb"}
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "PCB Board", CategorySlug: "fanuc-pcb-control-board", MatchRule: "fanuc:pcb"}
+	case strings.HasPrefix(upper, "A230") || strings.HasPrefix(upper, "A250") || strings.HasPrefix(upper, "A13B") || strings.HasPrefix(upper, "A08B") || strings.HasPrefix(upper, "A990") || strings.HasPrefix(upper, "A980") || strings.HasPrefix(upper, "A028") || strings.HasPrefix(upper, "A300") || strings.HasPrefix(upper, "A370"):
+		return ProductCategoryInference{BrandKey: "fanuc", BrandName: "FANUC", PartType: "CNC System Part", CategorySlug: "fanuc-cnc-system-parts", MatchRule: "fanuc:cnc-system"}
 	default:
 		partType := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(utils.DetermineProductType(upper), "Industrial Component", ""), "  ", " "))
 		if partType == "" {
-			partType = "Spare Part"
+			partType = "Accessory / Spare Part"
 		}
 		return ProductCategoryInference{
 			BrandKey:     "fanuc",
 			BrandName:    "FANUC",
 			PartType:     partType,
-			CategorySlug: inferCategorySlugFromPartType(partType),
+			CategorySlug: inferFanucCategorySlugFromPartType(partType),
 			MatchRule:    "fanuc:fallback",
 		}
+	}
+}
+
+func inferFanucCategorySlugFromPartType(partType string) string {
+	lower := strings.ToLower(strings.TrimSpace(partType))
+	switch {
+	case lower == "":
+		return "fanuc-accessories-others"
+	case strings.Contains(lower, "cable"), strings.Contains(lower, "connector"), strings.Contains(lower, "harness"), strings.Contains(lower, "plug"), strings.Contains(lower, "socket"):
+		return "fanuc-cables-connectors"
+	case strings.Contains(lower, "power"), strings.Contains(lower, "fuse"), strings.Contains(lower, "transistor"):
+		return "fanuc-power-supply"
+	case strings.Contains(lower, "i/o"), strings.Contains(lower, "io module"), strings.Contains(lower, "input"), strings.Contains(lower, "output"):
+		return "fanuc-i-o-module"
+	case strings.Contains(lower, "spindle") && strings.Contains(lower, "amplifier"):
+		return "fanuc-spindle-amplifier-drive"
+	case strings.Contains(lower, "spindle") && strings.Contains(lower, "motor"):
+		return "fanuc-spindle-motor"
+	case strings.Contains(lower, "servo") && (strings.Contains(lower, "drive") || strings.Contains(lower, "amplifier")):
+		return "fanuc-servo-amplifier-drive"
+	case strings.Contains(lower, "servo") && strings.Contains(lower, "motor"):
+		return "fanuc-servo-motor"
+	case strings.Contains(lower, "encoder"), strings.Contains(lower, "feedback"):
+		return "fanuc-encoder-feedback"
+	case strings.Contains(lower, "pcb"), strings.Contains(lower, "board"), strings.Contains(lower, "cpu"), strings.Contains(lower, "memory card"), strings.Contains(lower, "main board"):
+		return "fanuc-pcb-control-board"
+	case strings.Contains(lower, "memory"), strings.Contains(lower, "storage"):
+		return "fanuc-memory-storage"
+	case strings.Contains(lower, "battery"):
+		return "fanuc-battery"
+	case strings.Contains(lower, "fan"), strings.Contains(lower, "filter"), strings.Contains(lower, "cool"):
+		return "fanuc-filters-fan-unit-cooling"
+	case strings.Contains(lower, "operator"), strings.Contains(lower, "mdi"), strings.Contains(lower, "pendant"):
+		return "fanuc-operator-panel-mdi"
+	case strings.Contains(lower, "display"), strings.Contains(lower, "monitor"), strings.Contains(lower, "crt"), strings.Contains(lower, "lcd"):
+		return "fanuc-display-monitor"
+	case strings.Contains(lower, "controller"), strings.Contains(lower, "control"), strings.Contains(lower, "cnc system"):
+		return "fanuc-cnc-system-parts"
+	default:
+		return "fanuc-accessories-others"
 	}
 }
 

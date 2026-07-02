@@ -52,6 +52,10 @@ services:
       GIN_MODE: release
       HOST: 0.0.0.0
       PORT: 8080
+      SITE_URL: ${SITE_URL:-http://localhost:3000}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      FRONTEND_URL: ${FRONTEND_URL:-http://frontend:3000}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
 
       DB_HOST: mysql
       DB_PORT: 3306
@@ -177,6 +181,7 @@ services:
       NEXT_PUBLIC_SITE_DESCRIPTION: ${NEXT_PUBLIC_SITE_DESCRIPTION:-Industrial automation components and CNC spare parts}
       NEXT_PUBLIC_PAYPAL_CLIENT_ID: ${NEXT_PUBLIC_PAYPAL_CLIENT_ID:-}
       NEXT_PUBLIC_PAYPAL_ENVIRONMENT: ${NEXT_PUBLIC_PAYPAL_ENVIRONMENT:-sandbox}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
     depends_on:
       - backend
     # Expose for host Nginx reverse proxy (bind to localhost by default)

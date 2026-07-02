@@ -441,12 +441,35 @@ ON CONFLICT (code) DO NOTHING;
 
 -- 插入默认产品分类
 INSERT INTO categories (name, slug, description, sort_order, is_active) VALUES
-('PCB Boards', 'pcb-boards', 'FANUC PCB Boards and Circuit Boards', 1, TRUE),
-('I/O Modules', 'io-modules', 'FANUC Input/Output Modules', 2, TRUE),
-('Servo Motors', 'servo-motors', 'FANUC Servo Motors and Drives', 3, TRUE),
-('Control Units', 'control-units', 'FANUC Control Units and Controllers', 4, TRUE),
-('Power Supplies', 'power-supplies', 'FANUC Power Supply Units', 5, TRUE),
-('Cables & Connectors', 'cables-connectors', 'FANUC Cables and Connector Components', 6, TRUE)
+('Fanuc', 'fanuc', 'FANUC CNC, servo, spindle, PCB, I/O, cable, encoder, power supply and accessory parts', 1, TRUE)
+ON CONFLICT (slug) DO NOTHING;
+
+WITH fanuc_parent AS (
+    SELECT id FROM categories WHERE slug = 'fanuc' LIMIT 1
+),
+fanuc_categories(name, slug, description, sort_order) AS (
+    VALUES
+    ('FANUC I/O Module', 'fanuc-i-o-module', 'FANUC input and output modules', 1),
+    ('FANUC Operator Panel & MDI', 'fanuc-operator-panel-mdi', 'FANUC operator panels, MDI units and teach pendants', 2),
+    ('FANUC Display / Monitor', 'fanuc-display-monitor', 'FANUC CRT, LCD, display and monitor parts', 3),
+    ('FANUC Encoder / Feedback', 'fanuc-encoder-feedback', 'FANUC encoders, pulse coders and feedback components', 4),
+    ('FANUC Cables & Connectors', 'fanuc-cables-connectors', 'FANUC cables, connectors and harnesses', 5),
+    ('FANUC Memory / Storage', 'fanuc-memory-storage', 'FANUC memory and storage components', 6),
+    ('FANUC Battery', 'fanuc-battery', 'FANUC batteries and backup power accessories', 7),
+    ('FANUC Filters / Fan Unit / Cooling', 'fanuc-filters-fan-unit-cooling', 'FANUC filters, fan units and cooling parts', 8),
+    ('FANUC Accessories & Others', 'fanuc-accessories-others', 'FANUC accessories and other replacement parts', 9),
+    ('FANUC CNC System Parts', 'fanuc-cnc-system-parts', 'FANUC CNC controller and system parts', 10),
+    ('FANUC Servo Amplifier / Drive', 'fanuc-servo-amplifier-drive', 'FANUC servo amplifiers and drives', 11),
+    ('FANUC Spindle Amplifier / Drive', 'fanuc-spindle-amplifier-drive', 'FANUC spindle amplifiers and drives', 12),
+    ('FANUC Servo Motor', 'fanuc-servo-motor', 'FANUC servo motors', 13),
+    ('FANUC Spindle Motor', 'fanuc-spindle-motor', 'FANUC spindle motors', 14),
+    ('FANUC Power Supply', 'fanuc-power-supply', 'FANUC power supplies, fuses and power components', 15),
+    ('FANUC PCB / Control Board', 'fanuc-pcb-control-board', 'FANUC PCB boards and control boards', 16)
+)
+INSERT INTO categories (name, slug, description, parent_id, sort_order, is_active)
+SELECT fc.name, fc.slug, fc.description, fp.id, fc.sort_order, TRUE
+FROM fanuc_categories fc
+CROSS JOIN fanuc_parent fp
 ON CONFLICT (slug) DO NOTHING;
 
 -- 插入默认公司简介

@@ -129,38 +129,38 @@ export function generateWebsiteSchema() {
         {
           "@type": "ListItem",
           "position": 1,
-          "name": "PCB Boards",
-          "url": `${baseUrl}/categories/pcb-boards`
+          "name": "FANUC PCB / Control Board",
+          "url": `${baseUrl}/categories/fanuc/fanuc-pcb-control-board`
         },
         {
           "@type": "ListItem",
           "position": 2,
-          "name": "I/O Modules",
-          "url": `${baseUrl}/categories/io-modules`
+          "name": "FANUC I/O Module",
+          "url": `${baseUrl}/categories/fanuc/fanuc-i-o-module`
         },
         {
           "@type": "ListItem",
           "position": 3,
-          "name": "Servo Motors",
-          "url": `${baseUrl}/categories/servo-motors`
+          "name": "FANUC Servo Amplifier / Drive",
+          "url": `${baseUrl}/categories/fanuc/fanuc-servo-amplifier-drive`
         },
         {
           "@type": "ListItem",
           "position": 4,
-          "name": "Control Units",
-          "url": `${baseUrl}/categories/control-units`
+          "name": "FANUC Servo Motor",
+          "url": `${baseUrl}/categories/fanuc/fanuc-servo-motor`
         },
         {
           "@type": "ListItem",
           "position": 5,
-          "name": "Power Supplies",
-          "url": `${baseUrl}/categories/power-supplies`
+          "name": "FANUC Power Supply",
+          "url": `${baseUrl}/categories/fanuc/fanuc-power-supply`
         },
         {
           "@type": "ListItem",
           "position": 6,
-          "name": "Other Components",
-          "url": `${baseUrl}/categories/other-components`
+          "name": "FANUC Accessories & Others",
+          "url": `${baseUrl}/categories/fanuc/fanuc-accessories-others`
         }
       ]
     },

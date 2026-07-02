@@ -434,12 +434,27 @@ INSERT IGNORE INTO languages (code, name, native_name, is_active, is_default, so
 
 -- 插入默认产品分类
 INSERT IGNORE INTO categories (name, slug, description, sort_order, is_active) VALUES
-('PCB Boards', 'pcb-boards', 'FANUC PCB Boards and Circuit Boards', 1, TRUE),
-('I/O Modules', 'io-modules', 'FANUC Input/Output Modules', 2, TRUE),
-('Servo Motors', 'servo-motors', 'FANUC Servo Motors and Drives', 3, TRUE),
-('Control Units', 'control-units', 'FANUC Control Units and Controllers', 4, TRUE),
-('Power Supplies', 'power-supplies', 'FANUC Power Supply Units', 5, TRUE),
-('Cables & Connectors', 'cables-connectors', 'FANUC Cables and Connector Components', 6, TRUE);
+('Fanuc', 'fanuc', 'FANUC CNC, servo, spindle, PCB, I/O, cable, encoder, power supply and accessory parts', 1, TRUE);
+
+SET @fanuc_category_id = (SELECT id FROM categories WHERE slug = 'fanuc' LIMIT 1);
+
+INSERT IGNORE INTO categories (name, slug, description, parent_id, sort_order, is_active) VALUES
+('FANUC I/O Module', 'fanuc-i-o-module', 'FANUC input and output modules', @fanuc_category_id, 1, TRUE),
+('FANUC Operator Panel & MDI', 'fanuc-operator-panel-mdi', 'FANUC operator panels, MDI units and teach pendants', @fanuc_category_id, 2, TRUE),
+('FANUC Display / Monitor', 'fanuc-display-monitor', 'FANUC CRT, LCD, display and monitor parts', @fanuc_category_id, 3, TRUE),
+('FANUC Encoder / Feedback', 'fanuc-encoder-feedback', 'FANUC encoders, pulse coders and feedback components', @fanuc_category_id, 4, TRUE),
+('FANUC Cables & Connectors', 'fanuc-cables-connectors', 'FANUC cables, connectors and harnesses', @fanuc_category_id, 5, TRUE),
+('FANUC Memory / Storage', 'fanuc-memory-storage', 'FANUC memory and storage components', @fanuc_category_id, 6, TRUE),
+('FANUC Battery', 'fanuc-battery', 'FANUC batteries and backup power accessories', @fanuc_category_id, 7, TRUE),
+('FANUC Filters / Fan Unit / Cooling', 'fanuc-filters-fan-unit-cooling', 'FANUC filters, fan units and cooling parts', @fanuc_category_id, 8, TRUE),
+('FANUC Accessories & Others', 'fanuc-accessories-others', 'FANUC accessories and other replacement parts', @fanuc_category_id, 9, TRUE),
+('FANUC CNC System Parts', 'fanuc-cnc-system-parts', 'FANUC CNC controller and system parts', @fanuc_category_id, 10, TRUE),
+('FANUC Servo Amplifier / Drive', 'fanuc-servo-amplifier-drive', 'FANUC servo amplifiers and drives', @fanuc_category_id, 11, TRUE),
+('FANUC Spindle Amplifier / Drive', 'fanuc-spindle-amplifier-drive', 'FANUC spindle amplifiers and drives', @fanuc_category_id, 12, TRUE),
+('FANUC Servo Motor', 'fanuc-servo-motor', 'FANUC servo motors', @fanuc_category_id, 13, TRUE),
+('FANUC Spindle Motor', 'fanuc-spindle-motor', 'FANUC spindle motors', @fanuc_category_id, 14, TRUE),
+('FANUC Power Supply', 'fanuc-power-supply', 'FANUC power supplies, fuses and power components', @fanuc_category_id, 15, TRUE),
+('FANUC PCB / Control Board', 'fanuc-pcb-control-board', 'FANUC PCB boards and control boards', @fanuc_category_id, 16, TRUE);
 
 -- 插入默认公司简介
 INSERT IGNORE INTO company_profiles (
