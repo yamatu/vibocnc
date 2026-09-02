@@ -189,7 +189,7 @@ func (controller *SocialLinksController) UpdateSettings(c *gin.Context) {
 
 	services.InvalidatePublicCaches(c.Request.Context(), "social-links:update", []string{"/", "/api/v1/public/social-links"})
 	services.TriggerNextRevalidate(nil, []string{"/"}, false)
-	services.TriggerNextRevalidateTag("social-links")
+	services.TriggerNextRevalidateTags([]string{"social-links"})
 
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Saved", Data: &next})
 }

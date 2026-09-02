@@ -217,12 +217,36 @@ export class EbayImportDraftService {
 
   static async getBulkConfirmTask(taskId: string): Promise<EbayBulkConfirmTaskSnapshot> {
     const response = await apiClient.get<APIResponse<EbayBulkConfirmTaskSnapshot>>(
-      `/admin/ebay-import-drafts/bulk-confirm/tasks/${taskId}`
+      `/admin/ebay-import-drafts/bulk-confirm/tasks/${encodeURIComponent(taskId)}`
     );
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
     throw new Error(response.data.message || 'Failed to get bulk confirm task status');
+  }
+
+  static async getLatestBulkConfirmTask(): Promise<EbayBulkConfirmTaskSnapshot | null> {
+    const response = await apiClient.get<APIResponse<EbayBulkConfirmTaskSnapshot | null>>(
+      '/admin/ebay-import-drafts/bulk-confirm/tasks/latest'
+    );
+    if (response.data.success) return response.data.data || null;
+    throw new Error(response.data.message || 'Failed to get latest bulk confirm task');
+  }
+
+  static async pauseBulkConfirmTask(taskId: string): Promise<EbayBulkConfirmTaskSnapshot> {
+    const response = await apiClient.post<APIResponse<EbayBulkConfirmTaskSnapshot>>(
+      `/admin/ebay-import-drafts/bulk-confirm/tasks/${encodeURIComponent(taskId)}/pause`
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to pause bulk confirm task');
+  }
+
+  static async resumeBulkConfirmTask(taskId: string): Promise<EbayBulkConfirmTaskSnapshot> {
+    const response = await apiClient.post<APIResponse<EbayBulkConfirmTaskSnapshot>>(
+      `/admin/ebay-import-drafts/bulk-confirm/tasks/${encodeURIComponent(taskId)}/resume`
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to resume bulk confirm task');
   }
 
   static async bulkRecheck(ids: number[]): Promise<{ updated: number; total: number }> {

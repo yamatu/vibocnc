@@ -344,7 +344,7 @@ export interface EbayBulkConfirmItemResult {
 
 export interface EbayBulkConfirmTaskSnapshot {
   id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'processing' | 'paused' | 'completed' | 'failed';
   total: number;
   processed: number;
   success_count: number;
@@ -352,6 +352,7 @@ export interface EbayBulkConfirmTaskSnapshot {
   skipped_count: number;
   progress_pct: number;
   message?: string;
+  current_id?: number;
   results?: EbayBulkConfirmItemResult[];
   started_at?: string;
   completed_at?: string;

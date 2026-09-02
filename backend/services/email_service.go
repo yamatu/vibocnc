@@ -165,7 +165,7 @@ func GetOrCreateEmailSetting(db *gorm.DB) (*models.EmailSetting, error) {
 	return &s, nil
 }
 
-func firstNonEmpty(values ...string) string {
+func firstNonEmptyEmail(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
 			return strings.TrimSpace(v)
@@ -278,7 +278,7 @@ func sendResendEmail(db *gorm.DB, s *models.EmailSetting, opts EmailSendOptions)
 		Subject: opts.Subject,
 		HTML:    opts.HTML,
 		Text:    opts.Text,
-		ReplyTo: firstNonEmpty(strings.TrimSpace(opts.ReplyTo), strings.TrimSpace(s.ReplyTo)),
+		ReplyTo: firstNonEmptyEmail(strings.TrimSpace(opts.ReplyTo), strings.TrimSpace(s.ReplyTo)),
 		Headers: opts.Headers,
 	}
 	_, err = client.SendEmail(req)

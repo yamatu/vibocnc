@@ -39,6 +39,7 @@ function EbayImportDraftsContent() {
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkConfirmTask, setBulkConfirmTask] = useState<EbayBulkConfirmTaskSnapshot | null>(null);
+  const [bulkTaskControlPending, setBulkTaskControlPending] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [jsonImportTask, setJsonImportTask] = useState<EbayImportDraftJSONTaskSnapshot | null>(null);
   const [jsonUploadPending, setJsonUploadPending] = useState(false);
@@ -153,11 +154,10 @@ function EbayImportDraftsContent() {
             } else {
               toast.error(locale === 'zh' ? '批量导入任务失败' : 'Bulk import task failed');
             }
-            setTimeout(() => setBulkConfirmTask(null), 8000);
           }
         } catch {
           stopPolling();
-          setBulkConfirmTask(null);
+          toast.error(locale === 'zh' ? '批量导入进度刷新失败，请点击刷新任务' : 'Failed to refresh bulk import progress');
         }
       }, 1500);
     },
@@ -179,6 +179,20 @@ function EbayImportDraftsContent() {
     onError: (err: unknown) =>
       toast.error(getErrorMessage(err, locale === 'zh' ? '批量确认失败' : 'Bulk confirm failed')),
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    void EbayImportDraftService.getLatestBulkConfirmTask()
+      .then((task) => {
+        if (cancelled || !task) return;
+        setBulkConfirmTask(task);
+        if (task.status === 'queued' || task.status === 'processing' || task.status === 'paused') {
+          startPolling(task.id);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [startPolling]);
 
   const bulkRecheckMutation = useMutation({
     mutationFn: (ids: number[]) => EbayImportDraftService.bulkRecheck(ids),
@@ -234,7 +248,7 @@ function EbayImportDraftsContent() {
     setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
   };
 
-  const isTaskRunning = bulkConfirmTask != null && (bulkConfirmTask.status === 'queued' || bulkConfirmTask.status === 'processing');
+  const isTaskRunning = bulkConfirmTask != null && (bulkConfirmTask.status === 'queued' || bulkConfirmTask.status === 'processing' || bulkConfirmTask.status === 'paused');
 
   const handleBulkConfirm = () => {
     if (selectedIds.length === 0) {
@@ -242,7 +256,54 @@ function EbayImportDraftsContent() {
       return;
     }
     if (isTaskRunning) return;
+    if (!window.confirm(locale === 'zh' ? `确定创建后台任务并导入选中的 ${selectedIds.length} 条草稿吗？` : `Start a background import for ${selectedIds.length} selected drafts?`)) return;
     bulkConfirmMutation.mutate(selectedIds);
+  };
+
+  const refreshBulkConfirmTask = async () => {
+    setBulkTaskControlPending(true);
+    try {
+      const task = bulkConfirmTask?.id
+        ? await EbayImportDraftService.getBulkConfirmTask(bulkConfirmTask.id)
+        : await EbayImportDraftService.getLatestBulkConfirmTask();
+      setBulkConfirmTask(task);
+      if (task && (task.status === 'queued' || task.status === 'processing' || task.status === 'paused')) startPolling(task.id);
+      if (!task) toast(locale === 'zh' ? '暂无批量导入任务' : 'No bulk import task found');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '刷新批量导入任务失败' : 'Failed to refresh bulk import task'));
+    } finally {
+      setBulkTaskControlPending(false);
+    }
+  };
+
+  const pauseBulkConfirmTask = async () => {
+    if (!bulkConfirmTask) return;
+    setBulkTaskControlPending(true);
+    try {
+      const task = await EbayImportDraftService.pauseBulkConfirmTask(bulkConfirmTask.id);
+      setBulkConfirmTask(task);
+      startPolling(task.id);
+      toast.success(locale === 'zh' ? '已请求暂停，当前草稿处理完成后暂停' : 'Pause requested; the task will pause after the current draft');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '暂停批量导入失败' : 'Failed to pause bulk import'));
+    } finally {
+      setBulkTaskControlPending(false);
+    }
+  };
+
+  const resumeBulkConfirmTask = async () => {
+    if (!bulkConfirmTask) return;
+    setBulkTaskControlPending(true);
+    try {
+      const task = await EbayImportDraftService.resumeBulkConfirmTask(bulkConfirmTask.id);
+      setBulkConfirmTask(task);
+      startPolling(task.id);
+      toast.success(locale === 'zh' ? '批量导入任务已继续' : 'Bulk import task resumed');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '继续批量导入失败' : 'Failed to resume bulk import'));
+    } finally {
+      setBulkTaskControlPending(false);
+    }
   };
 
   const handleBulkRecheck = () => {
@@ -451,42 +512,78 @@ function EbayImportDraftsContent() {
           </div>
         </div>
 
-        {bulkConfirmTask && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-blue-900">
-                {bulkConfirmTask.status === 'completed'
-                  ? locale === 'zh' ? '批量导入完成' : 'Bulk import completed'
-                  : bulkConfirmTask.status === 'failed'
-                    ? locale === 'zh' ? '批量导入失败' : 'Bulk import failed'
-                    : locale === 'zh' ? '批量导入进行中...' : 'Bulk import in progress...'}
-              </span>
-              <span className="text-sm text-blue-700">
-                {bulkConfirmTask.processed}/{bulkConfirmTask.total}
-                {' '}({Math.round(bulkConfirmTask.progress_pct)}%)
-                {bulkConfirmTask.failed_count > 0 && (
-                  <span className="ml-2 text-red-600">
-                    {locale === 'zh' ? `${bulkConfirmTask.failed_count} 失败` : `${bulkConfirmTask.failed_count} failed`}
-                  </span>
-                )}
-              </span>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="text-sm text-emerald-950">
+              <p className="font-semibold">后台批量确认导入任务</p>
+              {bulkConfirmTask ? (
+                <p className="mt-1">
+                  {bulkConfirmTask.status === 'completed'
+                    ? '批量导入已完成'
+                    : bulkConfirmTask.status === 'failed'
+                      ? '批量导入任务失败'
+                      : bulkConfirmTask.status === 'paused'
+                        ? '批量导入已暂停'
+                        : '批量导入正在后台运行'}
+                  {bulkConfirmTask.current_id ? ` · 当前草稿 #${bulkConfirmTask.current_id}` : ''}
+                </p>
+              ) : (
+                <p className="mt-1 text-emerald-700">暂无任务。全选草稿并点击“批量确认导入”后，进度会显示在这里。</p>
+              )}
             </div>
-            <div className="h-3 w-full overflow-hidden rounded-full bg-blue-200">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  bulkConfirmTask.status === 'completed' ? 'bg-green-500' :
-                  bulkConfirmTask.status === 'failed' ? 'bg-red-500' : 'bg-blue-600'
-                }`}
-                style={{ width: `${bulkConfirmTask.progress_pct}%` }}
-              />
-            </div>
-            <div className="mt-2 flex gap-4 text-xs text-blue-700">
-              <span>{locale === 'zh' ? '成功' : 'Success'}: {bulkConfirmTask.success_count}</span>
-              <span>{locale === 'zh' ? '失败' : 'Failed'}: {bulkConfirmTask.failed_count}</span>
-              <span>{locale === 'zh' ? '剩余' : 'Remaining'}: {bulkConfirmTask.total - bulkConfirmTask.processed}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void refreshBulkConfirmTask()}
+                disabled={bulkTaskControlPending}
+                className="inline-flex items-center rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <ArrowPathIcon className={`mr-1.5 h-4 w-4 ${bulkTaskControlPending ? 'animate-spin' : ''}`} />刷新任务
+              </button>
+              {(bulkConfirmTask?.status === 'queued' || bulkConfirmTask?.status === 'processing') && (
+                <button
+                  type="button"
+                  onClick={() => void pauseBulkConfirmTask()}
+                  disabled={bulkTaskControlPending}
+                  className="inline-flex items-center rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  <PauseIcon className="mr-1.5 h-4 w-4" />暂停任务
+                </button>
+              )}
+              {bulkConfirmTask?.status === 'paused' && (
+                <button
+                  type="button"
+                  onClick={() => void resumeBulkConfirmTask()}
+                  disabled={bulkTaskControlPending}
+                  className="inline-flex items-center rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  <PlayIcon className="mr-1.5 h-4 w-4" />继续任务
+                </button>
+              )}
             </div>
           </div>
-        )}
+          {bulkConfirmTask && (
+            <>
+              <div className="mt-3 flex items-center justify-between text-xs text-emerald-800">
+                <span>{bulkConfirmTask.message || bulkConfirmTask.status}</span>
+                <span>{bulkConfirmTask.processed}/{bulkConfirmTask.total} · {Math.min(100, bulkConfirmTask.progress_pct).toFixed(1)}%</span>
+              </div>
+              <div className="mt-1 h-3 w-full overflow-hidden rounded-full bg-emerald-100">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${bulkConfirmTask.status === 'completed' ? 'bg-green-500' : bulkConfirmTask.status === 'failed' ? 'bg-red-500' : bulkConfirmTask.status === 'paused' ? 'bg-amber-500' : 'bg-emerald-600'}`}
+                  style={{ width: `${Math.max(bulkConfirmTask.status === 'completed' ? 100 : 1, Math.min(100, bulkConfirmTask.progress_pct))}%` }}
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-4 text-xs text-emerald-800">
+                <span>成功：{bulkConfirmTask.success_count}</span>
+                <span>失败：{bulkConfirmTask.failed_count}</span>
+                <span>剩余：{Math.max(0, bulkConfirmTask.total - bulkConfirmTask.processed)}</span>
+                <span>最后更新：{new Date(bulkConfirmTask.updated_at).toLocaleString()}</span>
+              </div>
+              <p className="mt-2 text-xs text-emerald-700">任务由服务器后台执行，关闭或刷新网页不会终止。</p>
+            </>
+          )}
+        </div>
 
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-5">

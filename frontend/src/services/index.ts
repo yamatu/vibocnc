@@ -21,6 +21,7 @@ import { NewsService as NewsServiceDefault } from './news.service';
 import { SitePageService as SitePageServiceDefault } from './site-page.service';
 import { IndexNowService as IndexNowServiceDefault } from './indexnow.service';
 import SocialMediaServiceDefault from './social-media.service';
+import SocialLinksServiceDefault from './social-links.service';
 import EbayImportDraftServiceDefault from './ebay-import-draft.service';
 import AIAgentServiceDefault from './ai-agent.service';
 
@@ -47,6 +48,7 @@ export const NewsService = NewsServiceDefault;
 export const SitePageService = SitePageServiceDefault;
 export const IndexNowService = IndexNowServiceDefault;
 export const SocialMediaService = SocialMediaServiceDefault;
+export const SocialLinksService = SocialLinksServiceDefault;
 export const EbayImportDraftService = EbayImportDraftServiceDefault;
 export const AIAgentService = AIAgentServiceDefault;
 
@@ -83,6 +85,7 @@ export type {
   AnalyticsFilters,
 } from './analytics.service';
 export type { NewsFilters } from './news.service';
+export type { SocialLinksPublicConfig } from './social-links.service';
 export type {
   EbayImportDraftFilters,
   EbayImportDraftConfirmResponse,
@@ -113,6 +116,7 @@ export class ApiService {
   static sitePages = SitePageService;
   static indexnow = IndexNowService;
   static socialMedia = SocialMediaService;
+  static socialLinks = SocialLinksService;
   static ebayImportDrafts = EbayImportDraftService;
   static aiAgent = AIAgentService;
 }

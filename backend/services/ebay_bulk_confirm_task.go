@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"errors"
 	"log"
 	"strings"
 	"sync"
@@ -17,6 +19,7 @@ type EbayBulkConfirmTaskStatus string
 const (
 	EbayBulkConfirmQueued     EbayBulkConfirmTaskStatus = "queued"
 	EbayBulkConfirmProcessing EbayBulkConfirmTaskStatus = "processing"
+	EbayBulkConfirmPaused     EbayBulkConfirmTaskStatus = "paused"
 	EbayBulkConfirmCompleted  EbayBulkConfirmTaskStatus = "completed"
 	EbayBulkConfirmFailed     EbayBulkConfirmTaskStatus = "failed"
 
@@ -40,6 +43,7 @@ type EbayBulkConfirmTaskSnapshot struct {
 	SkippedCount int                         `json:"skipped_count"`
 	ProgressPct  float64                     `json:"progress_pct"`
 	Message      string                      `json:"message,omitempty"`
+	CurrentID    uint                        `json:"current_id,omitempty"`
 	Results      []EbayBulkConfirmItemResult `json:"results,omitempty"`
 	StartedAt    *time.Time                  `json:"started_at,omitempty"`
 	CompletedAt  *time.Time                  `json:"completed_at,omitempty"`
@@ -50,7 +54,9 @@ type EbayBulkConfirmTaskSnapshot struct {
 type EbayDraftConfirmFunc func(id uint, action string, userID *uint) (statusCode int, err error)
 
 type ebayBulkConfirmTask struct {
-	mu sync.RWMutex
+	mu             sync.RWMutex
+	cond           *sync.Cond
+	pauseRequested bool
 
 	ID           string
 	Status       EbayBulkConfirmTaskStatus
@@ -64,6 +70,7 @@ type ebayBulkConfirmTask struct {
 	SkippedCount int
 	ProgressPct  float64
 	Message      string
+	CurrentID    uint
 	Results      []EbayBulkConfirmItemResult
 	StartedAt    *time.Time
 	CompletedAt  *time.Time
@@ -84,7 +91,13 @@ var ebayBulkConfirmTasks = &ebayBulkConfirmManager{
 
 // StartEbayBulkConfirmTask creates an async task that confirms drafts in the background.
 // The confirmFn callback is the actual confirm logic (typically from the controller).
-func StartEbayBulkConfirmTask(ids []uint, action string, userID *uint, confirmFn EbayDraftConfirmFunc) EbayBulkConfirmTaskSnapshot {
+func StartEbayBulkConfirmTask(ids []uint, action string, userID *uint, confirmFn EbayDraftConfirmFunc) (EbayBulkConfirmTaskSnapshot, error) {
+	if len(ids) == 0 {
+		return EbayBulkConfirmTaskSnapshot{}, errors.New("at least one draft ID is required")
+	}
+	if ebayBulkConfirmTasks.hasActive() {
+		return EbayBulkConfirmTaskSnapshot{}, errors.New("another bulk draft import task is already running")
+	}
 	taskID := uuid.NewString()
 	now := time.Now()
 
@@ -100,16 +113,37 @@ func StartEbayBulkConfirmTask(ids []uint, action string, userID *uint, confirmFn
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	task.cond = sync.NewCond(&task.mu)
 
 	ebayBulkConfirmTasks.add(task)
 
 	go runEbayBulkConfirmTask(taskID, confirmFn)
 
-	return task.snapshot()
+	return task.snapshot(), nil
 }
 
 func GetEbayBulkConfirmTaskSnapshot(taskID string) (EbayBulkConfirmTaskSnapshot, bool) {
 	return ebayBulkConfirmTasks.getSnapshot(taskID)
+}
+
+func GetLatestEbayBulkConfirmTaskSnapshot() (EbayBulkConfirmTaskSnapshot, bool) {
+	return ebayBulkConfirmTasks.latestSnapshot()
+}
+
+func PauseEbayBulkConfirmTask(taskID string) (EbayBulkConfirmTaskSnapshot, error) {
+	task, ok := ebayBulkConfirmTasks.get(strings.TrimSpace(taskID))
+	if !ok {
+		return EbayBulkConfirmTaskSnapshot{}, errors.New("bulk draft import task not found")
+	}
+	return task.pause()
+}
+
+func ResumeEbayBulkConfirmTask(taskID string) (EbayBulkConfirmTaskSnapshot, error) {
+	task, ok := ebayBulkConfirmTasks.get(strings.TrimSpace(taskID))
+	if !ok {
+		return EbayBulkConfirmTaskSnapshot{}, errors.New("bulk draft import task not found")
+	}
+	return task.resume()
 }
 
 func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
@@ -120,13 +154,27 @@ func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
 
 	now := time.Now()
 	task.update(func(t *ebayBulkConfirmTask) {
-		t.Status = EbayBulkConfirmProcessing
-		t.Message = "processing"
+		if t.pauseRequested {
+			t.Status = EbayBulkConfirmPaused
+			t.Message = "paused"
+		} else {
+			t.Status = EbayBulkConfirmProcessing
+			t.Message = "processing"
+		}
 		t.StartedAt = &now
 		t.UpdatedAt = now
 	})
 
 	for i, id := range task.IDs {
+		if err := task.waitIfPaused(context.Background()); err != nil {
+			task.finish(EbayBulkConfirmFailed, err.Error())
+			return
+		}
+		task.update(func(t *ebayBulkConfirmTask) {
+			t.CurrentID = id
+			t.Message = "importing draft"
+			t.UpdatedAt = time.Now()
+		})
 		statusCode, err := confirmFn(id, task.Action, task.UserID)
 
 		itemResult := EbayBulkConfirmItemResult{
@@ -156,14 +204,7 @@ func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
 		})
 	}
 
-	finishedAt := time.Now()
-	task.update(func(t *ebayBulkConfirmTask) {
-		t.Status = EbayBulkConfirmCompleted
-		t.ProgressPct = 100
-		t.Message = "completed"
-		t.CompletedAt = &finishedAt
-		t.UpdatedAt = finishedAt
-	})
+	task.finish(EbayBulkConfirmCompleted, "completed")
 }
 
 // ---------- Auto-import daemon ----------
@@ -194,6 +235,9 @@ func StartEbayAutoImportDaemon(confirmFn EbayDraftConfirmFunc) {
 
 func runEbayAutoImportCycle() {
 	if ebayAutoImportConfirmFn == nil {
+		return
+	}
+	if ebayBulkConfirmTasks.hasActive() {
 		return
 	}
 
@@ -281,6 +325,7 @@ func (t *ebayBulkConfirmTask) snapshot() EbayBulkConfirmTaskSnapshot {
 		SkippedCount: t.SkippedCount,
 		ProgressPct:  t.ProgressPct,
 		Message:      t.Message,
+		CurrentID:    t.CurrentID,
 		Results:      results,
 		StartedAt:    t.StartedAt,
 		CompletedAt:  t.CompletedAt,
@@ -327,6 +372,97 @@ func (m *ebayBulkConfirmManager) getSnapshot(taskID string) (EbayBulkConfirmTask
 		return EbayBulkConfirmTaskSnapshot{}, false
 	}
 	return task.snapshot(), true
+}
+
+func (m *ebayBulkConfirmManager) latestSnapshot() (EbayBulkConfirmTaskSnapshot, bool) {
+	m.mu.RLock()
+	if len(m.order) == 0 {
+		m.mu.RUnlock()
+		return EbayBulkConfirmTaskSnapshot{}, false
+	}
+	task := m.tasks[m.order[len(m.order)-1]]
+	m.mu.RUnlock()
+	if task == nil {
+		return EbayBulkConfirmTaskSnapshot{}, false
+	}
+	return task.snapshot(), true
+}
+
+func (m *ebayBulkConfirmManager) hasActive() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, task := range m.tasks {
+		task.mu.RLock()
+		active := task.Status == EbayBulkConfirmQueued || task.Status == EbayBulkConfirmProcessing || task.Status == EbayBulkConfirmPaused
+		task.mu.RUnlock()
+		if active {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *ebayBulkConfirmTask) waitIfPaused(ctx context.Context) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for t.pauseRequested {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		t.Status = EbayBulkConfirmPaused
+		t.Message = "paused"
+		t.UpdatedAt = time.Now()
+		t.cond.Wait()
+	}
+	if t.Status == EbayBulkConfirmPaused {
+		t.Status = EbayBulkConfirmProcessing
+		t.Message = "resumed"
+		t.UpdatedAt = time.Now()
+	}
+	return nil
+}
+
+func (t *ebayBulkConfirmTask) pause() (EbayBulkConfirmTaskSnapshot, error) {
+	t.mu.Lock()
+	if t.Status != EbayBulkConfirmQueued && t.Status != EbayBulkConfirmProcessing && t.Status != EbayBulkConfirmPaused {
+		t.mu.Unlock()
+		return EbayBulkConfirmTaskSnapshot{}, errors.New("only queued or processing tasks can be paused")
+	}
+	t.pauseRequested = true
+	t.Status = EbayBulkConfirmPaused
+	t.Message = "pause requested; waiting for current draft"
+	t.UpdatedAt = time.Now()
+	t.mu.Unlock()
+	return t.snapshot(), nil
+}
+
+func (t *ebayBulkConfirmTask) resume() (EbayBulkConfirmTaskSnapshot, error) {
+	t.mu.Lock()
+	if t.Status != EbayBulkConfirmPaused || !t.pauseRequested {
+		t.mu.Unlock()
+		return EbayBulkConfirmTaskSnapshot{}, errors.New("task is not paused")
+	}
+	t.pauseRequested = false
+	t.Status = EbayBulkConfirmProcessing
+	t.Message = "resuming"
+	t.UpdatedAt = time.Now()
+	t.cond.Broadcast()
+	t.mu.Unlock()
+	return t.snapshot(), nil
+}
+
+func (t *ebayBulkConfirmTask) finish(status EbayBulkConfirmTaskStatus, message string) {
+	finishedAt := time.Now()
+	t.update(func(task *ebayBulkConfirmTask) {
+		task.Status = status
+		task.Message = message
+		task.CurrentID = 0
+		task.CompletedAt = &finishedAt
+		task.UpdatedAt = finishedAt
+		if status == EbayBulkConfirmCompleted {
+			task.ProgressPct = 100
+		}
+	})
 }
 
 func getAutoImportDB() *gorm.DB {

@@ -389,8 +389,40 @@ func (ec *EbayImportDraftController) BulkConfirm(c *gin.Context) {
 		return statusCode, err
 	}
 
-	snapshot := services.StartEbayBulkConfirmTask(req.IDs, req.Action, userID, confirmFn)
+	ids := normalizeBulkDraftIDs(req.IDs)
+	snapshot, err := services.StartEbayBulkConfirmTask(ids, req.Action, userID, confirmFn)
+	if err != nil {
+		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "Failed to start bulk confirm task", Error: err.Error()})
+		return
+	}
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "Bulk confirm task started", Data: snapshot})
+}
+
+func (ec *EbayImportDraftController) GetLatestBulkConfirmTask(c *gin.Context) {
+	snapshot, ok := services.GetLatestEbayBulkConfirmTaskSnapshot()
+	if !ok {
+		c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "No bulk confirm task", Data: nil})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Latest bulk confirm task", Data: snapshot})
+}
+
+func (ec *EbayImportDraftController) PauseBulkConfirmTask(c *gin.Context) {
+	snapshot, err := services.PauseEbayBulkConfirmTask(c.Param("taskId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to pause bulk confirm task", Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Bulk confirm task pause requested", Data: snapshot})
+}
+
+func (ec *EbayImportDraftController) ResumeBulkConfirmTask(c *gin.Context) {
+	snapshot, err := services.ResumeEbayBulkConfirmTask(c.Param("taskId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to resume bulk confirm task", Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Bulk confirm task resumed", Data: snapshot})
 }
 
 func (ec *EbayImportDraftController) GetBulkConfirmTask(c *gin.Context) {
