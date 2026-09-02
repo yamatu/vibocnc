@@ -385,8 +385,7 @@ func (ec *EbayImportDraftController) BulkConfirm(c *gin.Context) {
 	userID := currentAdminUserID(c)
 
 	confirmFn := func(id uint, action string, uid *uint) (int, bool, error) {
-		result, statusCode, err := ec.confirmDraftImport(context.Background(), id, action, uid)
-		return statusCode, draftConfirmWasSkipped(result), err
+		return ec.confirmDraftForBackground(context.Background(), id, action, uid)
 	}
 
 	ids := normalizeBulkDraftIDs(req.IDs)
@@ -443,9 +442,35 @@ func (ec *EbayImportDraftController) GetBulkConfirmTask(c *gin.Context) {
 
 func (ec *EbayImportDraftController) ConfirmDraftFn() services.EbayDraftConfirmFunc {
 	return func(id uint, action string, userID *uint) (int, bool, error) {
-		result, statusCode, err := ec.confirmDraftImport(context.Background(), id, action, userID)
-		return statusCode, draftConfirmWasSkipped(result), err
+		return ec.confirmDraftForBackground(context.Background(), id, action, userID)
 	}
+}
+
+func (ec *EbayImportDraftController) confirmDraftForBackground(ctx context.Context, id uint, action string, userID *uint) (int, bool, error) {
+	var draft models.EbayImportDraft
+	if err := config.GetDB().Select(
+		"id", "status", "taxonomy_status", "suggested_category_id", "match_status", "normalized_model", "normalized_part_number", "normalized_mpn",
+	).First(&draft, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return http.StatusNotFound, false, errors.New("Draft not found")
+		}
+		return http.StatusInternalServerError, false, err
+	}
+	if draft.Status == services.EbayDraftStatusImported || draft.Status == services.EbayDraftStatusSkipped {
+		return http.StatusOK, true, nil
+	}
+	if draft.SuggestedCategoryID == nil || *draft.SuggestedCategoryID == 0 || draft.TaxonomyStatus != services.EbayDraftTaxonomyMatched {
+		return http.StatusOK, true, nil
+	}
+	if strings.TrimSpace(draft.NormalizedModel) == "" && strings.TrimSpace(draft.NormalizedPartNumber) == "" && strings.TrimSpace(draft.NormalizedMPN) == "" {
+		return http.StatusOK, true, nil
+	}
+	normalizedAction := strings.ToLower(strings.TrimSpace(action))
+	if draft.MatchStatus == services.EbayDraftMatchPossibleDup && normalizedAction != "update_existing" && normalizedAction != "create_new" {
+		return http.StatusOK, true, nil
+	}
+	result, statusCode, err := ec.confirmDraftImport(ctx, id, action, userID)
+	return statusCode, draftConfirmWasSkipped(result), err
 }
 
 func (ec *EbayImportDraftController) BulkRecheck(c *gin.Context) {
