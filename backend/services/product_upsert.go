@@ -85,8 +85,24 @@ func validateProductCategory(db *gorm.DB, categoryID uint) *ProductUpsertError {
 }
 
 func CreateProductFromRequest(db *gorm.DB, req models.ProductCreateRequest) (*ProductUpsertResult, *ProductUpsertError) {
-	if err := validateProductCategory(db, req.CategoryID); err != nil {
-		return nil, err
+	return createProductFromRequest(db, req, false)
+}
+
+// CreateUncategorizedProductDraftFromRequest is reserved for trusted import
+// workflows. It stores category_id=0 as an AI-classification placeholder and
+// always keeps the product unpublished.
+func CreateUncategorizedProductDraftFromRequest(db *gorm.DB, req models.ProductCreateRequest) (*ProductUpsertResult, *ProductUpsertError) {
+	req.CategoryID = 0
+	req.IsActive = false
+	req.IsFeatured = false
+	return createProductFromRequest(db, req, true)
+}
+
+func createProductFromRequest(db *gorm.DB, req models.ProductCreateRequest, allowUncategorized bool) (*ProductUpsertResult, *ProductUpsertError) {
+	if !allowUncategorized || req.CategoryID != 0 {
+		if err := validateProductCategory(db, req.CategoryID); err != nil {
+			return nil, err
+		}
 	}
 
 	var existingProduct models.Product

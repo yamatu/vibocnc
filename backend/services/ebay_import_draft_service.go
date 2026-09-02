@@ -346,9 +346,7 @@ func ListEbayImportDraftIDs(db *gorm.DB, filters EbayImportDraftFilters, eligibl
 	applyEbayImportDraftFilters(&query, filters)
 	if eligibleOnly {
 		query = query.Where("status NOT IN ?", []string{EbayDraftStatusImported, EbayDraftStatusSkipped}).
-			Where("taxonomy_status = ?", EbayDraftTaxonomyMatched).
-			Where("suggested_category_id IS NOT NULL AND suggested_category_id > 0").
-			Where("match_status IN ?", []string{EbayDraftMatchNewUnique, EbayDraftMatchExact}).
+			Where("(match_status = ?) OR (match_status = ? AND taxonomy_status = ? AND suggested_category_id IS NOT NULL AND suggested_category_id > 0)", EbayDraftMatchNewUnique, EbayDraftMatchExact, EbayDraftTaxonomyMatched).
 			Where("COALESCE(NULLIF(normalized_model, ''), NULLIF(normalized_part_number, ''), NULLIF(normalized_mpn, '')) IS NOT NULL")
 	}
 	var ids []uint

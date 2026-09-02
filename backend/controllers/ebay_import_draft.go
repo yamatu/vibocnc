@@ -459,11 +459,15 @@ func (ec *EbayImportDraftController) confirmDraftForBackground(ctx context.Conte
 	if draft.Status == services.EbayDraftStatusImported || draft.Status == services.EbayDraftStatusSkipped {
 		return http.StatusOK, "already_processed", nil
 	}
-	if draft.SuggestedCategoryID == nil || *draft.SuggestedCategoryID == 0 || draft.TaxonomyStatus != services.EbayDraftTaxonomyMatched {
-		return http.StatusOK, "needs_review", nil
-	}
 	if strings.TrimSpace(draft.NormalizedModel) == "" && strings.TrimSpace(draft.NormalizedPartNumber) == "" && strings.TrimSpace(draft.NormalizedMPN) == "" {
 		return http.StatusOK, "missing_identifier", nil
+	}
+	if draft.SuggestedCategoryID == nil || *draft.SuggestedCategoryID == 0 || draft.TaxonomyStatus != services.EbayDraftTaxonomyMatched {
+		if draft.MatchStatus == services.EbayDraftMatchNewUnique {
+			result, statusCode, err := ec.confirmUncategorizedDraftImport(ctx, id, userID)
+			return statusCode, draftConfirmSkipReason(result), err
+		}
+		return http.StatusOK, "needs_review", nil
 	}
 	normalizedAction := strings.ToLower(strings.TrimSpace(action))
 	if draft.MatchStatus == services.EbayDraftMatchPossibleDup && normalizedAction != "update_existing" && normalizedAction != "create_new" {
@@ -542,6 +546,69 @@ func normalizeBulkDraftIDs(ids []uint) []uint {
 		result = append(result, id)
 	}
 	return result
+}
+
+func (ec *EbayImportDraftController) confirmUncategorizedDraftImport(ctx context.Context, id uint, userID *uint) (gin.H, int, error) {
+	db := config.GetDB()
+	var draft models.EbayImportDraft
+	if err := db.Preload("MatchedProduct").First(&draft, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, http.StatusNotFound, errors.New("Draft not found")
+		}
+		return nil, http.StatusInternalServerError, err
+	}
+	productReq := services.BuildProductRequestFromDraft(db, draft)
+	if strings.TrimSpace(productReq.SKU) == "" {
+		return nil, http.StatusBadRequest, errors.New("Draft requires SKU / MPN / Part Number before import")
+	}
+	productReq.CategoryID = 0
+	productReq.IsActive = false
+	productReq.IsFeatured = false
+	upsertResult, upsertErr := services.CreateUncategorizedProductDraftFromRequest(db, productReq)
+	if upsertErr != nil {
+		if upsertErr.Code == "sku_exists" {
+			var existingProduct models.Product
+			if findErr := db.Where("sku = ?", productReq.SKU).First(&existingProduct).Error; findErr == nil {
+				return markEbayDraftAsDuplicate(db, draft, existingProduct, userID)
+			}
+		}
+		return nil, productUpsertStatusCode(upsertErr), errors.New(upsertErr.Message)
+	}
+	importedAt := time.Now().UTC()
+	if err := db.Model(&models.EbayImportDraft{}).Where("id = ?", draft.ID).Updates(map[string]any{
+		"status":              services.EbayDraftStatusImported,
+		"failure_reason":      "",
+		"imported_product_id": upsertResult.Product.ID,
+		"imported_at":         &importedAt,
+		"confirmed_at":        &importedAt,
+		"confirmed_by":        userID,
+		"review_note":         "Imported as unpublished product with category pending AI classification",
+		"updated_at":          importedAt,
+	}).Error; err != nil {
+		return nil, http.StatusInternalServerError, errors.New("Product draft created but failed to update import state")
+	}
+	res, _ := services.GetEbayImportDraftDetail(db, draft.ID)
+	return gin.H{"draft": res, "product": upsertResult.Product, "created": true, "unclassified": true}, http.StatusOK, nil
+}
+
+func markEbayDraftAsDuplicate(db *gorm.DB, draft models.EbayImportDraft, existingProduct models.Product, userID *uint) (gin.H, int, error) {
+	skippedAt := time.Now().UTC()
+	if updateErr := db.Model(&models.EbayImportDraft{}).Where("id = ?", draft.ID).Updates(map[string]any{
+		"status":              services.EbayDraftStatusSkipped,
+		"match_status":        services.EbayDraftMatchExact,
+		"matched_product_id":  existingProduct.ID,
+		"match_score":         100,
+		"match_reason":        "Skipped because a product with the same SKU already exists",
+		"failure_reason":      "",
+		"imported_product_id": existingProduct.ID,
+		"confirmed_at":        &skippedAt,
+		"confirmed_by":        userID,
+		"updated_at":          skippedAt,
+	}).Error; updateErr != nil {
+		return nil, http.StatusInternalServerError, errors.New("Duplicate product found but failed to update draft state")
+	}
+	res, _ := services.GetEbayImportDraftDetail(db, draft.ID)
+	return gin.H{"draft": res, "product": &existingProduct, "created": false, "skipped": true}, http.StatusOK, nil
 }
 
 func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id uint, requestedAction string, userID *uint) (gin.H, int, error) {

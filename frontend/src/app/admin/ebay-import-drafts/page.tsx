@@ -759,7 +759,7 @@ function EbayImportDraftsContent() {
               disabled={selectEligibleMutation.isPending || isTaskRunning}
               className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {selectEligibleMutation.isPending ? '筛选中...' : '全选可自动导入'}
+              {selectEligibleMutation.isPending ? '筛选中...' : '全选可导入产品管理'}
             </button>
             <button
               type="button"

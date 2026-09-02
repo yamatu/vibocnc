@@ -241,7 +241,9 @@ const (
 var ebayAutoImportConfirmFn EbayDraftConfirmFunc
 
 // StartEbayAutoImportDaemon starts a background goroutine that periodically
-// auto-imports eligible pending drafts (new_unique + taxonomy matched + has category + has SKU).
+// auto-imports unique drafts with a usable identifier. Categorized drafts use
+// the normal publication workflow; unclassified drafts become inactive
+// category_id=0 products for the AI pipeline to complete later.
 func StartEbayAutoImportDaemon(confirmFn EbayDraftConfirmFunc) {
 	ebayAutoImportConfirmFn = confirmFn
 	go func() {
@@ -280,10 +282,8 @@ func runEbayAutoImportCycle() {
 	var candidates []draftCandidate
 	err := db.Table("ebay_import_drafts").
 		Select("id, normalized_model, normalized_part_number, normalized_mpn").
-		Where("status = ? AND taxonomy_status = ? AND match_status = ?",
-			EbayDraftStatusPending, EbayDraftTaxonomyMatched, EbayDraftMatchNewUnique,
-		).
-		Where("suggested_category_id IS NOT NULL AND suggested_category_id > 0").
+		Where("status IN ? AND match_status = ?", []string{EbayDraftStatusPending, EbayDraftStatusNeedsReview, EbayDraftStatusFailed}, EbayDraftMatchNewUnique).
+		Where("COALESCE(NULLIF(normalized_model, ''), NULLIF(normalized_part_number, ''), NULLIF(normalized_mpn, '')) IS NOT NULL").
 		Order("created_at ASC").
 		Limit(ebayAutoImportBatchSize).
 		Find(&candidates).Error
