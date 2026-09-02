@@ -341,9 +341,16 @@ func ListEbayImportDrafts(db *gorm.DB, filters EbayImportDraftFilters) (models.E
 // ListEbayImportDraftIDs returns every draft ID matching the supplied filters.
 // It is used by the admin "select all" action so selection is not limited to
 // the currently visible page.
-func ListEbayImportDraftIDs(db *gorm.DB, filters EbayImportDraftFilters) ([]uint, error) {
+func ListEbayImportDraftIDs(db *gorm.DB, filters EbayImportDraftFilters, eligibleOnly bool) ([]uint, error) {
 	query := db.Model(&models.EbayImportDraft{})
 	applyEbayImportDraftFilters(&query, filters)
+	if eligibleOnly {
+		query = query.Where("status NOT IN ?", []string{EbayDraftStatusImported, EbayDraftStatusSkipped}).
+			Where("taxonomy_status = ?", EbayDraftTaxonomyMatched).
+			Where("suggested_category_id IS NOT NULL AND suggested_category_id > 0").
+			Where("match_status IN ?", []string{EbayDraftMatchNewUnique, EbayDraftMatchExact}).
+			Where("COALESCE(NULLIF(normalized_model, ''), NULLIF(normalized_part_number, ''), NULLIF(normalized_mpn, '')) IS NOT NULL")
+	}
 	var ids []uint
 	if err := query.Order("id ASC").Pluck("id", &ids).Error; err != nil {
 		return nil, err

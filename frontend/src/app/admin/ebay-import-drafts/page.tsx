@@ -226,6 +226,16 @@ function EbayImportDraftsContent() {
     onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '全选草稿失败' : 'Failed to select all drafts')),
   });
 
+  const selectEligibleMutation = useMutation({
+    mutationFn: () => EbayImportDraftService.selectionIds(filters, true),
+    onSuccess: (result) => {
+      setSelectedIds(result.ids);
+      if (result.total === 0) toast(locale === 'zh' ? '当前筛选条件下没有可自动导入的草稿' : 'No auto-importable drafts match the current filters');
+      else toast.success(locale === 'zh' ? `已选择 ${result.total} 条可自动导入草稿` : `Selected ${result.total} auto-importable drafts`);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '选择可导入草稿失败' : 'Failed to select importable drafts')),
+  });
+
   const updateParams = (updates: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
@@ -576,7 +586,11 @@ function EbayImportDraftsContent() {
               </div>
               <div className="mt-2 flex flex-wrap gap-4 text-xs text-emerald-800">
                 <span>成功：{bulkConfirmTask.success_count}</span>
-                <span>跳过重复：{bulkConfirmTask.skipped_count}</span>
+                <span>已跳过：{bulkConfirmTask.skipped_count}</span>
+                <span>已处理过：{bulkConfirmTask.already_processed_count || 0}</span>
+                <span>待确认分类：{bulkConfirmTask.needs_review_count || 0}</span>
+                <span>重复 SKU：{bulkConfirmTask.duplicate_count || 0}</span>
+                <span>缺少型号：{bulkConfirmTask.missing_identifier_count || 0}</span>
                 <span>失败：{bulkConfirmTask.failed_count}</span>
                 <span>剩余：{Math.max(0, bulkConfirmTask.total - bulkConfirmTask.processed)}</span>
                 <span>最后更新：{new Date(bulkConfirmTask.updated_at).toLocaleString()}</span>
@@ -738,7 +752,15 @@ function EbayImportDraftsContent() {
           <p className="text-sm text-blue-900" role="status" aria-live="polite">
             {locale === 'zh' ? `已选择 ${selectedIds.length} 条草稿` : `${selectedIds.length} draft(s) selected`}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => selectEligibleMutation.mutate()}
+              disabled={selectEligibleMutation.isPending || isTaskRunning}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {selectEligibleMutation.isPending ? '筛选中...' : '全选可自动导入'}
+            </button>
             <button
               type="button"
               onClick={handleSelectAll}

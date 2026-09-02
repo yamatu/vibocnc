@@ -351,6 +351,10 @@ export interface EbayBulkConfirmTaskSnapshot {
   success_count: number;
   failed_count: number;
   skipped_count: number;
+  duplicate_count: number;
+  needs_review_count: number;
+  already_processed_count: number;
+  missing_identifier_count: number;
   progress_pct: number;
   message?: string;
   current_id?: number;

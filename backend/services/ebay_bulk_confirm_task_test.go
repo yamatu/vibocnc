@@ -30,8 +30,8 @@ func TestEbayBulkConfirmTaskFinish(t *testing.T) {
 }
 
 func TestEbayBulkConfirmTaskCountsSkippedItems(t *testing.T) {
-	snapshot, err := StartEbayBulkConfirmTask([]uint{101}, "", nil, func(id uint, action string, userID *uint) (int, bool, error) {
-		return http.StatusOK, true, nil
+	snapshot, err := StartEbayBulkConfirmTask([]uint{101}, "", nil, func(id uint, action string, userID *uint) (int, string, error) {
+		return http.StatusOK, "needs_review", nil
 	})
 	if err != nil {
 		t.Fatalf("start task failed: %v", err)
@@ -40,7 +40,7 @@ func TestEbayBulkConfirmTaskCountsSkippedItems(t *testing.T) {
 	for time.Now().Before(deadline) {
 		current, ok := GetEbayBulkConfirmTaskSnapshot(snapshot.ID)
 		if ok && current.Status == EbayBulkConfirmCompleted {
-			if current.SkippedCount != 1 || current.FailedCount != 0 {
+			if current.SkippedCount != 1 || current.NeedsReviewCount != 1 || current.FailedCount != 0 {
 				t.Fatalf("unexpected skipped counters: %#v", current)
 			}
 			return

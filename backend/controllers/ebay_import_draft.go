@@ -200,7 +200,7 @@ func (ec *EbayImportDraftController) SelectionIDs(c *gin.Context) {
 		Status:      req.Status,
 		MatchStatus: req.MatchStatus,
 		Brand:       req.Brand,
-	})
+	}, req.EligibleOnly)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to fetch draft selection", Error: err.Error()})
 		return
@@ -384,7 +384,7 @@ func (ec *EbayImportDraftController) BulkConfirm(c *gin.Context) {
 
 	userID := currentAdminUserID(c)
 
-	confirmFn := func(id uint, action string, uid *uint) (int, bool, error) {
+	confirmFn := func(id uint, action string, uid *uint) (int, string, error) {
 		return ec.confirmDraftForBackground(context.Background(), id, action, uid)
 	}
 
@@ -441,36 +441,36 @@ func (ec *EbayImportDraftController) GetBulkConfirmTask(c *gin.Context) {
 }
 
 func (ec *EbayImportDraftController) ConfirmDraftFn() services.EbayDraftConfirmFunc {
-	return func(id uint, action string, userID *uint) (int, bool, error) {
+	return func(id uint, action string, userID *uint) (int, string, error) {
 		return ec.confirmDraftForBackground(context.Background(), id, action, userID)
 	}
 }
 
-func (ec *EbayImportDraftController) confirmDraftForBackground(ctx context.Context, id uint, action string, userID *uint) (int, bool, error) {
+func (ec *EbayImportDraftController) confirmDraftForBackground(ctx context.Context, id uint, action string, userID *uint) (int, string, error) {
 	var draft models.EbayImportDraft
 	if err := config.GetDB().Select(
 		"id", "status", "taxonomy_status", "suggested_category_id", "match_status", "normalized_model", "normalized_part_number", "normalized_mpn",
 	).First(&draft, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return http.StatusNotFound, false, errors.New("Draft not found")
+			return http.StatusNotFound, "", errors.New("Draft not found")
 		}
-		return http.StatusInternalServerError, false, err
+		return http.StatusInternalServerError, "", err
 	}
 	if draft.Status == services.EbayDraftStatusImported || draft.Status == services.EbayDraftStatusSkipped {
-		return http.StatusOK, true, nil
+		return http.StatusOK, "already_processed", nil
 	}
 	if draft.SuggestedCategoryID == nil || *draft.SuggestedCategoryID == 0 || draft.TaxonomyStatus != services.EbayDraftTaxonomyMatched {
-		return http.StatusOK, true, nil
+		return http.StatusOK, "needs_review", nil
 	}
 	if strings.TrimSpace(draft.NormalizedModel) == "" && strings.TrimSpace(draft.NormalizedPartNumber) == "" && strings.TrimSpace(draft.NormalizedMPN) == "" {
-		return http.StatusOK, true, nil
+		return http.StatusOK, "missing_identifier", nil
 	}
 	normalizedAction := strings.ToLower(strings.TrimSpace(action))
 	if draft.MatchStatus == services.EbayDraftMatchPossibleDup && normalizedAction != "update_existing" && normalizedAction != "create_new" {
-		return http.StatusOK, true, nil
+		return http.StatusOK, "needs_review", nil
 	}
 	result, statusCode, err := ec.confirmDraftImport(ctx, id, action, userID)
-	return statusCode, draftConfirmWasSkipped(result), err
+	return statusCode, draftConfirmSkipReason(result), err
 }
 
 func (ec *EbayImportDraftController) BulkRecheck(c *gin.Context) {
@@ -690,12 +690,15 @@ func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id 
 	return gin.H{"draft": res, "product": upsertResult.Product, "created": upsertResult.Created}, http.StatusOK, nil
 }
 
-func draftConfirmWasSkipped(result gin.H) bool {
+func draftConfirmSkipReason(result gin.H) string {
 	if result == nil {
-		return false
+		return ""
 	}
 	skipped, _ := result["skipped"].(bool)
-	return skipped
+	if skipped {
+		return "duplicate"
+	}
+	return ""
 }
 
 func parseUintParam(raw string) (uint, error) {

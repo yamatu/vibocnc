@@ -97,7 +97,7 @@ export class EbayImportDraftService {
     throw new Error(response.data.message || 'Failed to fetch eBay import drafts');
   }
 
-  static async selectionIds(filters: EbayImportDraftFilters = {}): Promise<EbayImportDraftSelectionResponse> {
+  static async selectionIds(filters: EbayImportDraftFilters = {}, eligibleOnly = false): Promise<EbayImportDraftSelectionResponse> {
     const response = await apiClient.post<APIResponse<EbayImportDraftSelectionResponse>>(
       '/admin/ebay-import-drafts/selection-ids',
       {
@@ -105,6 +105,7 @@ export class EbayImportDraftService {
         status: filters.status || '',
         match_status: filters.match_status || '',
         brand: filters.brand || '',
+        eligible_only: eligibleOnly,
       }
     );
     if (response.data.success && response.data.data) return response.data.data;

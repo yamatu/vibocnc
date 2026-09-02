@@ -30,53 +30,62 @@ type EbayBulkConfirmItemResult struct {
 	ID         uint   `json:"id"`
 	Success    bool   `json:"success"`
 	Skipped    bool   `json:"skipped,omitempty"`
+	SkipReason string `json:"skip_reason,omitempty"`
 	StatusCode int    `json:"status_code"`
 	Error      string `json:"error,omitempty"`
 }
 
 type EbayBulkConfirmTaskSnapshot struct {
-	ID           string                      `json:"id"`
-	Status       EbayBulkConfirmTaskStatus   `json:"status"`
-	Total        int                         `json:"total"`
-	Processed    int                         `json:"processed"`
-	SuccessCount int                         `json:"success_count"`
-	FailedCount  int                         `json:"failed_count"`
-	SkippedCount int                         `json:"skipped_count"`
-	ProgressPct  float64                     `json:"progress_pct"`
-	Message      string                      `json:"message,omitempty"`
-	CurrentID    uint                        `json:"current_id,omitempty"`
-	Results      []EbayBulkConfirmItemResult `json:"results,omitempty"`
-	StartedAt    *time.Time                  `json:"started_at,omitempty"`
-	CompletedAt  *time.Time                  `json:"completed_at,omitempty"`
-	CreatedAt    time.Time                   `json:"created_at"`
-	UpdatedAt    time.Time                   `json:"updated_at"`
+	ID                     string                      `json:"id"`
+	Status                 EbayBulkConfirmTaskStatus   `json:"status"`
+	Total                  int                         `json:"total"`
+	Processed              int                         `json:"processed"`
+	SuccessCount           int                         `json:"success_count"`
+	FailedCount            int                         `json:"failed_count"`
+	SkippedCount           int                         `json:"skipped_count"`
+	DuplicateCount         int                         `json:"duplicate_count"`
+	NeedsReviewCount       int                         `json:"needs_review_count"`
+	AlreadyProcessedCount  int                         `json:"already_processed_count"`
+	MissingIdentifierCount int                         `json:"missing_identifier_count"`
+	ProgressPct            float64                     `json:"progress_pct"`
+	Message                string                      `json:"message,omitempty"`
+	CurrentID              uint                        `json:"current_id,omitempty"`
+	Results                []EbayBulkConfirmItemResult `json:"results,omitempty"`
+	StartedAt              *time.Time                  `json:"started_at,omitempty"`
+	CompletedAt            *time.Time                  `json:"completed_at,omitempty"`
+	CreatedAt              time.Time                   `json:"created_at"`
+	UpdatedAt              time.Time                   `json:"updated_at"`
 }
 
-type EbayDraftConfirmFunc func(id uint, action string, userID *uint) (statusCode int, skipped bool, err error)
+type EbayDraftConfirmFunc func(id uint, action string, userID *uint) (statusCode int, skipReason string, err error)
 
 type ebayBulkConfirmTask struct {
 	mu             sync.RWMutex
 	cond           *sync.Cond
 	pauseRequested bool
 
-	ID           string
-	Status       EbayBulkConfirmTaskStatus
-	IDs          []uint
-	Action       string
-	UserID       *uint
-	Total        int
-	Processed    int
-	SuccessCount int
-	FailedCount  int
-	SkippedCount int
-	ProgressPct  float64
-	Message      string
-	CurrentID    uint
-	Results      []EbayBulkConfirmItemResult
-	StartedAt    *time.Time
-	CompletedAt  *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                     string
+	Status                 EbayBulkConfirmTaskStatus
+	IDs                    []uint
+	Action                 string
+	UserID                 *uint
+	Total                  int
+	Processed              int
+	SuccessCount           int
+	FailedCount            int
+	SkippedCount           int
+	DuplicateCount         int
+	NeedsReviewCount       int
+	AlreadyProcessedCount  int
+	MissingIdentifierCount int
+	ProgressPct            float64
+	Message                string
+	CurrentID              uint
+	Results                []EbayBulkConfirmItemResult
+	StartedAt              *time.Time
+	CompletedAt            *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 type ebayBulkConfirmManager struct {
@@ -176,7 +185,7 @@ func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
 			t.Message = "importing draft"
 			t.UpdatedAt = time.Now()
 		})
-		statusCode, skipped, err := confirmFn(id, task.Action, task.UserID)
+		statusCode, skipReason, err := confirmFn(id, task.Action, task.UserID)
 
 		itemResult := EbayBulkConfirmItemResult{
 			ID:         id,
@@ -187,7 +196,8 @@ func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
 			itemResult.Error = err.Error()
 		} else {
 			itemResult.Success = true
-			itemResult.Skipped = skipped
+			itemResult.Skipped = skipReason != ""
+			itemResult.SkipReason = skipReason
 		}
 
 		task.update(func(t *ebayBulkConfirmTask) {
@@ -195,6 +205,16 @@ func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
 			t.Results = append(t.Results, itemResult)
 			if itemResult.Skipped {
 				t.SkippedCount++
+				switch itemResult.SkipReason {
+				case "duplicate":
+					t.DuplicateCount++
+				case "needs_review":
+					t.NeedsReviewCount++
+				case "already_processed":
+					t.AlreadyProcessedCount++
+				case "missing_identifier":
+					t.MissingIdentifierCount++
+				}
 			} else if itemResult.Success {
 				t.SuccessCount++
 			} else {
@@ -291,12 +311,12 @@ func runEbayAutoImportCycle() {
 			continue
 		}
 
-		_, skipped, err := ebayAutoImportConfirmFn(c.ID, "create_new", nil)
+		_, skipReason, err := ebayAutoImportConfirmFn(c.ID, "create_new", nil)
 		if err != nil {
 			log.Printf("[ebay-auto-import] draft #%d failed: %v", c.ID, err)
 			continue
 		}
-		if !skipped {
+		if skipReason == "" {
 			success++
 		}
 	}
@@ -322,21 +342,25 @@ func (t *ebayBulkConfirmTask) snapshot() EbayBulkConfirmTaskSnapshot {
 	copy(results, t.Results)
 
 	return EbayBulkConfirmTaskSnapshot{
-		ID:           t.ID,
-		Status:       t.Status,
-		Total:        t.Total,
-		Processed:    t.Processed,
-		SuccessCount: t.SuccessCount,
-		FailedCount:  t.FailedCount,
-		SkippedCount: t.SkippedCount,
-		ProgressPct:  t.ProgressPct,
-		Message:      t.Message,
-		CurrentID:    t.CurrentID,
-		Results:      results,
-		StartedAt:    t.StartedAt,
-		CompletedAt:  t.CompletedAt,
-		CreatedAt:    t.CreatedAt,
-		UpdatedAt:    t.UpdatedAt,
+		ID:                     t.ID,
+		Status:                 t.Status,
+		Total:                  t.Total,
+		Processed:              t.Processed,
+		SuccessCount:           t.SuccessCount,
+		FailedCount:            t.FailedCount,
+		SkippedCount:           t.SkippedCount,
+		DuplicateCount:         t.DuplicateCount,
+		NeedsReviewCount:       t.NeedsReviewCount,
+		AlreadyProcessedCount:  t.AlreadyProcessedCount,
+		MissingIdentifierCount: t.MissingIdentifierCount,
+		ProgressPct:            t.ProgressPct,
+		Message:                t.Message,
+		CurrentID:              t.CurrentID,
+		Results:                results,
+		StartedAt:              t.StartedAt,
+		CompletedAt:            t.CompletedAt,
+		CreatedAt:              t.CreatedAt,
+		UpdatedAt:              t.UpdatedAt,
 	}
 }
 

@@ -94,10 +94,11 @@ type EbayImportDraftBulkDeleteRequest struct {
 }
 
 type EbayImportDraftSelectionRequest struct {
-	Search      string `json:"search"`
-	Status      string `json:"status"`
-	MatchStatus string `json:"match_status"`
-	Brand       string `json:"brand"`
+	Search       string `json:"search"`
+	Status       string `json:"status"`
+	MatchStatus  string `json:"match_status"`
+	Brand        string `json:"brand"`
+	EligibleOnly bool   `json:"eligible_only"`
 }
 
 type EbayImportDraftSelectionResponse struct {
