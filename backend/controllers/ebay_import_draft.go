@@ -384,9 +384,9 @@ func (ec *EbayImportDraftController) BulkConfirm(c *gin.Context) {
 
 	userID := currentAdminUserID(c)
 
-	confirmFn := func(id uint, action string, uid *uint) (int, error) {
-		_, statusCode, err := ec.confirmDraftImport(context.Background(), id, action, uid)
-		return statusCode, err
+	confirmFn := func(id uint, action string, uid *uint) (int, bool, error) {
+		result, statusCode, err := ec.confirmDraftImport(context.Background(), id, action, uid)
+		return statusCode, draftConfirmWasSkipped(result), err
 	}
 
 	ids := normalizeBulkDraftIDs(req.IDs)
@@ -442,9 +442,9 @@ func (ec *EbayImportDraftController) GetBulkConfirmTask(c *gin.Context) {
 }
 
 func (ec *EbayImportDraftController) ConfirmDraftFn() services.EbayDraftConfirmFunc {
-	return func(id uint, action string, userID *uint) (int, error) {
-		_, statusCode, err := ec.confirmDraftImport(context.Background(), id, action, userID)
-		return statusCode, err
+	return func(id uint, action string, userID *uint) (int, bool, error) {
+		result, statusCode, err := ec.confirmDraftImport(context.Background(), id, action, userID)
+		return statusCode, draftConfirmWasSkipped(result), err
 	}
 }
 
@@ -589,6 +589,28 @@ func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id 
 		upsertResult, upsertErr = services.CreateProductFromRequest(db, productReq)
 	}
 	if upsertErr != nil {
+		if upsertErr.Code == "sku_exists" {
+			var existingProduct models.Product
+			if findErr := db.Where("sku = ?", productReq.SKU).First(&existingProduct).Error; findErr == nil {
+				skippedAt := time.Now().UTC()
+				if updateErr := db.Model(&models.EbayImportDraft{}).Where("id = ?", draft.ID).Updates(map[string]any{
+					"status":              services.EbayDraftStatusSkipped,
+					"match_status":        services.EbayDraftMatchExact,
+					"matched_product_id":  existingProduct.ID,
+					"match_score":         100,
+					"match_reason":        "Skipped because a product with the same SKU already exists",
+					"failure_reason":      "",
+					"imported_product_id": existingProduct.ID,
+					"confirmed_at":        &skippedAt,
+					"confirmed_by":        userID,
+					"updated_at":          skippedAt,
+				}).Error; updateErr != nil {
+					return nil, http.StatusInternalServerError, errors.New("Duplicate product found but failed to update draft state")
+				}
+				res, _ := services.GetEbayImportDraftDetail(db, draft.ID)
+				return gin.H{"draft": res, "product": &existingProduct, "created": false, "skipped": true}, http.StatusOK, nil
+			}
+		}
 		_ = db.Model(&models.EbayImportDraft{}).Where("id = ?", draft.ID).Updates(map[string]any{
 			"status":         services.EbayDraftStatusFailed,
 			"failure_reason": upsertErr.Error(),
@@ -641,6 +663,14 @@ func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id 
 		return gin.H{"product": upsertResult.Product, "created": upsertResult.Created}, http.StatusOK, nil
 	}
 	return gin.H{"draft": res, "product": upsertResult.Product, "created": upsertResult.Created}, http.StatusOK, nil
+}
+
+func draftConfirmWasSkipped(result gin.H) bool {
+	if result == nil {
+		return false
+	}
+	skipped, _ := result["skipped"].(bool)
+	return skipped
 }
 
 func parseUintParam(raw string) (uint, error) {

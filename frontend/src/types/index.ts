@@ -338,6 +338,7 @@ export interface EbayImportDraftUpdateRequest {
 export interface EbayBulkConfirmItemResult {
   id: number;
   success: boolean;
+  skipped?: boolean;
   status_code: number;
   error?: string;
 }

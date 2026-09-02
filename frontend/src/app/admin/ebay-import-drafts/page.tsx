@@ -576,6 +576,7 @@ function EbayImportDraftsContent() {
               </div>
               <div className="mt-2 flex flex-wrap gap-4 text-xs text-emerald-800">
                 <span>成功：{bulkConfirmTask.success_count}</span>
+                <span>跳过重复：{bulkConfirmTask.skipped_count}</span>
                 <span>失败：{bulkConfirmTask.failed_count}</span>
                 <span>剩余：{Math.max(0, bulkConfirmTask.total - bulkConfirmTask.processed)}</span>
                 <span>最后更新：{new Date(bulkConfirmTask.updated_at).toLocaleString()}</span>

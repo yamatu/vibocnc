@@ -29,6 +29,7 @@ const (
 type EbayBulkConfirmItemResult struct {
 	ID         uint   `json:"id"`
 	Success    bool   `json:"success"`
+	Skipped    bool   `json:"skipped,omitempty"`
 	StatusCode int    `json:"status_code"`
 	Error      string `json:"error,omitempty"`
 }
@@ -51,7 +52,7 @@ type EbayBulkConfirmTaskSnapshot struct {
 	UpdatedAt    time.Time                   `json:"updated_at"`
 }
 
-type EbayDraftConfirmFunc func(id uint, action string, userID *uint) (statusCode int, err error)
+type EbayDraftConfirmFunc func(id uint, action string, userID *uint) (statusCode int, skipped bool, err error)
 
 type ebayBulkConfirmTask struct {
 	mu             sync.RWMutex
@@ -175,7 +176,7 @@ func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
 			t.Message = "importing draft"
 			t.UpdatedAt = time.Now()
 		})
-		statusCode, err := confirmFn(id, task.Action, task.UserID)
+		statusCode, skipped, err := confirmFn(id, task.Action, task.UserID)
 
 		itemResult := EbayBulkConfirmItemResult{
 			ID:         id,
@@ -186,12 +187,15 @@ func runEbayBulkConfirmTask(taskID string, confirmFn EbayDraftConfirmFunc) {
 			itemResult.Error = err.Error()
 		} else {
 			itemResult.Success = true
+			itemResult.Skipped = skipped
 		}
 
 		task.update(func(t *ebayBulkConfirmTask) {
 			t.Processed = i + 1
 			t.Results = append(t.Results, itemResult)
-			if itemResult.Success {
+			if itemResult.Skipped {
+				t.SkippedCount++
+			} else if itemResult.Success {
 				t.SuccessCount++
 			} else {
 				t.FailedCount++
@@ -287,12 +291,14 @@ func runEbayAutoImportCycle() {
 			continue
 		}
 
-		_, err := ebayAutoImportConfirmFn(c.ID, "create_new", nil)
+		_, skipped, err := ebayAutoImportConfirmFn(c.ID, "create_new", nil)
 		if err != nil {
 			log.Printf("[ebay-auto-import] draft #%d failed: %v", c.ID, err)
 			continue
 		}
-		success++
+		if !skipped {
+			success++
+		}
 	}
 
 	if success > 0 {
