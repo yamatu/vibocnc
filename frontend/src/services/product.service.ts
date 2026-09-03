@@ -237,6 +237,61 @@ export interface ProductImageAutofillBrand {
   count: number;
 }
 
+export interface ProductImageCleanupSample {
+  product_id: number;
+  sku: string;
+  name: string;
+  image_url: string;
+  hostname: string;
+}
+
+export interface ProductImageCleanupPreview {
+  scanned_products: number;
+  affected_products: number;
+  removable_images: number;
+  preserved_images: number;
+  trusted_domains: string[];
+  samples: ProductImageCleanupSample[];
+}
+
+export interface ProductImageCleanupJob {
+  id: string;
+  status: 'queued' | 'running' | 'paused' | 'completed' | 'completed_with_errors' | 'failed';
+  trusted_domains: string[];
+  brand: string;
+  category_id: number;
+  include_descendants: boolean;
+  product_status: 'active' | 'inactive' | 'all';
+  total: number;
+  processed: number;
+  updated_products: number;
+  skipped_products: number;
+  removed_images: number;
+  failed: number;
+  message: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface ProductImageCleanupScope {
+  trusted_domains: string[];
+  brand?: string;
+  category_id?: number;
+  include_descendants?: boolean;
+  product_status?: 'active' | 'inactive' | 'all';
+  batch_size?: number;
+}
+
+export interface ProductImagePolicySettings {
+  id: number;
+  trusted_domains: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ProductImageRecord {
   id: number;
   product_id: number;
@@ -679,6 +734,50 @@ export class ProductService {
     throw new Error(response.data.message || 'Failed to resume SKU image autofill task');
   }
 
+  static async previewUntrustedProductImages(payload: ProductImageCleanupScope): Promise<ProductImageCleanupPreview> {
+    const response = await apiClient.post<APIResponse<ProductImageCleanupPreview>>('/admin/products/image-cleanup/preview', payload, { timeout: 120000 });
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to preview untrusted product images');
+  }
+
+  static async getProductImagePolicySettings(): Promise<ProductImagePolicySettings> {
+    const response = await apiClient.get<APIResponse<ProductImagePolicySettings>>('/admin/products/image-cleanup/settings');
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to load product image policy');
+  }
+
+  static async updateProductImagePolicySettings(trustedDomains: string[]): Promise<ProductImagePolicySettings> {
+    const response = await apiClient.put<APIResponse<ProductImagePolicySettings>>('/admin/products/image-cleanup/settings', {
+      trusted_domains: trustedDomains,
+    });
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to update product image policy');
+  }
+
+  static async startUntrustedProductImageCleanup(payload: ProductImageCleanupScope): Promise<ProductImageCleanupJob> {
+    const response = await apiClient.post<APIResponse<ProductImageCleanupJob>>('/admin/products/image-cleanup/jobs', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to start product image cleanup');
+  }
+
+  static async getLatestProductImageCleanupJob(): Promise<ProductImageCleanupJob | null> {
+    const response = await apiClient.get<APIResponse<ProductImageCleanupJob | null>>('/admin/products/image-cleanup/jobs/latest');
+    if (response.data.success) return response.data.data || null;
+    throw new Error(response.data.message || 'Failed to load product image cleanup task');
+  }
+
+  static async pauseProductImageCleanupJob(id: string): Promise<ProductImageCleanupJob> {
+    const response = await apiClient.post<APIResponse<ProductImageCleanupJob>>(`/admin/products/image-cleanup/jobs/${encodeURIComponent(id)}/pause`);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to pause product image cleanup');
+  }
+
+  static async resumeProductImageCleanupJob(id: string): Promise<ProductImageCleanupJob> {
+    const response = await apiClient.post<APIResponse<ProductImageCleanupJob>>(`/admin/products/image-cleanup/jobs/${encodeURIComponent(id)}/resume`);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to resume product image cleanup');
+  }
+
   static async bulkRemoveDefaultImage(payload: {
     ids?: number[];
     skus?: string[];
@@ -906,6 +1005,7 @@ export class ProductService {
     alt_text?: string;
     is_primary?: boolean;
     sort_order?: number;
+    source?: 'media' | 'admin_external' | 'archive';
   }): Promise<ProductImageRecord> {
     const response = await apiClient.post<APIResponse<ProductImageRecord>>(
       `/admin/products/${productId}/images`,

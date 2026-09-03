@@ -181,6 +181,7 @@ export default function NewProductPage() {
           alt_text: image.alt_text || '',
           is_primary: index === 0,
           sort_order: index,
+          source: image.source,
         })),
         attributes: [],
         translations: data.translations || [],

@@ -1046,7 +1046,8 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 	}
 
 	// Delete related records first to avoid foreign key constraints
-	// Note: Images are now stored in JSON field, so no separate image table to clean up
+	// Product images are primarily stored in the JSON field; legacy relations and
+	// explicit external-image trust are cleaned separately where applicable.
 
 	// Delete product attributes
 	if err := db.Where("product_id = ?", id).Delete(&models.ProductAttribute{}).Error; err != nil {
@@ -1075,6 +1076,11 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 			Message: "Failed to delete purchase links",
 			Error:   err.Error(),
 		})
+		return
+	}
+
+	if err := services.ClearExplicitProductImageTrust(db, product.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to delete product image trust records", Error: err.Error()})
 		return
 	}
 
@@ -1166,13 +1172,31 @@ func (pc *ProductController) AddImage(c *gin.Context) {
 		return
 	}
 
-	product.ImageURLs = string(imageURLsBytes)
-	if err := db.Save(&product).Error; err != nil {
+	tx := db.Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to start product image update",
+			Error:   tx.Error.Error(),
+		})
+		return
+	}
+	if err := tx.Model(&models.Product{}).Where("id = ?", product.ID).Update("image_urls", string(imageURLsBytes)).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update product images",
 			Error:   err.Error(),
 		})
+		return
+	}
+	if err := services.MarkExplicitProductImageTrusted(tx, product.ID, req.URL, req.Source, c.GetUint("user_id")); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to record product image source", Error: err.Error()})
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to commit product image update", Error: err.Error()})
 		return
 	}
 
@@ -1289,6 +1313,7 @@ func (pc *ProductController) DeleteImage(c *gin.Context) {
 	}
 
 	// Remove image at index
+	removedURL := currentURLs[index]
 	currentURLs = append(currentURLs[:index], currentURLs[index+1:]...)
 
 	// Update product
@@ -1302,13 +1327,27 @@ func (pc *ProductController) DeleteImage(c *gin.Context) {
 		return
 	}
 
-	product.ImageURLs = string(imageURLsBytes)
-	if err := db.Save(&product).Error; err != nil {
+	tx := db.Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to start product image update", Error: tx.Error.Error()})
+		return
+	}
+	if err := tx.Model(&models.Product{}).Where("id = ?", product.ID).Update("image_urls", string(imageURLsBytes)).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update product",
 			Error:   err.Error(),
 		})
+		return
+	}
+	if err := services.RemoveExplicitProductImageTrust(tx, product.ID, removedURL); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update product image trust", Error: err.Error()})
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to commit product image update", Error: err.Error()})
 		return
 	}
 

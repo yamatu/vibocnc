@@ -52,6 +52,8 @@ func main() {
 	controllers.ResumeAIAgentSEOJobs()
 	// Resume durable SKU fallback-image work after a container restart.
 	controllers.ResumeProductImageAutofillJobs()
+	// Resume safe external-image cleanup and completed SKU archive imports.
+	controllers.ResumeProductImageManagementJobs()
 
 	// Set Gin mode
 	ginMode := strings.TrimSpace(os.Getenv("GIN_MODE"))
@@ -116,10 +118,13 @@ func main() {
 		Addr:              address,
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1 MiB
+		// Chunked archive uploads may arrive over a slower connection. The
+		// request is still bounded by the per-chunk 8 MiB limit, while the
+		// resumable protocol prevents a stalled client from holding a huge body.
+		ReadTimeout:    15 * time.Minute,
+		WriteTimeout:   15 * time.Minute,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MiB
 	}
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal("Failed to start server:", err)

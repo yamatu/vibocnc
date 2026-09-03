@@ -35,6 +35,26 @@ func defaultImageURLForSKU(sku string) string {
 	return "/api/v1/public/products/default-image?sku=" + url.QueryEscape(s)
 }
 
+func isDefaultImageURLForSKU(rawURL, sku string) bool {
+	value := strings.TrimSpace(rawURL)
+	if value == "" {
+		return false
+	}
+	base := defaultImageURLForSKU(sku)
+	if value == base || value == "/api/v1/public/products/default-image/"+url.PathEscape(strings.TrimSpace(sku)) {
+		return true
+	}
+	parsedValue := value
+	if strings.HasPrefix(parsedValue, "//") {
+		parsedValue = "https:" + parsedValue
+	}
+	parsed, err := url.Parse(parsedValue)
+	if err != nil || parsed.Path != "/api/v1/public/products/default-image" {
+		return false
+	}
+	return strings.TrimSpace(parsed.Query().Get("sku")) == strings.TrimSpace(sku)
+}
+
 func staticDefaultImageURLForSKU(db *gorm.DB, sku string) (string, error) {
 	s := strings.TrimSpace(sku)
 	if s == "" {
@@ -185,6 +205,9 @@ func (pc *ProductController) BulkApplyDefaultImage(c *gin.Context) {
 			if err := db.Model(&models.Product{}).Where("id = ?", p.ID).Update("image_urls", toImageURLsJSON([]string{defURL})).Error; err != nil {
 				return err
 			}
+			if err := services.ClearExplicitProductImageTrust(db, p.ID); err != nil {
+				return err
+			}
 			updated++
 		}
 		return nil
@@ -242,7 +265,7 @@ func (pc *ProductController) BulkRemoveDefaultImage(c *gin.Context) {
 			out := make([]string, 0, len(urls))
 			changed := false
 			for _, u := range urls {
-				if strings.TrimSpace(u) == defURL {
+				if strings.TrimSpace(u) == defURL || isDefaultImageURLForSKU(u, p.SKU) {
 					changed = true
 					removed++
 					continue
@@ -322,6 +345,9 @@ func (pc *ProductController) BulkClearImages(c *gin.Context) {
 			}
 			urls := parseImageURLsJSON(rawImageURLs)
 			if err := db.Model(&models.Product{}).Where("id = ?", p.ID).Update("image_urls", "[]").Error; err != nil {
+				return err
+			}
+			if err := services.ClearExplicitProductImageTrust(db, p.ID); err != nil {
 				return err
 			}
 			updated++

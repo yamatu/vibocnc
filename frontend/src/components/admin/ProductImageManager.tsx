@@ -27,6 +27,7 @@ export type ManagedProductImage = {
   is_primary?: boolean;
   sort_order?: number;
   media_asset_id?: number;
+  source?: 'media' | 'admin_external' | 'archive';
 };
 
 type Props = {
@@ -99,6 +100,7 @@ export default function ProductImageManager({ images, onChange, sku }: Props) {
           url: asset!.url,
           alt_text: asset!.alt_text || sku || asset!.original_name,
           media_asset_id: asset!.id,
+          source: 'media',
         }))
       );
       queryClient.invalidateQueries({ queryKey: queryKeys.media.lists() });
@@ -168,7 +170,7 @@ export default function ProductImageManager({ images, onChange, sku }: Props) {
       );
       return;
     }
-    appendImages(urls.map((url) => ({ url, alt_text: sku || '' })));
+    appendImages(urls.map((url) => ({ url, alt_text: sku || '', source: 'admin_external' })));
     setUrlText('');
     setShowUrls(false);
   };

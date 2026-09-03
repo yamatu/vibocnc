@@ -241,6 +241,9 @@ type ImageReq struct {
 	AltText   string `json:"alt_text"`
 	IsPrimary bool   `json:"is_primary"`
 	SortOrder int    `json:"sort_order"`
+	// Source is set by the administrator UI for explicitly approved external
+	// links. Importers leave it empty so their external URLs remain reviewable.
+	Source string `json:"source"`
 }
 
 // ProductAttributeReq represents product attribute in request

@@ -255,7 +255,8 @@ export default function EditProductPage() {
         url: img.url,
         alt_text: img.alt_text || '',
         is_primary: img.is_primary || index === 0,
-        sort_order: img.sort_order || index
+        sort_order: img.sort_order || index,
+        source: img.source
       }));
 
       const weightNum = data.weight ? Number(data.weight) : undefined;

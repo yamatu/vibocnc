@@ -159,6 +159,10 @@ func createProductFromRequest(db *gorm.DB, req models.ProductCreateRequest, allo
 		tx.Rollback()
 		return nil, &ProductUpsertError{Code: "db_error", Message: "Failed to create product", Err: err}
 	}
+	if err := SyncExplicitProductImageTrust(tx, product.ID, req.Images, 0); err != nil {
+		tx.Rollback()
+		return nil, &ProductUpsertError{Code: "db_error", Message: "Failed to record trusted product images", Err: err}
+	}
 
 	for _, attr := range req.Attributes {
 		attribute := models.ProductAttribute{
@@ -285,6 +289,10 @@ func UpdateProductFromRequest(db *gorm.DB, productID uint, req models.ProductCre
 	).Error; err != nil {
 		tx.Rollback()
 		return nil, &ProductUpsertError{Code: "db_error", Message: "Failed to update product", Err: err}
+	}
+	if err := SyncExplicitProductImageTrust(tx, product.ID, req.Images, 0); err != nil {
+		tx.Rollback()
+		return nil, &ProductUpsertError{Code: "db_error", Message: "Failed to record trusted product images", Err: err}
 	}
 
 	if err := tx.Where("product_id = ?", product.ID).Delete(&models.ProductAttribute{}).Error; err != nil {

@@ -350,6 +350,9 @@ func processProductImageAutofillJob(jobID string) {
 					Update("image_urls", toImageURLsJSON([]string{imageURL})).Error; err != nil {
 					return err
 				}
+				if err := services.ClearExplicitProductImageTrust(tx, current.ID); err != nil {
+					return err
+				}
 				batchUpdated++
 			}
 

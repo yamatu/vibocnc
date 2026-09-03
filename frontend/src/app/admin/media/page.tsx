@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import {
@@ -18,9 +18,12 @@ import {
   ChevronDoubleRightIcon,
   PauseIcon,
   PlayIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 
 import AdminLayout from '@/components/admin/AdminLayout';
+import MediaUsageModal from '@/components/admin/MediaUsageModal';
+import ProductImageGovernancePanel from '@/components/admin/ProductImageGovernancePanel';
 import { CategoryService, MediaService, ProductService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
 import type { MediaAsset, MediaCleanupMissingResponse, MediaUploadResponse } from '@/services/media.service';
@@ -86,6 +89,7 @@ export default function AdminMediaPage() {
 
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+  const [usageAsset, setUsageAsset] = useState<MediaAsset | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editAlt, setEditAlt] = useState('');
   const [editFolder, setEditFolder] = useState('');
@@ -361,6 +365,14 @@ export default function AdminMediaPage() {
   };
 
   const clearSelection = () => setSelectedIds([]);
+
+  const handleProductsChanged = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+  }, [queryClient]);
+
+  const handleMediaChanged = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.media.lists() });
+  }, [queryClient]);
 
   const addFiles = (files: FileList | File[]) => {
     const list = Array.isArray(files) ? files : Array.from(files);
@@ -713,6 +725,14 @@ export default function AdminMediaPage() {
           </div>
         </div>
 
+        <ProductImageGovernancePanel
+          locale={locale}
+          categories={categories}
+          brands={autofillBrands}
+          onProductsChanged={handleProductsChanged}
+          onMediaChanged={handleMediaChanged}
+        />
+
         {/* Filters */}
         <div className="bg-white shadow rounded-lg p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -842,7 +862,7 @@ export default function AdminMediaPage() {
                       batch_size: 500,
                     });
                   }}
-                  className="inline-flex items-center justify-center w-full px-4 py-2 text-sm rounded-md bg-fuchsia-600 text-white hover:bg-fuchsia-700 disabled:opacity-50"
+                  className="inline-flex items-center justify-center w-full px-4 py-2 text-sm rounded-md bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50"
                 >
                   <PhotoIcon className="h-4 w-4 mr-2" />
                   {bulkCategoryImageMutation.isPending
@@ -971,6 +991,16 @@ export default function AdminMediaPage() {
 							aria-label={t('common.edit', locale === 'zh' ? '编辑' : 'Edit')}
                       >
                         <PencilIcon className="h-4 w-4 text-gray-700" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUsageAsset(asset)}
+                        className="absolute top-2 right-12 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity h-8 w-8 rounded bg-white/90 border border-gray-200 flex items-center justify-center hover:bg-white"
+                        aria-label={locale === 'zh' ? '查看使用此图片的产品' : 'Find products using this image'}
+                        title={locale === 'zh' ? '查看使用产品' : 'Find product usage'}
+                      >
+                        <LinkIcon className="h-4 w-4 text-slate-700" />
                       </button>
 
                       <button
@@ -1551,6 +1581,8 @@ export default function AdminMediaPage() {
           <img src={previewAsset.url} alt={previewAsset.alt_text || previewAsset.original_name} className="max-h-[90vh] max-w-[94vw] object-contain" onClick={(event) => event.stopPropagation()} />
         </div>
       )}
+
+      {usageAsset && <MediaUsageModal asset={usageAsset} locale={locale} onClose={() => setUsageAsset(null)} />}
     </AdminLayout>
   );
 }

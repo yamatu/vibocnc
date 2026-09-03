@@ -47,3 +47,40 @@ func TestSetupRoutesRegistersProductImageAutofillRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestSetupRoutesRegistersProductImageManagementRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	SetupRoutes(router)
+
+	wanted := map[string]bool{
+		"POST /api/v1/admin/products/image-cleanup/preview":         false,
+		"GET /api/v1/admin/products/image-cleanup/settings":         false,
+		"PUT /api/v1/admin/products/image-cleanup/settings":         false,
+		"POST /api/v1/admin/products/image-cleanup/jobs":            false,
+		"GET /api/v1/admin/products/image-cleanup/jobs/latest":      false,
+		"GET /api/v1/admin/products/image-cleanup/jobs/:id":         false,
+		"POST /api/v1/admin/products/image-cleanup/jobs/:id/pause":  false,
+		"POST /api/v1/admin/products/image-cleanup/jobs/:id/resume": false,
+		"GET /api/v1/admin/media/:id/products":                      false,
+		"POST /api/v1/admin/media/sku-archive/jobs":                 false,
+		"GET /api/v1/admin/media/sku-archive/jobs/latest":           false,
+		"GET /api/v1/admin/media/sku-archive/jobs/:id":              false,
+		"PUT /api/v1/admin/media/sku-archive/jobs/:id/chunk":        false,
+		"POST /api/v1/admin/media/sku-archive/jobs/:id/complete":    false,
+		"POST /api/v1/admin/media/sku-archive/jobs/:id/pause":       false,
+		"POST /api/v1/admin/media/sku-archive/jobs/:id/resume":      false,
+		"DELETE /api/v1/admin/media/sku-archive/jobs/:id":           false,
+	}
+	for _, route := range router.Routes() {
+		key := route.Method + " " + route.Path
+		if _, exists := wanted[key]; exists {
+			wanted[key] = true
+		}
+	}
+	for route, found := range wanted {
+		if !found {
+			t.Fatalf("product image management route was not registered: %s", route)
+		}
+	}
+}

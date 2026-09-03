@@ -567,6 +567,7 @@ export interface ImageReq {
   alt_text?: string;
   is_primary?: boolean;
   sort_order?: number;
+  source?: 'media' | 'admin_external' | 'archive';
 }
 
 // Request Types

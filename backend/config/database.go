@@ -177,6 +177,10 @@ func ConnectDatabase() {
 			&models.ShippingRate{},
 			&models.WatermarkSetting{},
 			&models.ProductImageAutofillJob{},
+			&models.ProductImageCleanupJob{},
+			&models.ProductImageArchiveJob{},
+			&models.ProductImagePolicySetting{},
+			&models.ProductImageTrustedURL{},
 			&models.VisitorLog{},
 			&models.AnalyticsSetting{},
 			// News / Articles

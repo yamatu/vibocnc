@@ -234,6 +234,14 @@ func SetupRoutes(r *gin.Engine) {
 				products.GET("/bulk-default-image/jobs/:id", productController.GetProductImageAutofillJob)
 				products.POST("/bulk-default-image/jobs/:id/pause", productController.PauseProductImageAutofillJob)
 				products.POST("/bulk-default-image/jobs/:id/resume", productController.ResumeProductImageAutofillJob)
+				products.POST("/image-cleanup/preview", middleware.AdminOnly(), productController.PreviewUntrustedProductImages)
+				products.GET("/image-cleanup/settings", middleware.AdminOnly(), productController.GetProductImagePolicySettings)
+				products.PUT("/image-cleanup/settings", middleware.AdminOnly(), productController.UpdateProductImagePolicySettings)
+				products.POST("/image-cleanup/jobs", middleware.AdminOnly(), productController.StartUntrustedProductImageCleanup)
+				products.GET("/image-cleanup/jobs/latest", middleware.AdminOnly(), productController.GetLatestProductImageCleanupJob)
+				products.GET("/image-cleanup/jobs/:id", middleware.AdminOnly(), productController.GetProductImageCleanupJob)
+				products.POST("/image-cleanup/jobs/:id/pause", middleware.AdminOnly(), productController.PauseProductImageCleanupJob)
+				products.POST("/image-cleanup/jobs/:id/resume", middleware.AdminOnly(), productController.ResumeProductImageCleanupJob)
 				products.PUT("/bulk-images/clear", middleware.AdminOnly(), productController.BulkClearImages)
 				products.PUT("/bulk-category-image", productController.BulkApplyCategoryImage)
 
@@ -354,10 +362,19 @@ func SetupRoutes(r *gin.Engine) {
 				media.PUT("/batch", mediaController.BatchUpdate)
 				media.DELETE("/batch", mediaController.BatchDelete)
 				media.POST("/cleanup-missing", middleware.AdminOnly(), mediaController.CleanupMissing)
-				media.PUT("/:id", mediaController.Update)
+				media.POST("/sku-archive/jobs", middleware.AdminOnly(), mediaController.StartSKUImageArchive)
+				media.GET("/sku-archive/jobs/latest", middleware.AdminOnly(), mediaController.GetLatestSKUImageArchiveJob)
+				media.GET("/sku-archive/jobs/:id", middleware.AdminOnly(), mediaController.GetSKUImageArchiveJob)
+				media.PUT("/sku-archive/jobs/:id/chunk", middleware.AdminOnly(), mediaController.UploadSKUImageArchiveChunk)
+				media.POST("/sku-archive/jobs/:id/complete", middleware.AdminOnly(), mediaController.CompleteSKUImageArchive)
+				media.POST("/sku-archive/jobs/:id/pause", middleware.AdminOnly(), mediaController.PauseSKUImageArchiveJob)
+				media.POST("/sku-archive/jobs/:id/resume", middleware.AdminOnly(), mediaController.ResumeSKUImageArchiveJob)
+				media.DELETE("/sku-archive/jobs/:id", middleware.AdminOnly(), mediaController.CancelSKUImageArchiveJob)
 				media.GET("/watermark/settings", watermarkController.GetSettings)
 				media.PUT("/watermark/settings", watermarkController.UpdateSettings)
 				media.POST("/watermark", watermarkController.GenerateFromMedia)
+				media.GET("/:id/products", mediaController.ProductsUsingMedia)
+				media.PUT("/:id", mediaController.Update)
 			}
 
 			// Backup & restore (admin only)
@@ -603,6 +620,12 @@ func SetupRoutes(r *gin.Engine) {
 	uploads := r.Group("/uploads")
 	uploads.Use(middleware.HotlinkProtectionMiddleware())
 	uploads.Use(func(c *gin.Context) {
+		// Resumable ZIP archives live under the persistent upload volume but are
+		// private job inputs, never public static assets.
+		if strings.HasPrefix(c.Request.URL.Path, "/uploads/.imports/") {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
 		// Media filenames are SHA-256 based, so immutable caching is safe and
 		// avoids downloading the same gallery image on every admin page.
 		if strings.HasPrefix(c.Request.URL.Path, "/uploads/media/") {

@@ -249,6 +249,9 @@ func (pc *ProductController) BulkApplyCategoryImage(c *gin.Context) {
 			if err := db.Model(&models.Product{}).Where("id = ?", p.ID).Update("image_urls", toImageURLsJSON(next)).Error; err != nil {
 				return err
 			}
+			if err := services.ClearExplicitProductImageTrust(db, p.ID); err != nil {
+				return err
+			}
 			updated++
 		}
 		return nil
