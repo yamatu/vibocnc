@@ -176,6 +176,7 @@ func ConnectDatabase() {
 			// Legacy flat shipping rate table (kept for compatibility; not used by new flow)
 			&models.ShippingRate{},
 			&models.WatermarkSetting{},
+			&models.ProductImageAutofillJob{},
 			&models.VisitorLog{},
 			&models.AnalyticsSetting{},
 			// News / Articles

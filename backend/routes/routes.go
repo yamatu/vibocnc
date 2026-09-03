@@ -228,6 +228,12 @@ func SetupRoutes(r *gin.Engine) {
 				// Bulk: apply/remove default watermark image URL
 				products.PUT("/bulk-default-image/apply", productController.BulkApplyDefaultImage)
 				products.PUT("/bulk-default-image/remove", productController.BulkRemoveDefaultImage)
+				products.GET("/bulk-default-image/brands", productController.ListProductImageAutofillBrands)
+				products.POST("/bulk-default-image/jobs", productController.StartProductImageAutofill)
+				products.GET("/bulk-default-image/jobs/latest", productController.GetLatestProductImageAutofillJob)
+				products.GET("/bulk-default-image/jobs/:id", productController.GetProductImageAutofillJob)
+				products.POST("/bulk-default-image/jobs/:id/pause", productController.PauseProductImageAutofillJob)
+				products.POST("/bulk-default-image/jobs/:id/resume", productController.ResumeProductImageAutofillJob)
 				products.PUT("/bulk-images/clear", middleware.AdminOnly(), productController.BulkClearImages)
 				products.PUT("/bulk-category-image", productController.BulkApplyCategoryImage)
 

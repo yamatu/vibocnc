@@ -52,8 +52,15 @@ func (mc *MediaController) List(c *gin.Context) {
 
 	q := strings.TrimSpace(c.Query("q"))
 	folder := strings.TrimSpace(c.Query("folder"))
+	includeGenerated := strings.EqualFold(strings.TrimSpace(c.Query("include_generated")), "true") || strings.TrimSpace(c.Query("include_generated")) == "1"
 
 	query := db.Model(&models.MediaAsset{})
+	// SKU fallback images are implementation cache entries, not user-managed
+	// library assets. Keep legacy rows out of the default gallery while still
+	// allowing an explicit folder search or opt-in inspection.
+	if folder == "" && !includeGenerated {
+		query = query.Where("folder IS NULL OR folder <> ?", "watermarked-default")
+	}
 	if q != "" {
 		like := "%" + q + "%"
 		query = query.Where("original_name LIKE ? OR sha256 LIKE ? OR title LIKE ? OR alt_text LIKE ? OR folder LIKE ? OR tags LIKE ?", like, like, like, like, like, like)

@@ -155,6 +155,7 @@ func (pc *ProductController) BulkApplyDefaultImage(c *gin.Context) {
 	}
 
 	db := config.GetDB()
+	imageVersion := currentWatermarkImageVersion(db)
 	selector := db.Model(&models.Product{}).Select("id", "sku", "image_urls")
 	if len(req.IDs) > 0 {
 		selector = selector.Where("id IN ?", req.IDs)
@@ -177,10 +178,10 @@ func (pc *ProductController) BulkApplyDefaultImage(c *gin.Context) {
 				skipped++
 				continue
 			}
-			defURL, err := staticDefaultImageURLForSKU(db, p.SKU)
-			if err != nil {
-				return err
-			}
+			// Assign the SKU endpoint immediately. The JPEG is rendered and cached
+			// only when a customer or crawler first requests it, avoiding request
+			// timeouts for catalogues with tens of thousands of empty products.
+			defURL := defaultImageURLForSKUVersion(p.SKU, imageVersion)
 			if err := db.Model(&models.Product{}).Where("id = ?", p.ID).Update("image_urls", toImageURLsJSON([]string{defURL})).Error; err != nil {
 				return err
 			}

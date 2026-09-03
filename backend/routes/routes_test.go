@@ -22,3 +22,28 @@ func TestSetupRoutesAcceptsCategoryImpactRoute(t *testing.T) {
 		t.Fatal("category deletion-impact route was not registered")
 	}
 }
+
+func TestSetupRoutesRegistersProductImageAutofillRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	SetupRoutes(router)
+
+	wanted := map[string]bool{
+		"GET /api/v1/admin/products/bulk-default-image/brands":           false,
+		"POST /api/v1/admin/products/bulk-default-image/jobs":            false,
+		"GET /api/v1/admin/products/bulk-default-image/jobs/latest":      false,
+		"POST /api/v1/admin/products/bulk-default-image/jobs/:id/pause":  false,
+		"POST /api/v1/admin/products/bulk-default-image/jobs/:id/resume": false,
+	}
+	for _, route := range router.Routes() {
+		key := route.Method + " " + route.Path
+		if _, exists := wanted[key]; exists {
+			wanted[key] = true
+		}
+	}
+	for route, found := range wanted {
+		if !found {
+			t.Fatalf("product image autofill route was not registered: %s", route)
+		}
+	}
+}

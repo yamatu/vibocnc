@@ -16,17 +16,22 @@ import {
   PhotoIcon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
+  PauseIcon,
+  PlayIcon,
 } from '@heroicons/react/24/outline';
 
 import AdminLayout from '@/components/admin/AdminLayout';
 import { CategoryService, MediaService, ProductService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
 import type { MediaAsset, MediaCleanupMissingResponse, MediaUploadResponse } from '@/services/media.service';
+import type { ProductImageAutofillJob } from '@/services/product.service';
 import type { Category } from '@/types';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
 type MediaAssetUpdates = Partial<Pick<MediaAsset, 'folder' | 'tags' | 'title' | 'alt_text'>>;
 type BatchUpdatePayload = { ids: number[]; folder?: string; tags?: string };
+const imageAutofillJobQueryKey = ['media', 'image-autofill', 'latest'] as const;
+const imageAutofillBrandsQueryKey = ['media', 'image-autofill', 'brands'] as const;
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -52,6 +57,7 @@ export default function AdminMediaPage() {
   const [folderInput, setFolderInput] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(24);
+  const [includeGenerated, setIncludeGenerated] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
@@ -73,9 +79,10 @@ export default function AdminMediaPage() {
   const [showBatchEditModal, setShowBatchEditModal] = useState(false);
   const [batchFolder, setBatchFolder] = useState('');
   const [batchTags, setBatchTags] = useState('');
-  const [applyBrand, setApplyBrand] = useState('fanuc');
+  const [applyBrand, setApplyBrand] = useState('');
   const [applyCategoryId, setApplyCategoryId] = useState('');
   const [applyMode, setApplyMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
+  const [autofillProductStatus, setAutofillProductStatus] = useState<'active' | 'inactive' | 'all'>('all');
 
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
@@ -91,7 +98,7 @@ export default function AdminMediaPage() {
     setPage(1);
   }, [q, folder]);
 
-  const filters = useMemo(() => ({ q, folder, page, pageSize }), [q, folder, page, pageSize]);
+  const filters = useMemo(() => ({ q, folder, page, pageSize, includeGenerated }), [q, folder, page, pageSize, includeGenerated]);
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey: queryKeys.media.list(filters),
@@ -101,6 +108,7 @@ export default function AdminMediaPage() {
         folder: folder || undefined,
         page,
         page_size: pageSize,
+        include_generated: includeGenerated,
       }),
     placeholderData: previousData => previousData,
     retry: 1,
@@ -123,6 +131,22 @@ export default function AdminMediaPage() {
     queryFn: () => CategoryService.getAdminCategories(),
   });
   const categories = Array.isArray(categoriesData) ? (categoriesData as Category[]) : [];
+
+  const { data: autofillBrands = [] } = useQuery({
+    queryKey: imageAutofillBrandsQueryKey,
+    queryFn: () => ProductService.listProductImageAutofillBrands(),
+    retry: 1,
+  });
+
+  const { data: imageAutofillJob } = useQuery({
+    queryKey: imageAutofillJobQueryKey,
+    queryFn: () => ProductService.getLatestProductImageAutofillJob(),
+    retry: 1,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'queued' || status === 'running' || status === 'paused' ? 2000 : 10000;
+    },
+  });
 
   useEffect(() => {
     // If filters changed and current page is out of range, reset.
@@ -291,6 +315,38 @@ export default function AdminMediaPage() {
     onError: (error: unknown) => toast.error(getErrorMessage(error, t('media.toast.categoryImageApplyFailed', locale === 'zh' ? '批量换图失败' : 'Failed to apply image to products'))),
   });
 
+  const imageAutofillMutation = useMutation({
+    mutationFn: () => ProductService.startProductImageAutofill({
+      brand: applyBrand || undefined,
+      category_id: applyCategoryId ? Number(applyCategoryId) : undefined,
+      include_descendants: Boolean(applyCategoryId),
+      product_status: autofillProductStatus,
+      batch_size: 250,
+    }),
+    onSuccess: (job: ProductImageAutofillJob) => {
+      toast.success(locale === 'zh'
+        ? `SKU 空图后台任务已启动，将扫描 ${job.total.toLocaleString()} 个产品`
+        : `SKU image autofill started for ${job.total.toLocaleString()} products`);
+      queryClient.setQueryData(imageAutofillJobQueryKey, job);
+    },
+    onError: (error: unknown) => toast.error(getErrorMessage(error, locale === 'zh' ? '启动 SKU 空图补全任务失败' : 'Failed to start SKU image autofill')),
+  });
+
+  const imageAutofillControlMutation = useMutation({
+    mutationFn: (payload: { id: string; action: 'pause' | 'resume' }) => (
+      payload.action === 'pause'
+        ? ProductService.pauseProductImageAutofillJob(payload.id)
+        : ProductService.resumeProductImageAutofillJob(payload.id)
+    ),
+    onSuccess: (job: ProductImageAutofillJob) => {
+      queryClient.setQueryData(imageAutofillJobQueryKey, job);
+      toast.success(job.status === 'paused'
+        ? (locale === 'zh' ? '任务已暂停' : 'Task paused')
+        : (locale === 'zh' ? '任务已继续' : 'Task resumed'));
+    },
+    onError: (error: unknown) => toast.error(getErrorMessage(error, locale === 'zh' ? '更新任务状态失败' : 'Failed to update task')),
+  });
+
   const toggleSelected = (id: number) => {
     setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   };
@@ -342,6 +398,13 @@ export default function AdminMediaPage() {
   };
 
   const canBatch = selectedIds.length > 0;
+  const imageAutofillFinished = imageAutofillJob?.status === 'completed' || imageAutofillJob?.status === 'completed_with_errors';
+  const imageAutofillProgress = imageAutofillFinished
+    ? 100
+    : imageAutofillJob && imageAutofillJob.total > 0
+      ? Math.min(100, Math.round((imageAutofillJob.processed / imageAutofillJob.total) * 100))
+      : 0;
+  const imageAutofillActive = imageAutofillJob?.status === 'queued' || imageAutofillJob?.status === 'running' || imageAutofillJob?.status === 'paused';
 
   if (isLoading && !data) {
     return (
@@ -511,6 +574,145 @@ export default function AdminMediaPage() {
           </div>
         </div>
 
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex flex-col gap-5">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">
+                {locale === 'zh' ? 'SKU 空图自动补全' : 'Automatic SKU Image Autofill'}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {locale === 'zh'
+                  ? '后台扫描所选品牌和分类，只给没有任何图片的产品添加“底图＋完整 SKU”图片，绝不会覆盖真实产品图。图片在首次访问时生成并缓存，因此 2 万以上产品也不会让页面请求超时。'
+                  : 'Scans the selected brand/category in the background and assigns a base-image plus full-SKU fallback only to products with no images. Real product images are never overwritten; JPEGs are rendered lazily and cached.'}
+              </p>
+            </div>
+
+            {(!watermarkSettings?.enabled || !watermarkSettings?.base_media_asset_id) && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {locale === 'zh'
+                  ? '请先在上方启用默认产品图片，并从图库选择一张底图。'
+                  : 'Enable the default product image and select a base image above before starting.'}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {locale === 'zh' ? '品牌范围' : 'Brand scope'}
+                </label>
+                <select
+                  value={applyBrand}
+                  onChange={(event) => setApplyBrand(event.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="">{locale === 'zh' ? '全部品牌' : 'All brands'}</option>
+                  {autofillBrands.map((brand) => (
+                    <option key={brand.name.toLowerCase()} value={brand.name}>
+                      {brand.name} ({brand.count.toLocaleString()})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {locale === 'zh' ? '分类范围' : 'Category scope'}
+                </label>
+                <select
+                  value={applyCategoryId}
+                  onChange={(event) => setApplyCategoryId(event.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="">{locale === 'zh' ? '全部分类' : 'All categories'}</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={String(category.id)}>{category.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {locale === 'zh' ? '产品状态' : 'Product status'}
+                </label>
+                <select
+                  value={autofillProductStatus}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setAutofillProductStatus(value === 'active' || value === 'inactive' ? value : 'all');
+                  }}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="all">{locale === 'zh' ? '全部产品' : 'All products'}</option>
+                  <option value="active">{locale === 'zh' ? '仅启用产品' : 'Active only'}</option>
+                  <option value="inactive">{locale === 'zh' ? '仅未启用产品' : 'Inactive only'}</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  disabled={Boolean(imageAutofillActive) || imageAutofillMutation.isPending || !watermarkSettings?.enabled || !watermarkSettings?.base_media_asset_id}
+                  onClick={() => imageAutofillMutation.mutate()}
+                  className="inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <SparklesIcon className="h-4 w-4 mr-2" />
+                  {imageAutofillMutation.isPending
+                    ? (locale === 'zh' ? '正在创建任务...' : 'Starting task...')
+                    : (locale === 'zh' ? '开始后台自动补全' : 'Start background autofill')}
+                </button>
+              </div>
+            </div>
+
+            {imageAutofillJob && (
+              <div className={`rounded-lg border p-4 ${
+                imageAutofillJob.status === 'failed'
+                  ? 'border-red-200 bg-red-50'
+                  : imageAutofillJob.status === 'completed' || imageAutofillJob.status === 'completed_with_errors'
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-blue-200 bg-blue-50'
+              }`}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {locale === 'zh' ? '最近一次 SKU 补图任务' : 'Latest SKU autofill task'} · {imageAutofillJob.status}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-600">
+                      {locale === 'zh'
+                        ? `已扫描 ${imageAutofillJob.processed.toLocaleString()} / ${imageAutofillJob.total.toLocaleString()}，补全 ${imageAutofillJob.updated.toLocaleString()}，已有图片跳过 ${imageAutofillJob.skipped.toLocaleString()}，失败 ${imageAutofillJob.failed.toLocaleString()}`
+                        : `Scanned ${imageAutofillJob.processed.toLocaleString()} / ${imageAutofillJob.total.toLocaleString()}; filled ${imageAutofillJob.updated.toLocaleString()}, skipped ${imageAutofillJob.skipped.toLocaleString()}, failed ${imageAutofillJob.failed.toLocaleString()}`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(imageAutofillJob.status === 'queued' || imageAutofillJob.status === 'running') && (
+                      <button
+                        type="button"
+                        disabled={imageAutofillControlMutation.isPending}
+                        onClick={() => imageAutofillControlMutation.mutate({ id: imageAutofillJob.id, action: 'pause' })}
+                        className="inline-flex items-center rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                      >
+                        <PauseIcon className="h-4 w-4 mr-1" />
+                        {locale === 'zh' ? '暂停' : 'Pause'}
+                      </button>
+                    )}
+                    {imageAutofillJob.status === 'paused' && (
+                      <button
+                        type="button"
+                        disabled={imageAutofillControlMutation.isPending}
+                        onClick={() => imageAutofillControlMutation.mutate({ id: imageAutofillJob.id, action: 'resume' })}
+                        className="inline-flex items-center rounded-md bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        <PlayIcon className="h-4 w-4 mr-1" />
+                        {locale === 'zh' ? '继续' : 'Resume'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                  <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${imageAutofillProgress}%` }} />
+                </div>
+                {imageAutofillJob.error && <div className="mt-2 text-xs text-red-700">{imageAutofillJob.error}</div>}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Filters */}
         <div className="bg-white shadow rounded-lg p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -554,6 +756,20 @@ export default function AdminMediaPage() {
               </select>
             </div>
           </div>
+          <label className="mt-4 inline-flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={includeGenerated}
+              onChange={(event) => {
+                setIncludeGenerated(event.target.checked);
+                setPage(1);
+              }}
+              className="h-4 w-4"
+            />
+            {locale === 'zh'
+              ? '显示旧版自动生成的 SKU 缓存图（默认隐藏，避免图库被型号图片淹没）'
+              : 'Show legacy generated SKU cache images (hidden by default)'}
+          </label>
         </div>
 
         <div className="bg-white shadow rounded-lg p-6">
@@ -577,10 +793,10 @@ export default function AdminMediaPage() {
                   onChange={(e) => setApplyBrand(e.target.value)}
                   className="block w-full px-3 py-2 border border-gray-300 rounded-md"
                 >
-                  <option value="fanuc">FANUC</option>
-                  <option value="mitsubishi">Mitsubishi</option>
-                  <option value="siemens">Siemens</option>
-                  <option value="abb">ABB</option>
+                  <option value="">{locale === 'zh' ? '全部品牌' : 'All brands'}</option>
+                  {autofillBrands.map((brand) => (
+                    <option key={brand.name.toLowerCase()} value={brand.name}>{brand.name}</option>
+                  ))}
                 </select>
               </div>
               <div>

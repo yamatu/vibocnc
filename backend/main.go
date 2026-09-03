@@ -50,6 +50,8 @@ func main() {
 	// Resume bounded AI SEO jobs that were queued or interrupted by a container
 	// restart. This is especially important for the automatic 30,000-product queue.
 	controllers.ResumeAIAgentSEOJobs()
+	// Resume durable SKU fallback-image work after a container restart.
+	controllers.ResumeProductImageAutofillJobs()
 
 	// Set Gin mode
 	ginMode := strings.TrimSpace(os.Getenv("GIN_MODE"))

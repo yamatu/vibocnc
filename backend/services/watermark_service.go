@@ -58,6 +58,9 @@ type WatermarkRequest struct {
 	Title       string
 	AltText     string
 	Position    string
+	// Transient keeps lazily generated SKU fallbacks out of the admin media
+	// library while still caching the rendered JPEG on disk.
+	Transient bool
 }
 
 type WatermarkResult struct {
@@ -97,6 +100,29 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 	cacheKey := buildWatermarkCacheKey(baseIdentity, text, pos)
 	fileName := cacheKey + ".jpg"
 	relPath := filepath.ToSlash(filepath.Join("media", fileName))
+	uploadRoot := getUploadRootForServices()
+	mediaDir := filepath.Join(uploadRoot, "media")
+	finalPath := filepath.Join(mediaDir, fileName)
+
+	if req.Transient {
+		if cachedBytes, readErr := os.ReadFile(finalPath); readErr == nil {
+			h := sha256.Sum256(cachedBytes)
+			return &WatermarkResult{
+				Asset: models.MediaAsset{
+					OriginalName: "sku-fallback-" + utils.GenerateSlug(text) + ".jpg",
+					FileName:     fileName,
+					RelativePath: relPath,
+					SHA256:       hex.EncodeToString(h[:]),
+					MimeType:     "image/jpeg",
+					SizeBytes:    int64(len(cachedBytes)),
+					Folder:       "watermarked-default",
+					Tags:         "watermark,generated,sku-fallback",
+				},
+				CreatedNew: false,
+				SHA256:     hex.EncodeToString(h[:]),
+			}, nil
+		}
+	}
 
 	silentDB := db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
 	var existing models.MediaAsset
@@ -131,12 +157,9 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 	h := sha256.Sum256(outBytes)
 	sha := hex.EncodeToString(h[:])
 
-	uploadRoot := getUploadRootForServices()
-	mediaDir := filepath.Join(uploadRoot, "media")
 	if err := os.MkdirAll(mediaDir, 0o755); err != nil {
 		return nil, err
 	}
-	finalPath := filepath.Join(mediaDir, fileName)
 
 	if _, statErr := os.Stat(finalPath); statErr != nil {
 		if err := os.WriteFile(finalPath, outBytes, 0o644); err != nil {
@@ -171,6 +194,10 @@ func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*Watermar
 		Folder:       folder,
 		Tags:         "watermark",
 	}
+	if req.Transient {
+		asset.Tags = "watermark,generated,sku-fallback"
+		return &WatermarkResult{Asset: asset, CreatedNew: true, SHA256: sha}, nil
+	}
 
 	if err := db.Create(&asset).Error; err != nil {
 		var again models.MediaAsset
@@ -201,7 +228,7 @@ func watermarkJPEGQuality() int {
 
 func buildWatermarkCacheKey(baseIdentity, text, position string) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf(
-		"watermark:v2|base=%s|text=%s|pos=%s|max=%d|quality=%d",
+		"watermark:v3|base=%s|text=%s|pos=%s|max=%d|quality=%d",
 		baseIdentity,
 		text,
 		position,
@@ -275,34 +302,60 @@ func renderWatermarkJPEG(base image.Image, text string, position string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	// size relative to width
-	size := float64(w) / 14.0
-	if size < 22 {
-		size = 22
-	}
-	if size > 72 {
-		size = 72
-	}
-	face, err := opentype.NewFace(fontTTF, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingFull})
-	if err != nil {
-		return nil, err
-	}
-	defer face.Close()
-
 	pad := int(float64(w) * 0.04)
 	if pad < 20 {
 		pad = 20
 	}
+	text = strings.TrimSpace(text)
+	boxPadX := 18
+	boxPadY := 12
+	maxTextWidth := w - (pad+boxPadX)*2
+	if maxTextWidth < 120 {
+		maxTextWidth = 120
+	}
+
+	startSize := float64(w) / 14.0
+	if startSize < 22 {
+		startSize = 22
+	}
+	if startSize > 72 {
+		startSize = 72
+	}
+	minSize := 18.0
+	var face font.Face
+	var lines []string
+	for size := startSize; size >= minSize; size -= 2 {
+		candidate, faceErr := opentype.NewFace(fontTTF, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingFull})
+		if faceErr != nil {
+			return nil, faceErr
+		}
+		candidateLines := wrapWatermarkText(candidate, text, maxTextWidth)
+		if len(candidateLines) <= 3 || size <= minSize {
+			face = candidate
+			lines = candidateLines
+			break
+		}
+		_ = candidate.Close()
+	}
+	if face == nil || len(lines) == 0 {
+		return nil, errors.New("failed to fit watermark text")
+	}
+	defer face.Close()
 
 	d := &font.Drawer{Face: face}
-	text = strings.TrimSpace(text)
-	adv := d.MeasureString(text)
-	textW := adv.Ceil()
+	textW := 0
+	for _, line := range lines {
+		if width := d.MeasureString(line).Ceil(); width > textW {
+			textW = width
+		}
+	}
 	metrics := face.Metrics()
-	textH := (metrics.Ascent + metrics.Descent).Ceil()
-
-	boxPadX := 14
-	boxPadY := 10
+	lineHeight := (metrics.Ascent + metrics.Descent).Ceil()
+	lineGap := lineHeight / 4
+	if lineGap < 4 {
+		lineGap = 4
+	}
+	textH := lineHeight*len(lines) + lineGap*(len(lines)-1)
 	boxW := textW + boxPadX*2
 	boxH := textH + boxPadY*2
 
@@ -311,22 +364,76 @@ func renderWatermarkJPEG(base image.Image, text string, position string) ([]byte
 	// background box
 	draw.Draw(canvas, image.Rect(boxX1, boxY1, boxX1+boxW, boxY1+boxH), &image.Uniform{C: color.RGBA{0, 0, 0, 90}}, image.Point{}, draw.Over)
 
-	// shadow
 	d.Dst = canvas
-	d.Src = image.NewUniform(color.RGBA{0, 0, 0, 120})
-	d.Dot = fixed.P(boxX1+boxPadX+2, boxY1+boxPadY+metrics.Ascent.Ceil()+2)
-	d.DrawString(text)
-
-	// text
-	d.Src = image.NewUniform(color.RGBA{255, 255, 255, 215})
-	d.Dot = fixed.P(boxX1+boxPadX, boxY1+boxPadY+metrics.Ascent.Ceil())
-	d.DrawString(text)
+	baseline := boxY1 + boxPadY + metrics.Ascent.Ceil()
+	for index, line := range lines {
+		lineWidth := d.MeasureString(line).Ceil()
+		lineX := boxX1 + (boxW-lineWidth)/2
+		lineY := baseline + index*(lineHeight+lineGap)
+		// shadow
+		d.Src = image.NewUniform(color.RGBA{0, 0, 0, 120})
+		d.Dot = fixed.P(lineX+2, lineY+2)
+		d.DrawString(line)
+		// text
+		d.Src = image.NewUniform(color.RGBA{255, 255, 255, 225})
+		d.Dot = fixed.P(lineX, lineY)
+		d.DrawString(line)
+	}
 
 	var out bytes.Buffer
 	if err := jpeg.Encode(&out, canvas, &jpeg.Options{Quality: watermarkJPEGQuality()}); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func wrapWatermarkText(face font.Face, text string, maxWidth int) []string {
+	text = strings.TrimSpace(text)
+	if face == nil || text == "" || maxWidth <= 0 {
+		return nil
+	}
+	drawer := &font.Drawer{Face: face}
+	if drawer.MeasureString(text).Ceil() <= maxWidth {
+		return []string{text}
+	}
+
+	runes := []rune(text)
+	lines := make([]string, 0, 3)
+	start := 0
+	for start < len(runes) {
+		end := start + 1
+		lastBreak := -1
+		for end <= len(runes) {
+			candidate := string(runes[start:end])
+			if drawer.MeasureString(candidate).Ceil() > maxWidth {
+				break
+			}
+			if end < len(runes) && (runes[end-1] == '-' || runes[end-1] == '/' || runes[end-1] == ' ') {
+				lastBreak = end
+			}
+			end++
+		}
+		if end > len(runes) {
+			end = len(runes)
+		} else {
+			end--
+		}
+		if lastBreak > start && end < len(runes) {
+			end = lastBreak
+		}
+		if end <= start {
+			end = start + 1
+		}
+		line := strings.TrimSpace(string(runes[start:end]))
+		if line != "" {
+			lines = append(lines, line)
+		}
+		start = end
+		for start < len(runes) && runes[start] == ' ' {
+			start++
+		}
+	}
+	return lines
 }
 
 func normalizeWatermarkPosition(pos string) string {

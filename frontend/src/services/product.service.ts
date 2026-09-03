@@ -200,6 +200,43 @@ export interface BulkCategoryImageResult {
   apply_mode: 'fill_empty' | 'replace_all';
 }
 
+export type ProductImageAutofillJobStatus =
+  | 'queued'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'completed_with_errors'
+  | 'failed';
+
+export interface ProductImageAutofillJob {
+  id: string;
+  status: ProductImageAutofillJobStatus;
+  brand: string;
+  category_id: number;
+  include_descendants: boolean;
+  product_status: 'active' | 'inactive' | 'all';
+  batch_size: number;
+  max_product_id: number;
+  last_product_id: number;
+  image_version: string;
+  total: number;
+  processed: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  message: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface ProductImageAutofillBrand {
+  name: string;
+  count: number;
+}
+
 export interface ProductImageRecord {
   id: number;
   product_id: number;
@@ -598,6 +635,48 @@ export class ProductService {
     const response = await apiClient.put<APIResponse<{ updated: number; skipped: number }>>('/admin/products/bulk-default-image/apply', payload);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to apply default images');
+  }
+
+  static async listProductImageAutofillBrands(): Promise<ProductImageAutofillBrand[]> {
+    const response = await apiClient.get<APIResponse<ProductImageAutofillBrand[]>>('/admin/products/bulk-default-image/brands');
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to load product brands');
+  }
+
+  static async startProductImageAutofill(payload: {
+    brand?: string;
+    category_id?: number;
+    include_descendants?: boolean;
+    product_status?: 'active' | 'inactive' | 'all';
+    batch_size?: number;
+  }): Promise<ProductImageAutofillJob> {
+    const response = await apiClient.post<APIResponse<ProductImageAutofillJob>>('/admin/products/bulk-default-image/jobs', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to start SKU image autofill');
+  }
+
+  static async getLatestProductImageAutofillJob(): Promise<ProductImageAutofillJob | null> {
+    const response = await apiClient.get<APIResponse<ProductImageAutofillJob | null>>('/admin/products/bulk-default-image/jobs/latest');
+    if (response.data.success) return response.data.data || null;
+    throw new Error(response.data.message || 'Failed to load SKU image autofill task');
+  }
+
+  static async getProductImageAutofillJob(id: string): Promise<ProductImageAutofillJob> {
+    const response = await apiClient.get<APIResponse<ProductImageAutofillJob>>(`/admin/products/bulk-default-image/jobs/${encodeURIComponent(id)}`);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to load SKU image autofill task');
+  }
+
+  static async pauseProductImageAutofillJob(id: string): Promise<ProductImageAutofillJob> {
+    const response = await apiClient.post<APIResponse<ProductImageAutofillJob>>(`/admin/products/bulk-default-image/jobs/${encodeURIComponent(id)}/pause`);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to pause SKU image autofill task');
+  }
+
+  static async resumeProductImageAutofillJob(id: string): Promise<ProductImageAutofillJob> {
+    const response = await apiClient.post<APIResponse<ProductImageAutofillJob>>(`/admin/products/bulk-default-image/jobs/${encodeURIComponent(id)}/resume`);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to resume SKU image autofill task');
   }
 
   static async bulkRemoveDefaultImage(payload: {

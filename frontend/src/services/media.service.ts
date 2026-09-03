@@ -50,17 +50,18 @@ export interface WatermarkSettings {
   id: number;
   enabled: boolean;
   watermark_position?: string;
-  base_media_asset_id?: number;
+  base_media_asset_id?: number | null;
   base_media_asset?: MediaAsset;
 }
 
 export class MediaService {
-  static async list(params?: { page?: number; page_size?: number; q?: string; folder?: string }): Promise<MediaListResponse> {
+  static async list(params?: { page?: number; page_size?: number; q?: string; folder?: string; include_generated?: boolean }): Promise<MediaListResponse> {
     const qs = new URLSearchParams();
     if (params?.page) qs.set('page', String(params.page));
     if (params?.page_size) qs.set('page_size', String(params.page_size));
     if (params?.q) qs.set('q', params.q);
     if (params?.folder) qs.set('folder', params.folder);
+    if (params?.include_generated) qs.set('include_generated', 'true');
 
     const url = qs.toString() ? `/admin/media?${qs.toString()}` : '/admin/media';
     const response = await apiClient.get<APIResponse<MediaListResponse>>(url);

@@ -180,11 +180,11 @@ func (wc *WatermarkController) DefaultProductImage(c *gin.Context) {
 	if s.Enabled {
 		baseID = s.BaseMediaAssetID
 	}
-	wm, err := services.GenerateWatermarkedMediaAsset(db, services.WatermarkRequest{BaseAssetID: baseID, Text: sku, Folder: "watermarked-default", Position: s.WatermarkPosition})
+	wm, err := services.GenerateWatermarkedMediaAsset(db, services.WatermarkRequest{BaseAssetID: baseID, Text: sku, Folder: "watermarked-default", Position: s.WatermarkPosition, Transient: true})
 	if err != nil {
 		// If base image is not decodable (e.g., SVG), fallback to built-in base.
 		if baseID != nil {
-			wm, err = services.GenerateWatermarkedMediaAsset(db, services.WatermarkRequest{BaseAssetID: nil, Text: sku, Folder: "watermarked-default", Position: s.WatermarkPosition})
+			wm, err = services.GenerateWatermarkedMediaAsset(db, services.WatermarkRequest{BaseAssetID: nil, Text: sku, Folder: "watermarked-default", Position: s.WatermarkPosition, Transient: true})
 		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to generate image", Error: err.Error()})
