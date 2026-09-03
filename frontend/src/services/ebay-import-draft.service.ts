@@ -60,20 +60,45 @@ export interface EbayImportDraftUploadResponse {
 
 export interface EbayImportDraftJSONTaskSnapshot {
   id: string;
-  status: 'queued' | 'processing' | 'paused' | 'completed' | 'failed';
+  status: 'uploading' | 'queued' | 'processing' | 'paused' | 'completed' | 'completed_with_errors' | 'failed' | 'cancelled';
   filename: string;
   file_size: number;
+  uploaded_bytes: number;
+  chunk_size: number;
+  input_offset: number;
   progress_pct: number;
   processed: number;
   created: number;
   skipped: number;
   failed: number;
   message?: string;
+  error?: string;
   errors?: string[];
   created_at: string;
   started_at?: string;
   completed_at?: string;
   updated_at: string;
+}
+
+const MAX_JSON_IMPORT_BYTES = 1024 * 1024 * 1024;
+const MAX_JSON_IMPORT_CHUNK_BYTES = 8 * 1024 * 1024;
+
+async function buildJSONImportFingerprint(file: File): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return '';
+  // Hash a bounded sample so computing the resumable-upload identity does not
+  // require reading a 1 GiB file into browser memory.
+  const sampleSize = Math.min(1024 * 1024, file.size);
+  const first = new Uint8Array(await file.slice(0, sampleSize).arrayBuffer());
+  const lastStart = Math.max(0, file.size - sampleSize);
+  const last = new Uint8Array(await file.slice(lastStart, file.size).arrayBuffer());
+  const metadata = new TextEncoder().encode(`${file.name}\u0000${file.size}\u0000${lastStart}`);
+  const combined = new Uint8Array(metadata.length + first.length + last.length);
+  combined.set(metadata, 0);
+  combined.set(first, metadata.length);
+  combined.set(last, metadata.length + first.length);
+  const digest = new Uint8Array(await subtle.digest('SHA-256', combined));
+  return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export class EbayImportDraftService {
@@ -122,20 +147,106 @@ export class EbayImportDraftService {
   }
 
   static async startJSONImport(file: File, onUploadProgress?: (progressPct: number) => void): Promise<EbayImportDraftJSONTaskSnapshot> {
-    const response = await apiClient.post<APIResponse<EbayImportDraftJSONTaskSnapshot>>(
-      `/admin/ebay-import-drafts/json-import?filename=${encodeURIComponent(file.name)}`,
-      file,
-      {
-        headers: { 'Content-Type': file.type || 'application/json' },
-        timeout: 0,
-        onUploadProgress: (event: AxiosProgressEvent) => {
-          if (!onUploadProgress || !event.total) return;
-          onUploadProgress(Math.min(100, Math.max(0, Math.round((event.loaded * 100) / event.total))));
-        },
-      }
+    if (file.size <= 0) throw new Error('JSON file is empty');
+    if (file.size > MAX_JSON_IMPORT_BYTES) throw new Error('JSON file cannot exceed 1 GB');
+
+    const fingerprint = await buildJSONImportFingerprint(file);
+    const createResponse = await apiClient.post<APIResponse<EbayImportDraftJSONTaskSnapshot>>(
+      '/admin/ebay-import-drafts/json-import/tasks',
+      { filename: file.name, file_size: file.size, fingerprint },
+      { timeout: 30000 }
     );
-    if (response.data.success && response.data.data) return response.data.data;
-    throw new Error(response.data.message || 'Failed to start JSON import task');
+    if (!createResponse.data.success || !createResponse.data.data) {
+      throw new Error(createResponse.data.message || 'Failed to create JSON import upload');
+    }
+
+    let task = createResponse.data.data;
+    if (task.status !== 'uploading') return task;
+    const chunkSize = Math.min(
+      Math.max(task.chunk_size || 5 * 1024 * 1024, 1024 * 1024),
+      MAX_JSON_IMPORT_CHUNK_BYTES
+    );
+    let offset = Math.max(0, Math.min(file.size, task.uploaded_bytes || 0));
+    const report = (uploadedBytes: number) => {
+      const bounded = Math.max(0, Math.min(file.size, uploadedBytes));
+      onUploadProgress?.(Math.round((bounded * 100) / file.size));
+    };
+    report(offset);
+
+    while (offset < file.size) {
+      const chunkStart = offset;
+      const chunkEnd = Math.min(file.size, chunkStart + chunkSize);
+      const chunk = file.slice(chunkStart, chunkEnd);
+      let uploaded = false;
+      let lastError: unknown;
+
+      for (let attempt = 0; attempt < 4 && !uploaded; attempt += 1) {
+        try {
+          const response = await apiClient.put<APIResponse<EbayImportDraftJSONTaskSnapshot>>(
+            `/admin/ebay-import-drafts/json-import/tasks/${encodeURIComponent(task.id)}/chunk`,
+            chunk,
+            {
+              params: { offset: chunkStart },
+              headers: { 'Content-Type': 'application/octet-stream' },
+              timeout: 120000,
+              onUploadProgress: (event: AxiosProgressEvent) => {
+                const loaded = Math.min(event.loaded || 0, chunk.size);
+                report(chunkStart + loaded);
+              },
+            }
+          );
+          if (!response.data.success || !response.data.data) {
+            throw new Error(response.data.message || 'JSON chunk upload failed');
+          }
+          task = response.data.data;
+          offset = Math.max(0, Math.min(file.size, task.uploaded_bytes || 0));
+          uploaded = offset >= chunkEnd;
+        } catch (error: unknown) {
+          lastError = error;
+          try {
+            task = await this.getJSONImportTask(task.id);
+            offset = Math.max(0, Math.min(file.size, task.uploaded_bytes || 0));
+            report(offset);
+          } catch (statusError: unknown) {
+            lastError = statusError;
+          }
+          if (offset >= chunkEnd) {
+            uploaded = true;
+            break;
+          }
+          if (offset !== chunkStart) {
+            throw new Error('Server upload offset changed; reselect the same JSON file to resume');
+          }
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+          }
+        }
+      }
+      if (!uploaded) {
+        throw lastError instanceof Error ? lastError : new Error('JSON upload failed after retries');
+      }
+      report(offset);
+    }
+
+    try {
+      const completeResponse = await apiClient.post<APIResponse<EbayImportDraftJSONTaskSnapshot>>(
+        `/admin/ebay-import-drafts/json-import/tasks/${encodeURIComponent(task.id)}/complete`,
+        {},
+        { timeout: 30000 }
+      );
+      if (completeResponse.data.success && completeResponse.data.data) return completeResponse.data.data;
+      throw new Error(completeResponse.data.message || 'Failed to queue JSON import task');
+    } catch (error: unknown) {
+      // A proxy can drop the response after the server has queued the job.
+      // Resolve the durable state before showing a false upload failure.
+      try {
+        const latest = await this.getJSONImportTask(task.id);
+        if (latest.status !== 'uploading') return latest;
+      } catch {
+        // Preserve the original error when the status request also fails.
+      }
+      throw error;
+    }
   }
 
   static async getJSONImportTask(taskId: string): Promise<EbayImportDraftJSONTaskSnapshot> {
@@ -168,6 +279,14 @@ export class EbayImportDraftService {
     );
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to resume JSON import task');
+  }
+
+  static async cancelJSONImportTask(taskId: string): Promise<EbayImportDraftJSONTaskSnapshot> {
+    const response = await apiClient.delete<APIResponse<EbayImportDraftJSONTaskSnapshot>>(
+      `/admin/ebay-import-drafts/json-import/tasks/${encodeURIComponent(taskId)}`
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to cancel JSON import task');
   }
 
   static async get(id: number): Promise<EbayImportDraftDetail> {

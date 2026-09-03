@@ -133,6 +133,8 @@ func ConnectDatabase() {
 			&models.ProductReview{},
 			&models.ProductFAQ{},
 			&models.EbayImportDraft{},
+			&models.EbayImportJSONTask{},
+			&models.EbayImportJSONTaskItem{},
 			&models.PurchaseLink{},
 			&models.SEORedirect{},
 			&models.Customer{},

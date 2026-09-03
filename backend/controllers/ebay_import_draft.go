@@ -22,7 +22,26 @@ import (
 
 type EbayImportDraftController struct{}
 
-const maxEbayDraftJSONImportSize = int64(1024 << 20)
+const maxEbayDraftJSONImportSize = services.EbayDraftJSONMaxFileSize
+
+type ebayJSONImportTaskStartRequest struct {
+	Filename    string `json:"filename"`
+	FileName    string `json:"file_name"`
+	FileSize    int64  `json:"file_size" binding:"required"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+func ebayJSONTaskErrorStatus(err error) int {
+	if errors.Is(err, services.ErrEbayDraftJSONTaskNotFound) {
+		return http.StatusNotFound
+	}
+	if errors.Is(err, services.ErrEbayDraftJSONOffset) ||
+		errors.Is(err, services.ErrEbayDraftJSONUploadStatus) ||
+		errors.Is(err, services.ErrEbayDraftJSONUploadSize) {
+		return http.StatusConflict
+	}
+	return http.StatusInternalServerError
+}
 
 func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 	var req models.EbayImportDraftUploadRequest
@@ -109,7 +128,7 @@ func (ec *EbayImportDraftController) StartJSONImport(c *gin.Context) {
 		}
 		source = opened
 		closeSource = opened.Close
-	} else if !strings.Contains(contentType, "application/json") && !strings.Contains(contentType, "application/octet-stream") {
+	} else if contentType != "" && !strings.Contains(contentType, "application/json") && !strings.Contains(contentType, "application/octet-stream") && !strings.Contains(contentType, "text/plain") {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "JSON file content type is required", Error: "invalid_content_type"})
 		return
 	}
@@ -129,14 +148,101 @@ func (ec *EbayImportDraftController) StartJSONImport(c *gin.Context) {
 	}
 	task, err := services.StartEbayDraftJSONImportTask(config.GetDB(), source, filepath.Base(filename), fileSize)
 	if err != nil {
-		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "Failed to start JSON import", Error: err.Error()})
+		status := http.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "another") {
+			status = http.StatusConflict
+		}
+		c.JSON(status, models.APIResponse{Success: false, Message: "Failed to start JSON import", Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "JSON import task started", Data: task})
 }
 
+// CreateJSONImportTask starts the metadata phase of a resumable upload. The
+// browser then sends small raw chunks, avoiding proxy/body timeouts for large
+// exports.
+func (ec *EbayImportDraftController) CreateJSONImportTask(c *gin.Context) {
+	var req ebayJSONImportTaskStartRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid JSON upload request", Error: err.Error()})
+		return
+	}
+	if req.FileSize <= 0 || req.FileSize > maxEbayDraftJSONImportSize {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "JSON file must be between 1 byte and 1 GB", Error: "invalid_file_size"})
+		return
+	}
+	filename := strings.TrimSpace(req.Filename)
+	if filename == "" {
+		filename = strings.TrimSpace(req.FileName)
+	}
+	if filename == "" {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "A JSON filename is required", Error: "invalid_file_name"})
+		return
+	}
+	task, err := services.CreateEbayDraftJSONImportTask(config.GetDB(), filename, req.FileSize, req.Fingerprint, c.GetUint("user_id"))
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(strings.ToLower(err.Error()), "another") {
+			status = http.StatusConflict
+		}
+		c.JSON(status, models.APIResponse{Success: false, Message: "Failed to create JSON upload", Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, models.APIResponse{Success: true, Message: "JSON upload task created", Data: task})
+}
+
+// UploadJSONImportChunk accepts at most 8 MiB and requires the next server
+// offset. Identical retries are accepted by the service without rewriting.
+func (ec *EbayImportDraftController) UploadJSONImportChunk(c *gin.Context) {
+	offsetValue := strings.TrimSpace(c.Query("offset"))
+	if offsetValue == "" {
+		offsetValue = strings.TrimSpace(c.GetHeader("Upload-Offset"))
+	}
+	offset, err := strconv.ParseInt(offsetValue, 10, 64)
+	if err != nil || offset < 0 {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid JSON chunk offset", Error: "invalid_offset"})
+		return
+	}
+	chunk, err := io.ReadAll(io.LimitReader(c.Request.Body, services.EbayDraftJSONMaxChunkSize+1))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to read JSON chunk", Error: err.Error()})
+		return
+	}
+	if len(chunk) == 0 || int64(len(chunk)) > services.EbayDraftJSONMaxChunkSize {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "JSON chunk must be between 1 byte and 8 MiB", Error: "invalid_chunk_size"})
+		return
+	}
+	task, err := services.UploadEbayDraftJSONChunk(config.GetDB(), c.Param("taskId"), offset, chunk)
+	if err != nil {
+		status := ebayJSONTaskErrorStatus(err)
+		c.JSON(status, models.APIResponse{Success: false, Message: "Failed to upload JSON chunk", Error: err.Error(), Data: task})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "JSON chunk uploaded", Data: task})
+}
+
+func (ec *EbayImportDraftController) CompleteJSONImportTask(c *gin.Context) {
+	task, err := services.CompleteEbayDraftJSONImportTask(config.GetDB(), c.Param("taskId"))
+	if err != nil {
+		status := ebayJSONTaskErrorStatus(err)
+		c.JSON(status, models.APIResponse{Success: false, Message: "Failed to queue JSON import", Error: err.Error(), Data: task})
+		return
+	}
+	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "JSON import queued", Data: task})
+}
+
+func (ec *EbayImportDraftController) CancelJSONImportTask(c *gin.Context) {
+	task, err := services.CancelEbayDraftJSONImportTask(config.GetDB(), c.Param("taskId"))
+	if err != nil {
+		status := ebayJSONTaskErrorStatus(err)
+		c.JSON(status, models.APIResponse{Success: false, Message: "Failed to cancel JSON import", Error: err.Error(), Data: task})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "JSON import cancelled", Data: task})
+}
+
 func (ec *EbayImportDraftController) GetJSONImportTask(c *gin.Context) {
-	task, ok := services.GetEbayDraftJSONImportTask(c.Param("taskId"))
+	task, ok := services.LoadEbayDraftJSONImportTask(config.GetDB(), c.Param("taskId"))
 	if !ok {
 		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "JSON import task not found", Error: "task_not_found"})
 		return
@@ -145,7 +251,7 @@ func (ec *EbayImportDraftController) GetJSONImportTask(c *gin.Context) {
 }
 
 func (ec *EbayImportDraftController) GetLatestJSONImportTask(c *gin.Context) {
-	task, ok := services.GetLatestEbayDraftJSONImportTask()
+	task, ok := services.LoadLatestEbayDraftJSONImportTask(config.GetDB())
 	if !ok {
 		c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "No JSON import task", Data: nil})
 		return
@@ -154,7 +260,7 @@ func (ec *EbayImportDraftController) GetLatestJSONImportTask(c *gin.Context) {
 }
 
 func (ec *EbayImportDraftController) PauseJSONImportTask(c *gin.Context) {
-	task, err := services.PauseEbayDraftJSONImportTask(c.Param("taskId"))
+	task, err := services.PauseEbayDraftJSONImportTaskByDB(config.GetDB(), c.Param("taskId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to pause JSON import task", Error: err.Error()})
 		return
@@ -163,7 +269,7 @@ func (ec *EbayImportDraftController) PauseJSONImportTask(c *gin.Context) {
 }
 
 func (ec *EbayImportDraftController) ResumeJSONImportTask(c *gin.Context) {
-	task, err := services.ResumeEbayDraftJSONImportTask(c.Param("taskId"))
+	task, err := services.ResumeEbayDraftJSONImportTaskByDB(config.GetDB(), c.Param("taskId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to resume JSON import task", Error: err.Error()})
 		return

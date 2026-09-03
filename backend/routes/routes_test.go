@@ -84,3 +84,32 @@ func TestSetupRoutesRegistersProductImageManagementRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestSetupRoutesRegistersResumableEbayJSONImportRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	SetupRoutes(router)
+
+	wanted := map[string]bool{
+		"POST /api/v1/admin/ebay-import-drafts/json-import/tasks":                  false,
+		"GET /api/v1/admin/ebay-import-drafts/json-import/tasks/latest":            false,
+		"GET /api/v1/admin/ebay-import-drafts/json-import/tasks/:taskId":           false,
+		"PUT /api/v1/admin/ebay-import-drafts/json-import/tasks/:taskId/chunk":     false,
+		"POST /api/v1/admin/ebay-import-drafts/json-import/tasks/:taskId/chunk":    false,
+		"POST /api/v1/admin/ebay-import-drafts/json-import/tasks/:taskId/complete": false,
+		"POST /api/v1/admin/ebay-import-drafts/json-import/tasks/:taskId/pause":    false,
+		"POST /api/v1/admin/ebay-import-drafts/json-import/tasks/:taskId/resume":   false,
+		"DELETE /api/v1/admin/ebay-import-drafts/json-import/tasks/:taskId":        false,
+	}
+	for _, route := range router.Routes() {
+		key := route.Method + " " + route.Path
+		if _, exists := wanted[key]; exists {
+			wanted[key] = true
+		}
+	}
+	for route, found := range wanted {
+		if !found {
+			t.Fatalf("resumable eBay JSON import route was not registered: %s", route)
+		}
+	}
+}

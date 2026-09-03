@@ -95,7 +95,7 @@ function EbayImportDraftsContent() {
   useEffect(() => {
     const taskId = jsonImportTask?.id;
     const taskStatus = jsonImportTask?.status;
-    if (!taskId || (taskStatus !== 'queued' && taskStatus !== 'processing' && taskStatus !== 'paused')) return;
+    if (!taskId || (taskStatus !== 'uploading' && taskStatus !== 'queued' && taskStatus !== 'processing' && taskStatus !== 'paused')) return;
     let polling = false;
     const timer = window.setInterval(() => {
       if (polling) return;
@@ -103,12 +103,12 @@ function EbayImportDraftsContent() {
       void EbayImportDraftService.getJSONImportTask(taskId)
         .then(async (task) => {
           setJsonImportTask(task);
-          if (task.status === 'completed' || task.status === 'failed') {
+          if (task.status === 'completed' || task.status === 'completed_with_errors' || task.status === 'failed') {
             await queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.lists() });
-            toast(task.status === 'completed'
+            toast(task.status === 'completed' || task.status === 'completed_with_errors'
               ? (locale === 'zh' ? `后台导入完成：新增 ${task.created}，跳过重复 ${task.skipped}，失败 ${task.failed}` : `Background import completed: ${task.created} created, ${task.skipped} duplicates skipped, ${task.failed} failed`)
               : (locale === 'zh' ? `后台导入失败：${task.message || '未知错误'}` : `Background import failed: ${task.message || 'Unknown error'}`),
-            { id: `ebay-json-task-${task.id}`, icon: task.status === 'completed' ? '✅' : '❌' });
+            { id: `ebay-json-task-${task.id}`, icon: task.status === 'completed' ? '✅' : task.status === 'completed_with_errors' ? '⚠️' : '❌' });
           }
         })
         .catch(() => undefined)
@@ -402,6 +402,21 @@ function EbayImportDraftsContent() {
     }
   };
 
+  const cancelJSONImportTask = async () => {
+    if (!jsonImportTask) return;
+    if (!window.confirm(locale === 'zh' ? '确定取消这个 JSON 上传/导入任务吗？' : 'Cancel this JSON upload/import task?')) return;
+    setJsonTaskControlPending(true);
+    try {
+      const task = await EbayImportDraftService.cancelJSONImportTask(jsonImportTask.id);
+      setJsonImportTask(task);
+      toast.success(locale === 'zh' ? 'JSON 任务已取消' : 'JSON task cancelled');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '取消任务失败' : 'Failed to cancel task'));
+    } finally {
+      setJsonTaskControlPending(false);
+    }
+  };
+
   const renderStatus = (draft: EbayImportDraftListItem) => {
     const labelMap: Record<string, string> = locale === 'zh'
       ? {
@@ -491,7 +506,7 @@ function EbayImportDraftsContent() {
               className="inline-flex items-center rounded-md border border-blue-300 bg-white px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <ArrowUpTrayIcon className="mr-2 h-4 w-4" />
-              {jsonUploadPending ? '文件上传中...' : '创建后台 JSON 导入任务'}
+              {jsonUploadPending ? '文件分片上传中...' : '创建后台 JSON 导入任务'}
             </button>
             <button
               onClick={handleBulkRecheck}
@@ -665,7 +680,7 @@ function EbayImportDraftsContent() {
         {jsonUploadPending && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4" role="status" aria-live="polite">
             <div className="flex items-center justify-between gap-3 text-sm text-amber-900">
-              <span>正在把 JSON 文件上传到服务器，请在上传完成前保持此页面打开。</span>
+              <span>正在分片上传 JSON；网络中断后重新选择同一文件即可从服务器进度继续。</span>
               <span>{jsonUploadPct}%</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100">
@@ -682,15 +697,17 @@ function EbayImportDraftsContent() {
                 <>
                   <p className="mt-1 break-all">{jsonImportTask.filename} · 任务 ID：{jsonImportTask.id}</p>
                   <p className="mt-1">
-                    {jsonImportTask.status === 'queued'
+                    {jsonImportTask.status === 'uploading'
+                      ? `文件上传中：${(jsonImportTask.uploaded_bytes || 0).toLocaleString()} / ${(jsonImportTask.file_size || 0).toLocaleString()} 字节`
+                      : jsonImportTask.status === 'queued'
                       ? '等待后台处理'
                       : jsonImportTask.status === 'processing'
                         ? `处理中：新增 ${jsonImportTask.created}，跳过重复 ${jsonImportTask.skipped}，失败 ${jsonImportTask.failed}`
                         : jsonImportTask.status === 'paused'
                           ? `已暂停：新增 ${jsonImportTask.created}，跳过重复 ${jsonImportTask.skipped}，失败 ${jsonImportTask.failed}`
-                          : jsonImportTask.status === 'completed'
+                          : jsonImportTask.status === 'completed' || jsonImportTask.status === 'completed_with_errors'
                             ? `已完成：新增 ${jsonImportTask.created}，跳过重复 ${jsonImportTask.skipped}，失败 ${jsonImportTask.failed}`
-                            : `任务失败：${jsonImportTask.message || '未知错误'}`}
+                            : `任务失败：${jsonImportTask.message || jsonImportTask.error || '未知错误'}`}
                   </p>
                 </>
               ) : (
@@ -727,6 +744,16 @@ function EbayImportDraftsContent() {
                   <PlayIcon className="mr-1.5 h-4 w-4" />继续任务
                 </button>
               )}
+              {(jsonImportTask?.status === 'uploading' || jsonImportTask?.status === 'queued' || jsonImportTask?.status === 'processing' || jsonImportTask?.status === 'paused') && (
+                <button
+                  type="button"
+                  onClick={() => void cancelJSONImportTask()}
+                  disabled={jsonTaskControlPending}
+                  className="inline-flex items-center rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                >
+                  取消任务
+                </button>
+              )}
             </div>
           </div>
           {jsonImportTask && (
@@ -738,11 +765,11 @@ function EbayImportDraftsContent() {
               <div className="mt-1 h-2 overflow-hidden rounded-full bg-blue-100">
                 <div
                   className={`h-full transition-[width] duration-300 ${jsonImportTask.status === 'paused' ? 'bg-amber-500' : jsonImportTask.status === 'failed' ? 'bg-red-500' : 'bg-blue-600'}`}
-                  style={{ width: `${Math.max(jsonImportTask.status === 'completed' ? 100 : 2, Math.min(100, jsonImportTask.progress_pct || 0))}%` }}
+                  style={{ width: `${Math.max(jsonImportTask.status === 'completed' || jsonImportTask.status === 'completed_with_errors' ? 100 : 2, Math.min(100, jsonImportTask.progress_pct || 0))}%` }}
                 />
               </div>
               <p className="mt-2 text-xs text-blue-800">
-                已处理 {jsonImportTask.processed} 条 · 最后更新 {new Date(jsonImportTask.updated_at).toLocaleString()}。关闭或刷新网页不会终止任务。
+                已处理 {jsonImportTask.processed} 条 · 最后更新 {new Date(jsonImportTask.updated_at).toLocaleString()}。上传完成后关闭或刷新网页不会终止后台任务。
               </p>
             </>
           )}

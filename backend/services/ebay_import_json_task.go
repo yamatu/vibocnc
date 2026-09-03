@@ -1,7 +1,11 @@
 package services
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,41 +20,77 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
+	EbayDraftJSONTaskUploading  = "uploading"
 	EbayDraftJSONTaskQueued     = "queued"
 	EbayDraftJSONTaskProcessing = "processing"
 	EbayDraftJSONTaskPaused     = "paused"
 	EbayDraftJSONTaskCompleted  = "completed"
+	EbayDraftJSONTaskWithErrors = "completed_with_errors"
 	EbayDraftJSONTaskFailed     = "failed"
+	EbayDraftJSONTaskCancelled  = "cancelled"
+
+	// The limits are enforced here as well as in the HTTP controller so the
+	// service remains safe when called by another transport.
+	EbayDraftJSONMaxFileSize  int64 = 1024 << 20 // 1 GiB
+	EbayDraftJSONChunkSize    int64 = 5 << 20    // 5 MiB
+	EbayDraftJSONMaxChunkSize int64 = 8 << 20    // 8 MiB
+	maxEbayDraftJSONItemBytes       = 32 << 20   // protect the worker from one giant object
 
 	ebayDraftJSONTaskLimit  = 25
 	ebayDraftJSONErrorLimit = 100
+	ebayDraftJSONUploadTTL  = 24 * time.Hour
 )
 
+var (
+	ErrEbayDraftJSONTaskNotFound = errors.New("JSON import task not found")
+	ErrEbayDraftJSONOffset       = errors.New("offset_mismatch")
+	ErrEbayDraftJSONUploadStatus = errors.New("invalid_upload_status")
+	ErrEbayDraftJSONUploadSize   = errors.New("upload_incomplete")
+	errEbayDraftJSONPaused       = errors.New("JSON import task paused")
+	errEbayDraftJSONStopped      = errors.New("JSON import task stopped")
+)
+
+// EbayDraftJSONImportTaskSnapshot is the stable API representation shared by
+// the legacy single-request endpoint and the resumable upload endpoints.
 type EbayDraftJSONImportTaskSnapshot struct {
-	ID          string     `json:"id"`
-	Status      string     `json:"status"`
-	Filename    string     `json:"filename"`
-	FileSize    int64      `json:"file_size"`
-	ProgressPct float64    `json:"progress_pct"`
-	Processed   int        `json:"processed"`
-	Created     int        `json:"created"`
-	Skipped     int        `json:"skipped"`
-	Failed      int        `json:"failed"`
-	Message     string     `json:"message,omitempty"`
-	Errors      []string   `json:"errors,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID            string     `json:"id"`
+	Status        string     `json:"status"`
+	Filename      string     `json:"filename"`
+	FileSize      int64      `json:"file_size"`
+	UploadedBytes int64      `json:"uploaded_bytes"`
+	ChunkSize     int64      `json:"chunk_size"`
+	InputOffset   int64      `json:"input_offset"`
+	ProgressPct   float64    `json:"progress_pct"`
+	Processed     int        `json:"processed"`
+	Created       int        `json:"created"`
+	Skipped       int        `json:"skipped"`
+	Failed        int        `json:"failed"`
+	Message       string     `json:"message,omitempty"`
+	Error         string     `json:"error,omitempty"`
+	Errors        []string   `json:"errors,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	StartedAt     *time.Time `json:"started_at,omitempty"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+// ebayDraftJSONImportTask remains as a small in-process mirror for older
+// callers. Durable workers always persist their state in the database.
 type ebayDraftJSONImportTask struct {
 	mu             sync.RWMutex
 	cond           *sync.Cond
 	pauseRequested bool
+
+	db            *gorm.DB
+	workerToken   string
+	Fingerprint   string
+	InputOffset   int64
+	UploadedBytes int64
+	ChunkSize     int64
 
 	ID          string
 	Status      string
@@ -63,6 +103,7 @@ type ebayDraftJSONImportTask struct {
 	Skipped     int
 	Failed      int
 	Message     string
+	Error       string
 	Errors      []string
 	CreatedAt   time.Time
 	StartedAt   *time.Time
@@ -81,131 +122,689 @@ var ebayDraftJSONImports = &ebayDraftJSONImportManager{
 	tasks: make(map[string]*ebayDraftJSONImportTask),
 }
 
-func StartEbayDraftJSONImportTask(db *gorm.DB, src io.Reader, filename string, fileSize int64) (EbayDraftJSONImportTaskSnapshot, error) {
+var (
+	ebayDraftJSONDBMu           sync.RWMutex
+	ebayDraftJSONDB             *gorm.DB
+	ebayDraftJSONStartMu        sync.Mutex
+	ebayDraftJSONGlobalWorkerMu sync.Mutex
+	ebayDraftJSONUploadLocks    sync.Map // task id -> *sync.Mutex
+	ebayDraftJSONWorkerLocks    sync.Map // task id -> *sync.Mutex
+)
+
+func setEbayDraftJSONDB(db *gorm.DB) {
+	ebayDraftJSONDBMu.Lock()
+	ebayDraftJSONDB = db
+	ebayDraftJSONDBMu.Unlock()
+}
+
+func currentEbayDraftJSONDB() *gorm.DB {
+	ebayDraftJSONDBMu.RLock()
+	defer ebayDraftJSONDBMu.RUnlock()
+	return ebayDraftJSONDB
+}
+
+func ebayJSONUploadLock(id string) *sync.Mutex {
+	value, _ := ebayDraftJSONUploadLocks.LoadOrStore(id, &sync.Mutex{})
+	return value.(*sync.Mutex)
+}
+
+func ebayJSONWorkerLock(id string) *sync.Mutex {
+	value, _ := ebayDraftJSONWorkerLocks.LoadOrStore(id, &sync.Mutex{})
+	return value.(*sync.Mutex)
+}
+
+func ebayJSONUploadRoot() string {
+	root := strings.TrimSpace(os.Getenv("UPLOAD_PATH"))
+	if root == "" {
+		root = "./uploads"
+	}
+	return root
+}
+
+func ebayJSONTempDir() string {
+	return filepath.Join(ebayJSONUploadRoot(), ".imports", "ebay-json")
+}
+
+func normalizeEbayJSONFilename(value string) string {
+	value = strings.ReplaceAll(value, "\\", "/")
+	value = filepath.Base(strings.TrimSpace(value))
+	if value == "" {
+		return "ebay-import-drafts.json"
+	}
+	value = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, value)
+	if len(value) > 255 {
+		runes := []rune(value)
+		if len(runes) > 255 {
+			value = string(runes[:255])
+		}
+	}
+	return value
+}
+
+func validEbayJSONFingerprint(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	if len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func snapshotFromEbayJSONModel(row models.EbayImportJSONTask) EbayDraftJSONImportTaskSnapshot {
+	errorsList := make([]string, 0, ebayDraftJSONErrorLimit)
+	if strings.TrimSpace(row.ErrorsJSON) != "" {
+		_ = json.Unmarshal([]byte(row.ErrorsJSON), &errorsList)
+	}
+	return EbayDraftJSONImportTaskSnapshot{
+		ID: row.ID, Status: row.Status, Filename: row.Filename, FileSize: row.FileSize,
+		UploadedBytes: row.UploadedBytes, ChunkSize: row.ChunkSize, InputOffset: row.InputOffset,
+		ProgressPct: row.ProgressPct, Processed: row.Processed, Created: row.Created,
+		Skipped: row.Skipped, Failed: row.Failed, Message: row.Message, Error: row.Error,
+		Errors: errorsList, CreatedAt: row.CreatedAt, StartedAt: row.StartedAt,
+		CompletedAt: row.CompletedAt, UpdatedAt: row.UpdatedAt,
+	}
+}
+
+func runtimeFromEbayJSONModel(row models.EbayImportJSONTask, db *gorm.DB, workerToken string) *ebayDraftJSONImportTask {
+	task := &ebayDraftJSONImportTask{
+		db: db, workerToken: workerToken, Fingerprint: row.Fingerprint,
+		InputOffset: row.InputOffset, UploadedBytes: row.UploadedBytes, ChunkSize: row.ChunkSize,
+		ID: row.ID, Status: row.Status, Filename: row.Filename, FilePath: row.FilePath,
+		FileSize: row.FileSize, ProgressPct: row.ProgressPct, Processed: row.Processed,
+		Created: row.Created, Skipped: row.Skipped, Failed: row.Failed, Message: row.Message,
+		Error: row.Error, CreatedAt: row.CreatedAt, StartedAt: row.StartedAt,
+		CompletedAt: row.CompletedAt, UpdatedAt: row.UpdatedAt,
+		Errors: make([]string, 0, ebayDraftJSONErrorLimit),
+	}
+	if strings.TrimSpace(row.ErrorsJSON) != "" {
+		_ = json.Unmarshal([]byte(row.ErrorsJSON), &task.Errors)
+	}
+	task.cond = sync.NewCond(&task.mu)
+	return task
+}
+
+// CreateEbayDraftJSONImportTask creates (or returns) a resumable upload slot.
+// A matching unfinished upload is returned idempotently for browser retries.
+func CreateEbayDraftJSONImportTask(db *gorm.DB, filename string, fileSize int64, fingerprint string, createdByID uint) (EbayDraftJSONImportTaskSnapshot, error) {
 	if db == nil {
 		return EbayDraftJSONImportTaskSnapshot{}, errors.New("db is nil")
 	}
-	if src == nil {
-		return EbayDraftJSONImportTaskSnapshot{}, errors.New("JSON file is required")
+	if fileSize < 0 || fileSize > EbayDraftJSONMaxFileSize {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("JSON file size is outside the 1 GiB limit")
 	}
-	if ebayDraftJSONImports.hasActive() {
-		return EbayDraftJSONImportTaskSnapshot{}, errors.New("another eBay draft JSON import is already running")
+	filename = normalizeEbayJSONFilename(filename)
+	if !strings.EqualFold(filepath.Ext(filename), ".json") {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("Only .json files are supported")
+	}
+	fingerprint = strings.TrimSpace(fingerprint)
+	if !validEbayJSONFingerprint(fingerprint) {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("invalid upload fingerprint")
+	}
+	setEbayDraftJSONDB(db)
+	ebayDraftJSONStartMu.Lock()
+	defer ebayDraftJSONStartMu.Unlock()
+
+	activeStatuses := []string{EbayDraftJSONTaskUploading, EbayDraftJSONTaskQueued, EbayDraftJSONTaskProcessing, EbayDraftJSONTaskPaused}
+	var active models.EbayImportJSONTask
+	err := db.Where("status IN ?", activeStatuses).Order("created_at DESC").First(&active).Error
+	if err == nil {
+		if active.Status == EbayDraftJSONTaskUploading {
+			stat, statErr := os.Stat(active.FilePath)
+			expired := !active.UpdatedAt.IsZero() && time.Since(active.UpdatedAt) > ebayDraftJSONUploadTTL
+			same := strings.EqualFold(active.Filename, filename) && active.FileSize == fileSize &&
+				(active.Fingerprint == "" || fingerprint == "" || strings.EqualFold(active.Fingerprint, fingerprint))
+			if same && statErr == nil && stat.Size() <= active.FileSize && !expired {
+				return snapshotFromEbayJSONModel(active), nil
+			}
+			if expired || os.IsNotExist(statErr) || (statErr == nil && stat.Size() > active.FileSize) {
+				now := time.Now().UTC()
+				_ = db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", active.ID, EbayDraftJSONTaskUploading).
+					Updates(map[string]interface{}{"status": EbayDraftJSONTaskCancelled, "message": "expired or missing upload cancelled", "completed_at": &now, "updated_at": &now})
+				_ = os.Remove(active.FilePath)
+			} else {
+				return EbayDraftJSONImportTaskSnapshot{}, errors.New("another eBay JSON import task is active")
+			}
+		} else {
+			return EbayDraftJSONImportTaskSnapshot{}, errors.New("another eBay JSON import task is active")
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return EbayDraftJSONImportTaskSnapshot{}, err
 	}
 
-	tempDir := filepath.Join(os.TempDir(), "ebay-draft-json-imports")
-	if err := os.MkdirAll(tempDir, 0o755); err != nil {
+	if err := os.MkdirAll(ebayJSONTempDir(), 0o750); err != nil {
 		return EbayDraftJSONImportTaskSnapshot{}, err
 	}
 	taskID := uuid.NewString()
-	tmpFile, err := os.CreateTemp(tempDir, fmt.Sprintf("%s-*.json", taskID))
+	filePath := filepath.Join(ebayJSONTempDir(), taskID+".json")
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
 	if err != nil {
 		return EbayDraftJSONImportTaskSnapshot{}, err
 	}
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = tmpFile.Close()
-			_ = os.Remove(tmpFile.Name())
-		}
-	}()
-	written, err := io.Copy(tmpFile, src)
-	if err != nil {
+	_ = file.Close()
+	now := time.Now().UTC()
+	row := models.EbayImportJSONTask{
+		ID: taskID, Status: EbayDraftJSONTaskUploading, Filename: filename, FileSize: fileSize,
+		ChunkSize: EbayDraftJSONChunkSize, Fingerprint: fingerprint, FilePath: filePath,
+		Message: "waiting for JSON chunks", CreatedByID: createdByID, CreatedAt: now, UpdatedAt: now,
+		ErrorsJSON: "[]",
+	}
+	if err := db.Create(&row).Error; err != nil {
+		_ = os.Remove(filePath)
 		return EbayDraftJSONImportTaskSnapshot{}, err
 	}
-	if err := tmpFile.Close(); err != nil {
-		return EbayDraftJSONImportTaskSnapshot{}, err
-	}
-	if fileSize <= 0 {
-		fileSize = written
-	}
-	now := time.Now()
-	task := &ebayDraftJSONImportTask{
-		ID:        taskID,
-		Status:    EbayDraftJSONTaskQueued,
-		Filename:  filename,
-		FilePath:  tmpFile.Name(),
-		FileSize:  fileSize,
-		Message:   "queued",
-		Errors:    make([]string, 0, ebayDraftJSONErrorLimit),
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	task.cond = sync.NewCond(&task.mu)
-	ebayDraftJSONImports.add(task)
-	cleanup = false
-	go runEbayDraftJSONImportTask(context.Background(), db, task)
-	return task.snapshot(), nil
+	return snapshotFromEbayJSONModel(row), nil
 }
 
+// StartEbayDraftJSONImportTask is the legacy compatibility path. It writes a
+// complete request into the same durable file and queues it.
+func StartEbayDraftJSONImportTask(db *gorm.DB, src io.Reader, filename string, fileSize int64) (EbayDraftJSONImportTaskSnapshot, error) {
+	if src == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("JSON file is required")
+	}
+	if fileSize < 0 {
+		fileSize = 0
+	}
+	task, err := CreateEbayDraftJSONImportTask(db, filename, fileSize, "", 0)
+	if err != nil {
+		return EbayDraftJSONImportTaskSnapshot{}, err
+	}
+	lock := ebayJSONUploadLock(task.ID)
+	lock.Lock()
+	filePath := filePathForEbayJSONTask(db, task.ID)
+	resetNow := time.Now().UTC()
+	reset := db.Model(&models.EbayImportJSONTask{}).
+		Where("id = ? AND status = ?", task.ID, EbayDraftJSONTaskUploading).
+		Updates(map[string]interface{}{"uploaded_bytes": 0, "progress_pct": 0, "updated_at": &resetNow, "message": "restarting JSON upload"})
+	if reset.Error != nil {
+		lock.Unlock()
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("JSON upload task is no longer accepting data")
+	}
+	file, err := os.OpenFile(filePath, os.O_RDWR, 0o600)
+	if err != nil {
+		lock.Unlock()
+		return EbayDraftJSONImportTaskSnapshot{}, err
+	}
+	copyErr := file.Truncate(0)
+	if copyErr == nil {
+		_, _ = file.Seek(0, io.SeekStart)
+	}
+	written := int64(0)
+	if copyErr == nil {
+		written, copyErr = io.Copy(file, io.LimitReader(src, EbayDraftJSONMaxFileSize+1))
+	}
+	if copyErr == nil && written > EbayDraftJSONMaxFileSize {
+		copyErr = errors.New("JSON file exceeds the 1 GiB limit")
+	}
+	if copyErr == nil && fileSize > 0 && written != fileSize {
+		copyErr = fmt.Errorf("JSON file size mismatch: received %d bytes, expected %d", written, fileSize)
+	}
+	if copyErr == nil && written == 0 {
+		copyErr = errors.New("JSON file is empty")
+	}
+	if copyErr == nil {
+		copyErr = file.Sync()
+	}
+	_ = file.Close()
+	lock.Unlock()
+	if copyErr != nil {
+		now := time.Now().UTC()
+		_ = db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", task.ID, EbayDraftJSONTaskUploading).
+			Updates(map[string]interface{}{"status": EbayDraftJSONTaskCancelled, "message": "legacy JSON upload failed", "error": copyErr.Error(), "completed_at": &now, "updated_at": &now})
+		_ = os.Remove(filePath)
+		return EbayDraftJSONImportTaskSnapshot{}, copyErr
+	}
+	if fileSize == 0 {
+		fileSize = written
+	}
+	now := time.Now().UTC()
+	progress := 0.0
+	if fileSize > 0 {
+		progress = minFloat64(99.9, float64(written)*100/float64(fileSize))
+	}
+	result := db.Model(&models.EbayImportJSONTask{}).
+		Where("id = ? AND status = ?", task.ID, EbayDraftJSONTaskUploading).
+		Updates(map[string]interface{}{"file_size": fileSize, "uploaded_bytes": written, "progress_pct": progress, "updated_at": &now, "message": "upload complete"})
+	if result.Error != nil || result.RowsAffected == 0 {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("failed to persist JSON upload progress")
+	}
+	return CompleteEbayDraftJSONImportTask(db, task.ID)
+}
+
+func filePathForEbayJSONTask(db *gorm.DB, taskID string) string {
+	var row models.EbayImportJSONTask
+	if db != nil && db.First(&row, "id = ?", strings.TrimSpace(taskID)).Error == nil && strings.TrimSpace(row.FilePath) != "" {
+		return row.FilePath
+	}
+	return filepath.Join(ebayJSONTempDir(), strings.TrimSpace(taskID)+".json")
+}
+
+// UploadEbayDraftJSONChunk appends one sequential chunk. Re-sending an
+// identical already-written chunk is idempotent if a proxy dropped a response.
+func UploadEbayDraftJSONChunk(db *gorm.DB, taskID string, offset int64, chunk []byte) (EbayDraftJSONImportTaskSnapshot, error) {
+	if db == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("db is nil")
+	}
+	if offset < 0 {
+		return EbayDraftJSONImportTaskSnapshot{}, fmt.Errorf("%w: invalid offset", ErrEbayDraftJSONOffset)
+	}
+	if len(chunk) == 0 || int64(len(chunk)) > EbayDraftJSONMaxChunkSize {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("JSON chunk must be between 1 byte and 8 MiB")
+	}
+	taskID = strings.TrimSpace(taskID)
+	lock := ebayJSONUploadLock(taskID)
+	lock.Lock()
+	defer lock.Unlock()
+	var row models.EbayImportJSONTask
+	if err := db.First(&row, "id = ?", taskID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return EbayDraftJSONImportTaskSnapshot{}, ErrEbayDraftJSONTaskNotFound
+		}
+		return EbayDraftJSONImportTaskSnapshot{}, err
+	}
+	if row.Status != EbayDraftJSONTaskUploading {
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: task is %s", ErrEbayDraftJSONUploadStatus, row.Status)
+	}
+	if offset > row.FileSize || int64(len(chunk)) > row.FileSize-offset {
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: chunk exceeds declared file size", ErrEbayDraftJSONUploadSize)
+	}
+	file, err := os.OpenFile(row.FilePath, os.O_RDWR, 0o600)
+	if err != nil {
+		return snapshotFromEbayJSONModel(row), err
+	}
+	defer file.Close()
+	if offset < row.UploadedBytes && offset+int64(len(chunk)) <= row.UploadedBytes {
+		existing := make([]byte, len(chunk))
+		if _, readErr := file.ReadAt(existing, offset); readErr == nil && bytes.Equal(existing, chunk) {
+			return snapshotFromEbayJSONModel(row), nil
+		}
+	}
+	if offset != row.UploadedBytes {
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: server expects offset %d", ErrEbayDraftJSONOffset, row.UploadedBytes)
+	}
+	written, writeErr := file.WriteAt(chunk, offset)
+	if writeErr != nil {
+		return snapshotFromEbayJSONModel(row), writeErr
+	}
+	if written != len(chunk) {
+		return snapshotFromEbayJSONModel(row), io.ErrShortWrite
+	}
+	if err := file.Sync(); err != nil {
+		return snapshotFromEbayJSONModel(row), err
+	}
+	next := offset + int64(len(chunk))
+	now := time.Now().UTC()
+	progress := 0.0
+	if row.FileSize > 0 {
+		progress = minFloat64(99.9, float64(next)*100/float64(row.FileSize))
+	}
+	result := db.Model(&models.EbayImportJSONTask{}).
+		Where("id = ? AND status = ? AND uploaded_bytes = ?", row.ID, EbayDraftJSONTaskUploading, offset).
+		Updates(map[string]interface{}{"uploaded_bytes": next, "progress_pct": progress, "message": "uploading JSON", "updated_at": &now})
+	if result.Error != nil {
+		return snapshotFromEbayJSONModel(row), result.Error
+	}
+	if result.RowsAffected == 0 {
+		_ = db.First(&row, "id = ?", row.ID).Error
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: upload progress changed", ErrEbayDraftJSONOffset)
+	}
+	row.UploadedBytes = next
+	row.ProgressPct = progress
+	row.UpdatedAt = now
+	row.Message = "uploading JSON"
+	return snapshotFromEbayJSONModel(row), nil
+}
+
+// CompleteEbayDraftJSONImportTask queues an uploaded file. Repeated calls are
+// idempotent and return the current state.
+func CompleteEbayDraftJSONImportTask(db *gorm.DB, taskID string) (EbayDraftJSONImportTaskSnapshot, error) {
+	if db == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("db is nil")
+	}
+	taskID = strings.TrimSpace(taskID)
+	lock := ebayJSONUploadLock(taskID)
+	lock.Lock()
+	defer lock.Unlock()
+	var row models.EbayImportJSONTask
+	if err := db.First(&row, "id = ?", taskID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return EbayDraftJSONImportTaskSnapshot{}, ErrEbayDraftJSONTaskNotFound
+		}
+		return EbayDraftJSONImportTaskSnapshot{}, err
+	}
+	if row.Status == EbayDraftJSONTaskQueued || row.Status == EbayDraftJSONTaskProcessing || row.Status == EbayDraftJSONTaskPaused || row.Status == EbayDraftJSONTaskCompleted || row.Status == EbayDraftJSONTaskWithErrors {
+		return snapshotFromEbayJSONModel(row), nil
+	}
+	if row.Status != EbayDraftJSONTaskUploading {
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: task is %s", ErrEbayDraftJSONUploadStatus, row.Status)
+	}
+	if row.FileSize <= 0 || row.UploadedBytes != row.FileSize {
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: uploaded %d of %d bytes", ErrEbayDraftJSONUploadSize, row.UploadedBytes, row.FileSize)
+	}
+	stat, err := os.Stat(row.FilePath)
+	if err != nil || stat.Size() != row.FileSize {
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: uploaded file is incomplete", ErrEbayDraftJSONUploadSize)
+	}
+	now := time.Now().UTC()
+	result := db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", row.ID, EbayDraftJSONTaskUploading).
+		Updates(map[string]interface{}{"status": EbayDraftJSONTaskQueued, "message": "queued for background processing", "updated_at": &now})
+	if result.Error != nil {
+		return snapshotFromEbayJSONModel(row), result.Error
+	}
+	if result.RowsAffected == 0 {
+		_ = db.First(&row, "id = ?", row.ID).Error
+		return snapshotFromEbayJSONModel(row), fmt.Errorf("%w: task state changed", ErrEbayDraftJSONUploadStatus)
+	}
+	row.Status = EbayDraftJSONTaskQueued
+	row.Message = "queued for background processing"
+	row.UpdatedAt = now
+	go runPersistentEbayDraftJSONImportTask(db, row.ID)
+	return snapshotFromEbayJSONModel(row), nil
+}
+
+func LoadEbayDraftJSONImportTask(db *gorm.DB, taskID string) (EbayDraftJSONImportTaskSnapshot, bool) {
+	if db == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, false
+	}
+	setEbayDraftJSONDB(db)
+	var row models.EbayImportJSONTask
+	if err := db.First(&row, "id = ?", strings.TrimSpace(taskID)).Error; err != nil {
+		return EbayDraftJSONImportTaskSnapshot{}, false
+	}
+	return snapshotFromEbayJSONModel(row), true
+}
+
+func LoadLatestEbayDraftJSONImportTask(db *gorm.DB) (EbayDraftJSONImportTaskSnapshot, bool) {
+	if db == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, false
+	}
+	setEbayDraftJSONDB(db)
+	var row models.EbayImportJSONTask
+	if err := db.Order("created_at DESC").First(&row).Error; err != nil {
+		return EbayDraftJSONImportTaskSnapshot{}, false
+	}
+	return snapshotFromEbayJSONModel(row), true
+}
+
+func PauseEbayDraftJSONImportTaskByDB(db *gorm.DB, taskID string) (EbayDraftJSONImportTaskSnapshot, error) {
+	if db == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("db is nil")
+	}
+	taskID = strings.TrimSpace(taskID)
+	now := time.Now().UTC()
+	result := db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status IN ?", taskID, []string{EbayDraftJSONTaskQueued, EbayDraftJSONTaskProcessing}).
+		Updates(map[string]interface{}{"status": EbayDraftJSONTaskPaused, "worker_token": "", "message": "paused by administrator", "updated_at": &now})
+	if result.Error != nil {
+		return EbayDraftJSONImportTaskSnapshot{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		if task, ok := LoadEbayDraftJSONImportTask(db, taskID); ok {
+			return task, errors.New("only queued or processing tasks can be paused")
+		}
+		return EbayDraftJSONImportTaskSnapshot{}, ErrEbayDraftJSONTaskNotFound
+	}
+	if task, ok := ebayDraftJSONImports.get(taskID); ok {
+		task.update(func(value *ebayDraftJSONImportTask) {
+			value.pauseRequested = true
+			value.Status = EbayDraftJSONTaskPaused
+			value.Message = "paused by administrator"
+		})
+		task.signal()
+	}
+	task, _ := LoadEbayDraftJSONImportTask(db, taskID)
+	return task, nil
+}
+
+func ResumeEbayDraftJSONImportTaskByDB(db *gorm.DB, taskID string) (EbayDraftJSONImportTaskSnapshot, error) {
+	if db == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("db is nil")
+	}
+	taskID = strings.TrimSpace(taskID)
+	now := time.Now().UTC()
+	result := db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", taskID, EbayDraftJSONTaskPaused).
+		Updates(map[string]interface{}{"status": EbayDraftJSONTaskQueued, "worker_token": "", "message": "queued for resume", "updated_at": &now})
+	if result.Error != nil {
+		return EbayDraftJSONImportTaskSnapshot{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		if task, ok := LoadEbayDraftJSONImportTask(db, taskID); ok {
+			return task, errors.New("only paused tasks can be resumed")
+		}
+		return EbayDraftJSONImportTaskSnapshot{}, ErrEbayDraftJSONTaskNotFound
+	}
+	if task, ok := ebayDraftJSONImports.get(taskID); ok {
+		task.update(func(value *ebayDraftJSONImportTask) { value.pauseRequested = false })
+		task.signal()
+	}
+	go runPersistentEbayDraftJSONImportTask(db, taskID)
+	task, _ := LoadEbayDraftJSONImportTask(db, taskID)
+	return task, nil
+}
+
+func CancelEbayDraftJSONImportTask(db *gorm.DB, taskID string) (EbayDraftJSONImportTaskSnapshot, error) {
+	if db == nil {
+		return EbayDraftJSONImportTaskSnapshot{}, errors.New("db is nil")
+	}
+	taskID = strings.TrimSpace(taskID)
+	var row models.EbayImportJSONTask
+	if err := db.First(&row, "id = ?", taskID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return EbayDraftJSONImportTaskSnapshot{}, ErrEbayDraftJSONTaskNotFound
+		}
+		return EbayDraftJSONImportTaskSnapshot{}, err
+	}
+	if row.Status == EbayDraftJSONTaskCompleted || row.Status == EbayDraftJSONTaskWithErrors || row.Status == EbayDraftJSONTaskCancelled {
+		return snapshotFromEbayJSONModel(row), errors.New("task cannot be cancelled in its current state")
+	}
+	now := time.Now().UTC()
+	if err := db.Model(&models.EbayImportJSONTask{}).Where("id = ?", taskID).
+		Updates(map[string]interface{}{"status": EbayDraftJSONTaskCancelled, "worker_token": "", "message": "cancelled by administrator", "completed_at": &now, "updated_at": &now}).Error; err != nil {
+		return snapshotFromEbayJSONModel(row), err
+	}
+	if row.Status != EbayDraftJSONTaskProcessing {
+		_ = os.Remove(row.FilePath)
+	}
+	task, _ := LoadEbayDraftJSONImportTask(db, taskID)
+	return task, nil
+}
+
+// Compatibility wrappers used by the original controller and older clients.
 func GetEbayDraftJSONImportTask(taskID string) (EbayDraftJSONImportTaskSnapshot, bool) {
+	if db := currentEbayDraftJSONDB(); db != nil {
+		if task, ok := LoadEbayDraftJSONImportTask(db, taskID); ok {
+			return task, true
+		}
+	}
 	return ebayDraftJSONImports.getSnapshot(strings.TrimSpace(taskID))
 }
 
 func GetLatestEbayDraftJSONImportTask() (EbayDraftJSONImportTaskSnapshot, bool) {
+	if db := currentEbayDraftJSONDB(); db != nil {
+		if task, ok := LoadLatestEbayDraftJSONImportTask(db); ok {
+			return task, true
+		}
+	}
 	return ebayDraftJSONImports.latestSnapshot()
 }
 
 func PauseEbayDraftJSONImportTask(taskID string) (EbayDraftJSONImportTaskSnapshot, error) {
+	if db := currentEbayDraftJSONDB(); db != nil {
+		return PauseEbayDraftJSONImportTaskByDB(db, taskID)
+	}
 	task, ok := ebayDraftJSONImports.get(strings.TrimSpace(taskID))
 	if !ok {
-		return EbayDraftJSONImportTaskSnapshot{}, errors.New("JSON import task not found")
+		return EbayDraftJSONImportTaskSnapshot{}, ErrEbayDraftJSONTaskNotFound
 	}
 	return task.pause()
 }
 
 func ResumeEbayDraftJSONImportTask(taskID string) (EbayDraftJSONImportTaskSnapshot, error) {
+	if db := currentEbayDraftJSONDB(); db != nil {
+		return ResumeEbayDraftJSONImportTaskByDB(db, taskID)
+	}
 	task, ok := ebayDraftJSONImports.get(strings.TrimSpace(taskID))
 	if !ok {
-		return EbayDraftJSONImportTaskSnapshot{}, errors.New("JSON import task not found")
+		return EbayDraftJSONImportTaskSnapshot{}, ErrEbayDraftJSONTaskNotFound
 	}
 	return task.resume()
 }
 
-func runEbayDraftJSONImportTask(ctx context.Context, db *gorm.DB, task *ebayDraftJSONImportTask) {
-	startedAt := time.Now()
-	task.update(func(value *ebayDraftJSONImportTask) {
-		if value.pauseRequested {
-			value.Status = EbayDraftJSONTaskPaused
-			value.Message = "paused"
-		} else {
-			value.Status = EbayDraftJSONTaskProcessing
-			value.Message = "loading duplicate index"
-		}
-		value.StartedAt = &startedAt
-		value.UpdatedAt = startedAt
-	})
+func runPersistentEbayDraftJSONImportTask(db *gorm.DB, taskID string) {
+	if db == nil {
+		return
+	}
+	// Only one large import is allowed at a time. This prevents a restart with
+	// several queued rows (or two browser tabs) from saturating the database and
+	// remote image services.
+	ebayDraftJSONGlobalWorkerMu.Lock()
+	defer ebayDraftJSONGlobalWorkerMu.Unlock()
+	lock := ebayJSONWorkerLock(taskID)
+	lock.Lock()
+	defer lock.Unlock()
+	workerToken := uuid.NewString()
+	now := time.Now().UTC()
+	claim := db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", taskID, EbayDraftJSONTaskQueued).
+		Updates(map[string]interface{}{"status": EbayDraftJSONTaskProcessing, "worker_token": workerToken, "started_at": &now, "message": "loading JSON import", "updated_at": &now})
+	if claim.Error != nil || claim.RowsAffected == 0 {
+		return
+	}
+	var row models.EbayImportJSONTask
+	if err := db.First(&row, "id = ?", taskID).Error; err != nil {
+		return
+	}
+	task := runtimeFromEbayJSONModel(row, db, workerToken)
+	task.Status = EbayDraftJSONTaskProcessing
+	task.StartedAt = &now
+	task.Message = "loading duplicate index"
+	ebayDraftJSONImports.add(task)
+	persistEbayDraftJSONRuntimeProgress(task)
 
-	err := processEbayDraftJSONImportFile(ctx, db, task)
-	completedAt := time.Now()
+	err := processEbayDraftJSONImportFile(context.Background(), db, task)
+	var current models.EbayImportJSONTask
+	if loadErr := db.First(&current, "id = ?", taskID).Error; loadErr != nil {
+		return
+	}
+	if current.Status == EbayDraftJSONTaskPaused || current.Status == EbayDraftJSONTaskCancelled || errors.Is(err, errEbayDraftJSONPaused) || errors.Is(err, errEbayDraftJSONStopped) {
+		if current.Status == EbayDraftJSONTaskCancelled {
+			_ = os.Remove(current.FilePath)
+		}
+		return
+	}
+	if err != nil {
+		task.update(func(value *ebayDraftJSONImportTask) {
+			appendEbayDraftJSONTaskError(value, err.Error())
+			value.Error = err.Error()
+		})
+	}
+	completedAt := time.Now().UTC()
+	runtimeSnapshot := task.snapshot()
+	status := EbayDraftJSONTaskCompleted
+	message := "completed"
+	errorMessage := ""
+	if err != nil {
+		status = EbayDraftJSONTaskFailed
+		message = err.Error()
+		errorMessage = err.Error()
+	} else if runtimeSnapshot.Failed > 0 {
+		status = EbayDraftJSONTaskWithErrors
+		message = "completed with item errors"
+	}
+	errorsJSON, _ := json.Marshal(runtimeSnapshot.Errors)
+	updates := map[string]interface{}{
+		"status": status, "worker_token": "", "message": message, "error": errorMessage,
+		"errors_json": string(errorsJSON), "completed_at": &completedAt, "updated_at": &completedAt,
+	}
+	if err == nil {
+		updates["progress_pct"] = 100
+	}
+	result := db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ? AND worker_token = ?", taskID, EbayDraftJSONTaskProcessing, workerToken).Updates(updates)
+	if result.Error == nil && result.RowsAffected > 0 && (status == EbayDraftJSONTaskCompleted || status == EbayDraftJSONTaskWithErrors) {
+		_ = os.Remove(current.FilePath)
+	}
 	task.update(func(value *ebayDraftJSONImportTask) {
+		value.Status = status
+		value.Message = message
+		value.Error = errorMessage
 		value.CompletedAt = &completedAt
 		value.UpdatedAt = completedAt
-		if err != nil {
-			value.Status = EbayDraftJSONTaskFailed
-			value.Message = err.Error()
-			appendEbayDraftJSONTaskError(value, err.Error())
-		} else {
-			value.Status = EbayDraftJSONTaskCompleted
+		if err == nil {
 			value.ProgressPct = 100
-			value.Message = "completed"
 		}
 	})
-	_ = os.Remove(task.FilePath)
+}
+
+// ResumeEbayDraftJSONImportTasks restores jobs after a process restart.
+func ResumeEbayDraftJSONImportTasks(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	setEbayDraftJSONDB(db)
+	if !db.Migrator().HasTable(&models.EbayImportJSONTask{}) {
+		return
+	}
+	now := time.Now().UTC()
+	cleanupStaleEbayJSONUploads(db, now)
+	_ = db.Model(&models.EbayImportJSONTask{}).Where("status = ?", EbayDraftJSONTaskProcessing).
+		Updates(map[string]interface{}{"status": EbayDraftJSONTaskQueued, "worker_token": "", "message": "queued after service restart", "updated_at": &now})
+	var jobs []models.EbayImportJSONTask
+	if err := db.Where("status = ?", EbayDraftJSONTaskQueued).Order("created_at ASC").Find(&jobs).Error; err != nil {
+		return
+	}
+	for _, job := range jobs {
+		if _, err := os.Stat(job.FilePath); err != nil {
+			_ = db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", job.ID, EbayDraftJSONTaskQueued).
+				Updates(map[string]interface{}{"status": EbayDraftJSONTaskFailed, "message": "uploaded JSON file is missing", "error": "uploaded JSON file is missing", "completed_at": &now, "updated_at": &now})
+			continue
+		}
+		go runPersistentEbayDraftJSONImportTask(db, job.ID)
+	}
+}
+
+func cleanupStaleEbayJSONUploads(db *gorm.DB, now time.Time) {
+	cutoff := now.Add(-ebayDraftJSONUploadTTL)
+	var stale []models.EbayImportJSONTask
+	if err := db.Where("status = ? AND updated_at < ?", EbayDraftJSONTaskUploading, cutoff).Find(&stale).Error; err != nil {
+		return
+	}
+	for _, row := range stale {
+		if result := db.Model(&models.EbayImportJSONTask{}).
+			Where("id = ? AND status = ?", row.ID, EbayDraftJSONTaskUploading).
+			Updates(map[string]interface{}{"status": EbayDraftJSONTaskCancelled, "message": "expired upload cancelled", "completed_at": &now, "updated_at": &now}); result.Error == nil && result.RowsAffected > 0 {
+			_ = os.Remove(row.FilePath)
+		}
+	}
 }
 
 func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebayDraftJSONImportTask) error {
+	if db == nil || task == nil {
+		return errors.New("invalid JSON import task")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	file, err := os.Open(task.FilePath)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	updateEbayDraftJSONTaskHeartbeat(task, 0, "loading duplicate index")
+	updateEbayDraftJSONTaskHeartbeat(task, task.InputOffset, "loading duplicate index")
 	listingKeys, sourceURLs, err := loadExistingEbayDraftImportKeys(db)
 	if err != nil {
 		return err
 	}
-	decoder := json.NewDecoder(file)
+	reader := bufio.NewReaderSize(file, 64*1024)
+	if prefix, peekErr := reader.Peek(3); peekErr == nil && bytes.Equal(prefix, []byte{0xef, 0xbb, 0xbf}) {
+		_, _ = reader.Discard(3)
+	}
+	decoder := json.NewDecoder(reader)
 	decoder.UseNumber()
 	updateEbayDraftJSONTaskHeartbeat(task, 0, "parsing JSON file")
 	processItem := func(raw map[string]any) error {
@@ -218,7 +817,27 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 		updateEbayDraftJSONTaskHeartbeat(task, decoder.InputOffset(), "processing product")
 		normalized := NormalizeEbayImportDraftPayload(raw)
 		listingKey, sourceURL := ebayDraftImportKeys(normalized)
+		fingerprint := ebayDraftImportFingerprint(normalized)
+		// A completed task-item marker is durable evidence that this source
+		// object was already handled. On a worker restart, advance the byte
+		// cursor without incrementing counters a second time.
+		if fingerprint != "" {
+			var previous models.EbayImportJSONTaskItem
+			itemErr := db.Where("task_id = ? AND fingerprint = ? AND status = ?", task.ID, fingerprint, "completed").First(&previous).Error
+			if itemErr == nil {
+				updateEbayDraftJSONTaskOffset(task, decoder.InputOffset(), "skipped previously processed item")
+				return nil
+			}
+			if !errors.Is(itemErr, gorm.ErrRecordNotFound) {
+				return itemErr
+			}
+		}
 		if (listingKey != "" && listingKeys[listingKey]) || (sourceURL != "" && sourceURLs[sourceURL]) {
+			if fingerprint != "" {
+				if err := recordEbayJSONTaskItem(db, task.ID, fingerprint, nil, "completed", ""); err != nil {
+					return err
+				}
+			}
 			updateEbayDraftJSONTaskProgress(task, decoder.InputOffset(), 0, 1, 0, "skipped duplicate")
 			return nil
 		}
@@ -227,8 +846,44 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 		if len(built.Errors) > 0 {
 			draft.FailureReason = strings.Join(built.Errors, "; ")
 		}
-		if err := db.Create(&draft).Error; err != nil {
+		var duplicate bool
+		var createdID *uint
+		err = db.Transaction(func(tx *gorm.DB) error {
+			var previous models.EbayImportJSONTaskItem
+			if findErr := tx.Where("task_id = ? AND fingerprint = ?", task.ID, fingerprint).First(&previous).Error; findErr == nil {
+				duplicate = true
+				return nil
+			} else if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+				return findErr
+			}
+			// If a worker crashed after creating a draft but before its marker,
+			// the canonical raw payload is a safe fallback identity.
+			if fingerprint != "" && listingKey == "" && sourceURL == "" {
+				var existing models.EbayImportDraft
+				rawPayloadCondition := "raw_payload = ?"
+				if strings.EqualFold(tx.Dialector.Name(), "mysql") {
+					rawPayloadCondition = "BINARY raw_payload = BINARY ?"
+				}
+				if findErr := tx.Select("id").Where(rawPayloadCondition, draft.RawPayload).First(&existing).Error; findErr == nil {
+					duplicate = true
+					createdID = &existing.ID
+					return tx.Create(&models.EbayImportJSONTaskItem{TaskID: task.ID, Fingerprint: fingerprint, Status: "completed", DraftID: createdID}).Error
+				} else if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+					return findErr
+				}
+			}
+			if createErr := tx.Create(&draft).Error; createErr != nil {
+				return createErr
+			}
+			createdID = &draft.ID
+			return tx.Create(&models.EbayImportJSONTaskItem{TaskID: task.ID, Fingerprint: fingerprint, Status: "completed", DraftID: createdID}).Error
+		})
+		if err != nil {
 			updateEbayDraftJSONTaskProgress(task, decoder.InputOffset(), 0, 0, 1, err.Error())
+			return nil
+		}
+		if duplicate {
+			updateEbayDraftJSONTaskProgress(task, decoder.InputOffset(), 0, 1, 0, "skipped duplicate")
 			return nil
 		}
 		if listingKey != "" {
@@ -241,46 +896,50 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 		return nil
 	}
 
-	firstToken, err := decoder.Token()
+	return decodeEbayDraftJSONDocument(decoder, processItem)
+}
+
+func recordEbayJSONTaskItem(db *gorm.DB, taskID, fingerprint string, draftID *uint, status, message string) error {
+	if strings.TrimSpace(fingerprint) == "" {
+		return nil
+	}
+	item := models.EbayImportJSONTaskItem{TaskID: taskID, Fingerprint: fingerprint, DraftID: draftID, Status: status, Error: message}
+	return db.Clauses(clause.OnConflict{DoNothing: true}).Create(&item).Error
+}
+
+func ebayDraftImportFingerprint(raw map[string]any) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	payload, err := json.Marshal(raw)
+	if err != nil {
+		return ""
+	}
+	hash := sha256.Sum256(payload)
+	return hex.EncodeToString(hash[:])
+}
+
+// decodeEbayDraftJSONDocument accepts root arrays and products/items/results/
+// data arrays nested in an object. It also rejects trailing data from a
+// truncated or concatenated upload.
+func decodeEbayDraftJSONDocument(decoder *json.Decoder, process func(map[string]any) error) error {
+	token, err := decoder.Token()
 	if err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)
 	}
-	switch delimiter := firstToken.(type) {
+	var found bool
+	switch value := token.(type) {
 	case json.Delim:
-		switch delimiter {
+		switch value {
 		case '[':
-			if err := decodeEbayDraftJSONArray(decoder, processItem); err != nil {
+			found = true
+			if err := decodeEbayDraftJSONArray(decoder, process); err != nil {
 				return err
 			}
 		case '{':
-			found := false
-			for decoder.More() {
-				keyToken, err := decoder.Token()
-				if err != nil {
-					return err
-				}
-				key, _ := keyToken.(string)
-				if key == "products" || key == "items" {
-					arrayToken, err := decoder.Token()
-					if err != nil {
-						return err
-					}
-					if arrayToken != json.Delim('[') {
-						return errors.New("products/items must be a JSON array")
-					}
-					found = true
-					if err := decodeEbayDraftJSONArray(decoder, processItem); err != nil {
-						return err
-					}
-				} else {
-					var discard any
-					if err := decoder.Decode(&discard); err != nil {
-						return err
-					}
-				}
-			}
-			if !found {
-				return errors.New("JSON must contain a products or items array")
+			found, err = decodeEbayDraftJSONObjectAfterOpen(decoder, process, 0)
+			if err != nil {
+				return err
 			}
 		default:
 			return errors.New("JSON root must be an array or object")
@@ -288,13 +947,124 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 	default:
 		return errors.New("JSON root must be an array or object")
 	}
+	if !found {
+		return errors.New("JSON must contain a products, items, results, or data array")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("JSON contains trailing data")
+		}
+		return fmt.Errorf("invalid trailing JSON: %w", err)
+	}
 	return nil
+}
+
+func decodeEbayDraftJSONObjectAfterOpen(decoder *json.Decoder, process func(map[string]any) error, depth int) (bool, error) {
+	if depth > 4 {
+		return false, errors.New("JSON nesting is too deep")
+	}
+	found := false
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return false, fmt.Errorf("invalid JSON object: %w", err)
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return false, errors.New("JSON object contains an invalid key")
+		}
+		isArrayKey := strings.EqualFold(key, "products") || strings.EqualFold(key, "items") || strings.EqualFold(key, "results") || strings.EqualFold(key, "data")
+		valueToken, err := decoder.Token()
+		if err != nil {
+			return false, fmt.Errorf("invalid JSON value for %s: %w", key, err)
+		}
+		if !isArrayKey {
+			if err := discardJSONValue(decoder, valueToken, depth); err != nil {
+				return false, err
+			}
+			continue
+		}
+		delim, ok := valueToken.(json.Delim)
+		if !ok {
+			return false, fmt.Errorf("%s must be a JSON array", key)
+		}
+		switch delim {
+		case '[':
+			found = true
+			if err := decodeEbayDraftJSONArray(decoder, process); err != nil {
+				return false, err
+			}
+		case '{':
+			nestedFound, nestedErr := decodeEbayDraftJSONObjectAfterOpen(decoder, process, depth+1)
+			if nestedErr != nil {
+				return false, nestedErr
+			}
+			found = found || nestedFound
+		default:
+			return false, fmt.Errorf("%s must be a JSON array", key)
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return false, err
+	}
+	return found, nil
+}
+
+func discardJSONValue(decoder *json.Decoder, token json.Token, depth int) error {
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	if depth > 8 {
+		return errors.New("JSON nesting is too deep")
+	}
+	switch delim {
+	case '[':
+		for decoder.More() {
+			valueToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			if err := discardJSONValue(decoder, valueToken, depth+1); err != nil {
+				return err
+			}
+		}
+		_, err := decoder.Token()
+		return err
+	case '{':
+		for decoder.More() {
+			if _, err := decoder.Token(); err != nil { // object key
+				return err
+			}
+			valueToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			if err := discardJSONValue(decoder, valueToken, depth+1); err != nil {
+				return err
+			}
+		}
+		_, err := decoder.Token()
+		return err
+	default:
+		return nil
+	}
 }
 
 func decodeEbayDraftJSONArray(decoder *json.Decoder, process func(map[string]any) error) error {
 	for decoder.More() {
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			return fmt.Errorf("invalid product JSON: %w", err)
+		}
+		if len(raw) > maxEbayDraftJSONItemBytes {
+			return fmt.Errorf("product JSON item exceeds %d MiB", maxEbayDraftJSONItemBytes/(1<<20))
+		}
 		var item map[string]any
-		if err := decoder.Decode(&item); err != nil {
+		itemDecoder := json.NewDecoder(bytes.NewReader(raw))
+		itemDecoder.UseNumber()
+		if err := itemDecoder.Decode(&item); err != nil {
 			return fmt.Errorf("invalid product JSON: %w", err)
 		}
 		if len(item) == 0 {
@@ -350,12 +1120,13 @@ func normalizeEbayDraftSourceURL(value string) string {
 }
 
 func updateEbayDraftJSONTaskProgress(task *ebayDraftJSONImportTask, offset int64, created, skipped, failed int, message string) {
-	now := time.Now()
+	now := time.Now().UTC()
 	task.update(func(value *ebayDraftJSONImportTask) {
 		value.Processed++
 		value.Created += created
 		value.Skipped += skipped
 		value.Failed += failed
+		value.InputOffset = offset
 		if value.FileSize > 0 {
 			value.ProgressPct = minFloat64(99.9, float64(offset)*100/float64(value.FileSize))
 		}
@@ -365,11 +1136,29 @@ func updateEbayDraftJSONTaskProgress(task *ebayDraftJSONImportTask, offset int64
 			appendEbayDraftJSONTaskError(value, message)
 		}
 	})
+	persistEbayDraftJSONRuntimeProgress(task)
+}
+
+// updateEbayDraftJSONTaskOffset advances the durable cursor without changing
+// item counters. It is used when replaying an item whose task marker already
+// exists after a service restart.
+func updateEbayDraftJSONTaskOffset(task *ebayDraftJSONImportTask, offset int64, message string) {
+	now := time.Now().UTC()
+	task.update(func(value *ebayDraftJSONImportTask) {
+		value.InputOffset = offset
+		if value.FileSize > 0 {
+			value.ProgressPct = minFloat64(99.9, float64(offset)*100/float64(value.FileSize))
+		}
+		value.Message = message
+		value.UpdatedAt = now
+	})
+	persistEbayDraftJSONRuntimeProgress(task)
 }
 
 func updateEbayDraftJSONTaskHeartbeat(task *ebayDraftJSONImportTask, offset int64, message string) {
-	now := time.Now()
+	now := time.Now().UTC()
 	task.update(func(value *ebayDraftJSONImportTask) {
+		value.InputOffset = offset
 		if value.FileSize > 0 {
 			value.ProgressPct = minFloat64(99.9, float64(offset)*100/float64(value.FileSize))
 		}
@@ -379,6 +1168,22 @@ func updateEbayDraftJSONTaskHeartbeat(task *ebayDraftJSONImportTask, offset int6
 		}
 		value.UpdatedAt = now
 	})
+	persistEbayDraftJSONRuntimeProgress(task)
+}
+
+func persistEbayDraftJSONRuntimeProgress(task *ebayDraftJSONImportTask) {
+	if task == nil || task.db == nil || strings.TrimSpace(task.workerToken) == "" {
+		return
+	}
+	task.mu.RLock()
+	errorsJSON, _ := json.Marshal(task.Errors)
+	updates := map[string]interface{}{
+		"input_offset": task.InputOffset, "progress_pct": task.ProgressPct, "processed": task.Processed,
+		"created": task.Created, "skipped": task.Skipped, "failed": task.Failed,
+		"message": task.Message, "errors_json": string(errorsJSON), "updated_at": task.UpdatedAt,
+	}
+	task.mu.RUnlock()
+	_ = task.db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ? AND worker_token = ?", task.ID, EbayDraftJSONTaskProcessing, task.workerToken).Updates(updates).Error
 }
 
 func appendEbayDraftJSONTaskError(task *ebayDraftJSONImportTask, message string) {
@@ -455,22 +1260,52 @@ func (task *ebayDraftJSONImportTask) update(fn func(*ebayDraftJSONImportTask)) {
 	fn(task)
 }
 
+func (task *ebayDraftJSONImportTask) signal() {
+	task.mu.Lock()
+	if task.cond != nil {
+		task.cond.Broadcast()
+	}
+	task.mu.Unlock()
+}
+
 func (task *ebayDraftJSONImportTask) waitIfPaused(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if task.db != nil {
+		var row struct {
+			Status      string
+			WorkerToken string
+		}
+		if err := task.db.Model(&models.EbayImportJSONTask{}).Select("status", "worker_token").First(&row, "id = ?", task.ID).Error; err != nil {
+			return err
+		}
+		if row.Status == EbayDraftJSONTaskPaused {
+			return errEbayDraftJSONPaused
+		}
+		if row.Status != EbayDraftJSONTaskProcessing || row.WorkerToken != task.workerToken {
+			return errEbayDraftJSONStopped
+		}
+		return nil
+	}
 	task.mu.Lock()
 	defer task.mu.Unlock()
 	for task.pauseRequested {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if task.cond == nil {
+			return errEbayDraftJSONPaused
+		}
 		task.Status = EbayDraftJSONTaskPaused
 		task.Message = "paused"
-		task.UpdatedAt = time.Now()
+		task.UpdatedAt = time.Now().UTC()
 		task.cond.Wait()
 	}
 	if task.Status == EbayDraftJSONTaskPaused {
 		task.Status = EbayDraftJSONTaskProcessing
 		task.Message = "resumed"
-		task.UpdatedAt = time.Now()
+		task.UpdatedAt = time.Now().UTC()
 	}
 	return nil
 }
@@ -484,7 +1319,7 @@ func (task *ebayDraftJSONImportTask) pause() (EbayDraftJSONImportTaskSnapshot, e
 	task.pauseRequested = true
 	task.Status = EbayDraftJSONTaskPaused
 	task.Message = "pause requested; waiting for current product"
-	task.UpdatedAt = time.Now()
+	task.UpdatedAt = time.Now().UTC()
 	task.mu.Unlock()
 	return task.snapshot(), nil
 }
@@ -498,8 +1333,10 @@ func (task *ebayDraftJSONImportTask) resume() (EbayDraftJSONImportTaskSnapshot, 
 	task.pauseRequested = false
 	task.Status = EbayDraftJSONTaskProcessing
 	task.Message = "resuming"
-	task.UpdatedAt = time.Now()
-	task.cond.Broadcast()
+	task.UpdatedAt = time.Now().UTC()
+	if task.cond != nil {
+		task.cond.Broadcast()
+	}
 	task.mu.Unlock()
 	return task.snapshot(), nil
 }
@@ -508,21 +1345,12 @@ func (task *ebayDraftJSONImportTask) snapshot() EbayDraftJSONImportTaskSnapshot 
 	task.mu.RLock()
 	defer task.mu.RUnlock()
 	return EbayDraftJSONImportTaskSnapshot{
-		ID:          task.ID,
-		Status:      task.Status,
-		Filename:    task.Filename,
-		FileSize:    task.FileSize,
-		ProgressPct: task.ProgressPct,
-		Processed:   task.Processed,
-		Created:     task.Created,
-		Skipped:     task.Skipped,
-		Failed:      task.Failed,
-		Message:     task.Message,
-		Errors:      append([]string(nil), task.Errors...),
-		CreatedAt:   task.CreatedAt,
-		StartedAt:   task.StartedAt,
-		CompletedAt: task.CompletedAt,
-		UpdatedAt:   task.UpdatedAt,
+		ID: task.ID, Status: task.Status, Filename: task.Filename, FileSize: task.FileSize,
+		UploadedBytes: task.UploadedBytes, ChunkSize: task.ChunkSize, InputOffset: task.InputOffset,
+		ProgressPct: task.ProgressPct, Processed: task.Processed, Created: task.Created,
+		Skipped: task.Skipped, Failed: task.Failed, Message: task.Message, Error: task.Error,
+		Errors: append([]string(nil), task.Errors...), CreatedAt: task.CreatedAt, StartedAt: task.StartedAt,
+		CompletedAt: task.CompletedAt, UpdatedAt: task.UpdatedAt,
 	}
 }
 

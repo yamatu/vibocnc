@@ -1,0 +1,46 @@
+-- Durable, resumable eBay JSON uploads and background processing.
+CREATE TABLE IF NOT EXISTS ebay_import_json_tasks (
+    id VARCHAR(36) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    filename VARCHAR(255) NOT NULL DEFAULT '',
+    file_size BIGINT NOT NULL DEFAULT 0,
+    uploaded_bytes BIGINT NOT NULL DEFAULT 0,
+    chunk_size BIGINT NOT NULL DEFAULT 0,
+    fingerprint CHAR(64) NOT NULL DEFAULT '',
+    file_path VARCHAR(1024) NOT NULL DEFAULT '',
+    input_offset BIGINT NOT NULL DEFAULT 0,
+    processed BIGINT NOT NULL DEFAULT 0,
+    created BIGINT NOT NULL DEFAULT 0,
+    skipped BIGINT NOT NULL DEFAULT 0,
+    failed BIGINT NOT NULL DEFAULT 0,
+    progress_pct DECIMAL(6,3) NOT NULL DEFAULT 0,
+    worker_token VARCHAR(36) NOT NULL DEFAULT '',
+    message VARCHAR(255) NOT NULL DEFAULT '',
+    error LONGTEXT,
+    errors_json LONGTEXT,
+    created_by_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME(3) NOT NULL,
+    updated_at DATETIME(3) NOT NULL,
+    started_at DATETIME(3) NULL,
+    completed_at DATETIME(3) NULL,
+    PRIMARY KEY (id),
+    KEY idx_ebay_import_json_tasks_status (status),
+    KEY idx_ebay_import_json_tasks_fingerprint (fingerprint),
+    KEY idx_ebay_import_json_tasks_worker_token (worker_token),
+    KEY idx_ebay_import_json_tasks_created_by_id (created_by_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ebay_import_json_task_items (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    task_id VARCHAR(36) NOT NULL,
+    fingerprint CHAR(64) NOT NULL,
+    status VARCHAR(24) NOT NULL DEFAULT 'completed',
+    draft_id BIGINT UNSIGNED NULL,
+    error LONGTEXT,
+    created_at DATETIME(3) NOT NULL,
+    updated_at DATETIME(3) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY idx_ebay_import_json_task_items_key (task_id, fingerprint),
+    KEY idx_ebay_import_json_task_items_task_id (task_id),
+    KEY idx_ebay_import_json_task_items_draft_id (draft_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

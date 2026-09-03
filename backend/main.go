@@ -54,6 +54,8 @@ func main() {
 	controllers.ResumeProductImageAutofillJobs()
 	// Resume safe external-image cleanup and completed SKU archive imports.
 	controllers.ResumeProductImageManagementJobs()
+	// Resume durable eBay JSON uploads/imports after a container restart.
+	services.ResumeEbayDraftJSONImportTasks(config.GetDB())
 
 	// Set Gin mode
 	ginMode := strings.TrimSpace(os.Getenv("GIN_MODE"))
