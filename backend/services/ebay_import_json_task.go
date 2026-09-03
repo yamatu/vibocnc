@@ -724,6 +724,8 @@ func runPersistentEbayDraftJSONImportTask(db *gorm.DB, taskID string) {
 	} else if runtimeSnapshot.Failed > 0 {
 		status = EbayDraftJSONTaskWithErrors
 		message = "completed with item errors"
+	} else if strings.HasPrefix(runtimeSnapshot.Message, "parsed JSON after repairing ") {
+		message = runtimeSnapshot.Message
 	}
 	errorsJSON, _ := json.Marshal(runtimeSnapshot.Errors)
 	updates := map[string]interface{}{
@@ -817,7 +819,8 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 	if prefix, peekErr := reader.Peek(3); peekErr == nil && bytes.Equal(prefix, []byte{0xef, 0xbb, 0xbf}) {
 		_, _ = reader.Discard(3)
 	}
-	decoder := json.NewDecoder(reader)
+	repairReader := newEbayJSONRepairReader(reader)
+	decoder := json.NewDecoder(repairReader)
 	decoder.UseNumber()
 	updateEbayDraftJSONTaskHeartbeat(task, 0, "parsing JSON file")
 	processItem := func(raw map[string]any) error {
@@ -919,7 +922,132 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 		return nil
 	}
 
-	return decodeEbayDraftJSONDocument(decoder, processItem)
+	parseErr := decodeEbayDraftJSONDocument(decoder, processItem)
+	if parseErr == nil && repairReader.RepairedSeparators() > 0 {
+		repaired := repairReader.RepairedSeparators()
+		task.update(func(value *ebayDraftJSONImportTask) {
+			value.Message = fmt.Sprintf("parsed JSON after repairing %d missing object separators", repaired)
+			value.UpdatedAt = time.Now().UTC()
+		})
+		persistEbayDraftJSONRuntimeProgress(task)
+	}
+	return parseErr
+}
+
+// ebayJSONRepairReader tolerates a narrowly defined exporter defect: two
+// object elements in an array are concatenated as `}{` (optionally with
+// whitespace) instead of being separated by `,`. It never changes text inside
+// JSON strings and only inserts a comma when the current container is an array,
+// so malformed object properties and concatenated root documents still fail.
+type ebayJSONRepairReader struct {
+	source          *bufio.Reader
+	stack           []byte
+	inString        bool
+	escaped         bool
+	lastSignificant byte
+	pending         byte
+	hasPending      bool
+	sourceErr       error
+	repairs         int
+}
+
+func newEbayJSONRepairReader(source io.Reader) *ebayJSONRepairReader {
+	if buffered, ok := source.(*bufio.Reader); ok {
+		return &ebayJSONRepairReader{source: buffered, stack: make([]byte, 0, 16)}
+	}
+	return &ebayJSONRepairReader{source: bufio.NewReaderSize(source, 64*1024), stack: make([]byte, 0, 16)}
+}
+
+func (reader *ebayJSONRepairReader) RepairedSeparators() int {
+	return reader.repairs
+}
+
+func (reader *ebayJSONRepairReader) currentContainer() byte {
+	if len(reader.stack) == 0 {
+		return 0
+	}
+	return reader.stack[len(reader.stack)-1]
+}
+
+func (reader *ebayJSONRepairReader) shouldRepair(next byte) bool {
+	return !reader.inString && next == '{' && reader.lastSignificant == '}' && reader.currentContainer() == '['
+}
+
+func isEbayJSONWhitespace(value byte) bool {
+	return value == ' ' || value == '\t' || value == '\r' || value == '\n'
+}
+
+func (reader *ebayJSONRepairReader) consume(value byte) {
+	if reader.inString {
+		if reader.escaped {
+			reader.escaped = false
+			return
+		}
+		switch value {
+		case '\\':
+			reader.escaped = true
+		case '"':
+			reader.inString = false
+		}
+		return
+	}
+
+	switch value {
+	case '"':
+		reader.inString = true
+	case '[', '{':
+		reader.stack = append(reader.stack, value)
+	case ']', '}':
+		if len(reader.stack) > 0 {
+			reader.stack = reader.stack[:len(reader.stack)-1]
+		}
+	}
+	if !isEbayJSONWhitespace(value) {
+		reader.lastSignificant = value
+	}
+}
+
+func (reader *ebayJSONRepairReader) Read(destination []byte) (int, error) {
+	if len(destination) == 0 {
+		return 0, nil
+	}
+	written := 0
+	for written < len(destination) {
+		if reader.hasPending {
+			value := reader.pending
+			reader.hasPending = false
+			destination[written] = value
+			written++
+			reader.consume(value)
+			continue
+		}
+		if reader.sourceErr != nil {
+			if written > 0 {
+				return written, nil
+			}
+			return 0, reader.sourceErr
+		}
+		value, err := reader.source.ReadByte()
+		if err != nil {
+			reader.sourceErr = err
+			continue
+		}
+		if reader.shouldRepair(value) {
+			reader.repairs++
+			reader.pending = value
+			reader.hasPending = true
+			// The inserted comma is now the previous significant token; the
+			// pending `{` will update the stack on the next iteration.
+			reader.lastSignificant = ','
+			destination[written] = ','
+			written++
+			continue
+		}
+		destination[written] = value
+		written++
+		reader.consume(value)
+	}
+	return written, nil
 }
 
 func recordEbayJSONTaskItem(db *gorm.DB, taskID, fingerprint string, draftID *uint, status, message string) error {

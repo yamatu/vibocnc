@@ -2,10 +2,28 @@ package services
 
 import (
 	"encoding/json"
+	"io"
 	"strings"
 	"sync"
 	"testing"
 )
+
+type oneByteJSONReader struct {
+	data  []byte
+	index int
+}
+
+func (reader *oneByteJSONReader) Read(destination []byte) (int, error) {
+	if len(destination) == 0 {
+		return 0, nil
+	}
+	if reader.index >= len(reader.data) {
+		return 0, io.EOF
+	}
+	destination[0] = reader.data[reader.index]
+	reader.index++
+	return 1, nil
+}
 
 func TestDecodeEbayDraftJSONArrayStreamsItems(t *testing.T) {
 	decoder := json.NewDecoder(strings.NewReader(`[{"id":1,"title":"A"},{"id":2,"title":"B"}]`))
@@ -85,6 +103,57 @@ func TestDecodeEbayDraftJSONDocumentSupportsProductsArray(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("decoded %d products, want 1", count)
+	}
+}
+
+func TestEbayJSONRepairReaderAddsMissingArrayObjectSeparators(t *testing.T) {
+	repairReader := newEbayJSONRepairReader(strings.NewReader(`{"products":[{"id":1}{"id":2}]}`))
+	decoder := json.NewDecoder(repairReader)
+	var ids []string
+	if err := decodeEbayDraftJSONDocument(decoder, func(item map[string]any) error {
+		ids = append(ids, firstLegacyString(item["id"]))
+		return nil
+	}); err != nil {
+		t.Fatalf("repaired document returned error: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "1" || ids[1] != "2" {
+		t.Fatalf("decoded ids = %#v", ids)
+	}
+	if repairReader.RepairedSeparators() != 1 {
+		t.Fatalf("repair count = %d, want 1", repairReader.RepairedSeparators())
+	}
+}
+
+func TestEbayJSONRepairReaderDoesNotChangeStringsOrRootConcatenation(t *testing.T) {
+	valid := newEbayJSONRepairReader(strings.NewReader(`[{"text":"}{"}]`))
+	validDecoder := json.NewDecoder(valid)
+	if err := decodeEbayDraftJSONDocument(validDecoder, func(map[string]any) error { return nil }); err != nil {
+		t.Fatalf("valid string document returned error: %v", err)
+	}
+	if valid.RepairedSeparators() != 0 {
+		t.Fatalf("string content was repaired: %d", valid.RepairedSeparators())
+	}
+	root := newEbayJSONRepairReader(strings.NewReader(`{} {}`))
+	rootDecoder := json.NewDecoder(root)
+	if err := decodeEbayDraftJSONDocument(rootDecoder, func(map[string]any) error { return nil }); err == nil {
+		t.Fatal("concatenated root documents should still fail")
+	}
+	if root.RepairedSeparators() != 0 {
+		t.Fatalf("root concatenation was repaired: %d", root.RepairedSeparators())
+	}
+}
+
+func TestEbayJSONRepairReaderHandlesOneByteReads(t *testing.T) {
+	// A one-byte source exercises state transitions at every possible chunk
+	// boundary, including the missing-comma boundary itself.
+	repairReader := newEbayJSONRepairReader(&oneByteJSONReader{data: []byte(`[{"id":1}{"id":2}]`)})
+	decoder := json.NewDecoder(repairReader)
+	count := 0
+	if err := decodeEbayDraftJSONDocument(decoder, func(map[string]any) error { count++; return nil }); err != nil {
+		t.Fatalf("one-byte-style document returned error: %v", err)
+	}
+	if count != 2 || repairReader.RepairedSeparators() != 1 {
+		t.Fatalf("count=%d repairs=%d", count, repairReader.RepairedSeparators())
 	}
 }
 

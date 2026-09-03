@@ -44,6 +44,13 @@ last confirmed byte. The worker state survives a page refresh and a backend
 restart; duplicate source items are skipped using listing/source keys and a
 per-task payload fingerprint.
 
+Some older collection exports have a known serialization defect where adjacent
+objects are emitted as `}{` instead of `},{`. The worker repairs only this
+separator outside strings and only while inside an array, reports the repair
+count in the task message, and still rejects other malformed JSON. The sample
+file `b-automation-all-products-1788408888425.json` contains 249 such missing
+separators and is accepted after this repair.
+
 The endpoints are:
 
 ```text
