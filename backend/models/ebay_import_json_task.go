@@ -19,7 +19,7 @@ type EbayImportJSONTask struct {
 	Created       int        `json:"created"`
 	Skipped       int        `json:"skipped"`
 	Failed        int        `json:"failed"`
-	ProgressPct   float64    `json:"progress_pct"`
+	ProgressPct   float64    `json:"progress_pct" gorm:"type:decimal(6,3);default:0"`
 	WorkerToken   string     `json:"-" gorm:"size:36;index"`
 	Message       string     `json:"message" gorm:"size:255"`
 	Error         string     `json:"error" gorm:"type:text"`

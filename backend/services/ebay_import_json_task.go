@@ -259,12 +259,21 @@ func CreateEbayDraftJSONImportTask(db *gorm.DB, filename string, fileSize int64,
 		if active.Status == EbayDraftJSONTaskUploading {
 			stat, statErr := os.Stat(active.FilePath)
 			expired := !active.UpdatedAt.IsZero() && time.Since(active.UpdatedAt) > ebayDraftJSONUploadTTL
-			same := strings.EqualFold(active.Filename, filename) && active.FileSize == fileSize &&
-				(active.Fingerprint == "" || fingerprint == "" || strings.EqualFold(active.Fingerprint, fingerprint))
-			if same && statErr == nil && stat.Size() <= active.FileSize && !expired {
+			fingerprintMatches := strings.EqualFold(active.Fingerprint, fingerprint) ||
+				(fingerprint != "" && active.Fingerprint == "")
+			same := strings.EqualFold(active.Filename, filename) && active.FileSize == fileSize && fingerprintMatches
+			fileValid := statErr == nil && stat.Size() >= active.UploadedBytes && stat.Size() <= active.FileSize
+			if same && fileValid && !expired {
+				if active.Fingerprint == "" && fingerprint != "" {
+					if updateErr := db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", active.ID, EbayDraftJSONTaskUploading).
+						Update("fingerprint", fingerprint).Error; updateErr != nil {
+						return EbayDraftJSONImportTaskSnapshot{}, updateErr
+					}
+					active.Fingerprint = fingerprint
+				}
 				return snapshotFromEbayJSONModel(active), nil
 			}
-			if expired || os.IsNotExist(statErr) || (statErr == nil && stat.Size() > active.FileSize) {
+			if expired || os.IsNotExist(statErr) || (statErr == nil && (stat.Size() < active.UploadedBytes || stat.Size() > active.FileSize)) {
 				now := time.Now().UTC()
 				_ = db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ?", active.ID, EbayDraftJSONTaskUploading).
 					Updates(map[string]interface{}{"status": EbayDraftJSONTaskCancelled, "message": "expired or missing upload cancelled", "completed_at": &now, "updated_at": &now})
@@ -725,7 +734,7 @@ func runPersistentEbayDraftJSONImportTask(db *gorm.DB, taskID string) {
 		updates["progress_pct"] = 100
 	}
 	result := db.Model(&models.EbayImportJSONTask{}).Where("id = ? AND status = ? AND worker_token = ?", taskID, EbayDraftJSONTaskProcessing, workerToken).Updates(updates)
-	if result.Error == nil && result.RowsAffected > 0 && (status == EbayDraftJSONTaskCompleted || status == EbayDraftJSONTaskWithErrors) {
+	if result.Error == nil && result.RowsAffected > 0 {
 		_ = os.Remove(current.FilePath)
 	}
 	task.update(func(value *ebayDraftJSONImportTask) {
@@ -800,6 +809,10 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 	if err != nil {
 		return err
 	}
+	fingerprints, err := loadExistingEbayDraftImportFingerprints(db)
+	if err != nil {
+		return err
+	}
 	reader := bufio.NewReaderSize(file, 64*1024)
 	if prefix, peekErr := reader.Peek(3); peekErr == nil && bytes.Equal(prefix, []byte{0xef, 0xbb, 0xbf}) {
 		_, _ = reader.Discard(3)
@@ -831,6 +844,13 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 			if !errors.Is(itemErr, gorm.ErrRecordNotFound) {
 				return itemErr
 			}
+		}
+		if fingerprint != "" && fingerprints[fingerprint] {
+			if err := recordEbayJSONTaskItem(db, task.ID, fingerprint, nil, "completed", ""); err != nil {
+				return err
+			}
+			updateEbayDraftJSONTaskProgress(task, decoder.InputOffset(), 0, 1, 0, "skipped previously imported item")
+			return nil
 		}
 		if (listingKey != "" && listingKeys[listingKey]) || (sourceURL != "" && sourceURLs[sourceURL]) {
 			if fingerprint != "" {
@@ -891,6 +911,9 @@ func processEbayDraftJSONImportFile(ctx context.Context, db *gorm.DB, task *ebay
 		}
 		if sourceURL != "" {
 			sourceURLs[sourceURL] = true
+		}
+		if fingerprint != "" {
+			fingerprints[fingerprint] = true
 		}
 		updateEbayDraftJSONTaskProgress(task, decoder.InputOffset(), 1, 0, 0, "importing")
 		return nil
@@ -1098,6 +1121,23 @@ func loadExistingEbayDraftImportKeys(db *gorm.DB) (map[string]bool, map[string]b
 		}
 	}
 	return listingKeys, sourceURLs, nil
+}
+
+func loadExistingEbayDraftImportFingerprints(db *gorm.DB) (map[string]bool, error) {
+	fingerprints := make(map[string]bool)
+	var values []string
+	if err := db.Model(&models.EbayImportJSONTaskItem{}).
+		Where("status = ? AND fingerprint IS NOT NULL AND TRIM(fingerprint) <> ''", "completed").
+		Distinct("fingerprint").
+		Pluck("fingerprint", &values).Error; err != nil {
+		return nil, err
+	}
+	for _, value := range values {
+		if value = strings.ToLower(strings.TrimSpace(value)); value != "" {
+			fingerprints[value] = true
+		}
+	}
+	return fingerprints, nil
 }
 
 func ebayDraftImportKeys(raw map[string]any) (string, string) {

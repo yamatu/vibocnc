@@ -42,5 +42,7 @@ CREATE TABLE IF NOT EXISTS ebay_import_json_task_items (
     PRIMARY KEY (id),
     UNIQUE KEY idx_ebay_import_json_task_items_key (task_id, fingerprint),
     KEY idx_ebay_import_json_task_items_task_id (task_id),
+    KEY idx_ebay_import_json_task_items_fingerprint (fingerprint),
+    KEY idx_ebay_import_json_task_items_status (status),
     KEY idx_ebay_import_json_task_items_draft_id (draft_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
