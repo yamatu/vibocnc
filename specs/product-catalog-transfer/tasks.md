@@ -28,7 +28,7 @@
   - Reuse the existing backup-page visual system.
   - _Requirements: 1, 4, 5, 8, 9, 10_
 
-- [ ] 6. Port backend/admin parity to the clean Vcocnc worktree
+- [x] 6. Port backend/admin parity to the clean Vcocnc worktree
   - Port only required functional modules and schema migrations.
   - Replace hard-coded Vibocnc identity with Vcocnc/configured values.
   - Preserve or restore Vcocnc palette tokens and public branding.
