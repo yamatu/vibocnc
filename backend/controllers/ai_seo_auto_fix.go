@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
 
 	"fanuc-backend/config"
@@ -62,16 +63,6 @@ func (ac *AIAgentController) StartSEOAutoFix(c *gin.Context) {
 	}
 
 	db := config.GetDB()
-	var activeJobs int64
-	if err := db.Model(&models.AIAgentSEOJob{}).Where("status IN ?", []string{"queued", "running", "paused"}).Count(&activeJobs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to check active AI SEO jobs", Error: err.Error()})
-		return
-	}
-	if activeJobs > 0 {
-		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "An AI job is already queued, running, or paused. Finish it before starting a one-click SEO fix."})
-		return
-	}
-
 	limit := req.Limit
 	if limit <= 0 || limit > maxAISEOCandidateProducts {
 		limit = maxAISEOCandidateProducts
@@ -109,6 +100,10 @@ func (ac *AIAgentController) StartSEOAutoFix(c *gin.Context) {
 	prompt := applyAISEOFocusToPrompt(aiSEOAutoFixPrompt, focus)
 	job, err := createAIAgentSEOJob(db, products, prompt, "auto_candidates", c.GetUint("user_id"))
 	if err != nil {
+		if errors.Is(err, errAISEOProductsPending) || errors.Is(err, errAISEOJobCapacity) {
+			c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to create one-click SEO job", Error: err.Error()})
 		return
 	}

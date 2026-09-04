@@ -171,8 +171,10 @@ export interface ProductClassificationIssue {
   model: string;
   category_id: number;
   category_path: string;
-  issue: 'uncategorized' | 'wrong_category' | 'root_category' | 'generic_category' | 'inactive_unresolved' | 'seo_failed';
+  issue: 'uncategorized' | 'wrong_category' | 'root_category' | 'generic_category' | 'inactive_unresolved' | 'seo_failed' | 'content_only';
   detail: string;
+  content_issue?: 'missing_description' | 'thin_description' | 'description_model_missing' | 'description_brand_mismatch' | 'repetitive_description';
+  content_detail?: string;
 }
 
 export interface ProductClassificationAudit {
@@ -184,6 +186,12 @@ export interface ProductClassificationAudit {
   generic_category: number;
   inactive_unresolved: number;
   seo_failed: number;
+  content_issues: number;
+  content_missing: number;
+  content_thin: number;
+  content_model_missing: number;
+  content_brand_mismatch: number;
+  content_repetitive: number;
   product_ids: number[];
   samples: ProductClassificationIssue[];
 }

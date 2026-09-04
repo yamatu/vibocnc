@@ -148,7 +148,7 @@ export default function CategoryAIToolsPanel() {
       setAudit(result);
       setAuditModalOpen(true);
       if (result.product_ids.length === 0) {
-        toast.success(zh ? '没有发现需要返工的产品！' : 'No products need rework!');
+        toast.success(zh ? '没有发现分类或描述需要返工的产品！' : 'No product classifications or descriptions need rework!');
       }
     } catch (error: unknown) {
       toast.error(errorText(error, zh ? '返工检测失败' : 'Rework audit failed'));
@@ -160,8 +160,8 @@ export default function CategoryAIToolsPanel() {
   const startReworkJob = async () => {
     if (!audit || audit.product_ids.length === 0) return;
     const message = zh
-      ? `启动返工任务？将对 ${audit.product_ids.length} 个有问题的产品重新分类：规则 + 联网核验 + AI 兜底识别，仍无法核验的产品保持下架待人工处理。`
-      : `Start the rework job? ${audit.product_ids.length} flagged products will be reclassified via rules + web verification + AI fallback; still-unverifiable products stay inactive for review.`;
+      ? `启动综合返工任务？将对 ${audit.product_ids.length} 个有问题的产品先重新核验分类，再检测产品描述；缺失、单薄、型号/品牌不一致或重复的描述会由 AI 重写。仍无法核验分类的产品保持下架待人工处理。`
+      : `Start the combined rework job? ${audit.product_ids.length} flagged products will be reclassified first, then weak, missing, repetitive, or inconsistent descriptions will be rewritten by AI. Unverifiable products remain inactive for review.`;
     if (!window.confirm(message)) return;
     setStartingRework(true);
     try {
@@ -174,6 +174,7 @@ export default function CategoryAIToolsPanel() {
         create_missing_categories: true,
         activate_resolved: true,
         use_llm_fallback: true,
+        repair_content: true,
       });
       setAuditModalOpen(false);
       toast.success(zh
@@ -418,8 +419,8 @@ export default function CategoryAIToolsPanel() {
           </h3>
           <p className="mt-1 flex-1 text-xs leading-5 text-gray-500">
             {zh
-              ? '扫描全部产品，找出没有分类、放错分类、型号未识别被下架、或 SEO AI 处理失败的产品，一键重新分类返工。'
-              : 'Scans every product for missing, wrong, or unverified classifications (including AI SEO failures) and reworks them in one click.'}
+              ? '扫描全部产品的分类与描述质量；分类错误会重新核验，描述缺失、单薄、型号/品牌不一致或重复时会由 AI 自动重写。'
+              : 'Scans classification and description quality. Category problems are reverified, while missing, thin, inconsistent, or repetitive descriptions are rewritten by AI.'}
           </p>
           <button
             onClick={runAudit}
@@ -675,8 +676,8 @@ export default function CategoryAIToolsPanel() {
                   <h2 className="text-lg font-semibold text-gray-900">{zh ? '返工检测结果' : 'Rework audit result'}</h2>
                   <p className="mt-0.5 text-sm text-gray-500">
                     {zh
-                      ? `扫描 ${audit.scanned.toLocaleString()} 个产品：${audit.ok.toLocaleString()} 个正常，${audit.product_ids.length.toLocaleString()} 个需要返工`
-                      : `${audit.scanned.toLocaleString()} products scanned: ${audit.ok.toLocaleString()} OK, ${audit.product_ids.length.toLocaleString()} need rework`}
+                      ? `扫描 ${audit.scanned.toLocaleString()} 个产品：${audit.ok.toLocaleString()} 个分类与描述正常，${audit.product_ids.length.toLocaleString()} 个需要返工`
+                      : `${audit.scanned.toLocaleString()} products scanned: ${audit.ok.toLocaleString()} have healthy classification and content, ${audit.product_ids.length.toLocaleString()} need rework`}
                   </p>
                 </div>
                 <button onClick={() => setAuditModalOpen(false)} disabled={startingRework} className="rounded-md p-2 text-gray-500 hover:bg-gray-50">
@@ -693,6 +694,12 @@ export default function CategoryAIToolsPanel() {
                     [zh ? '杂项分类待整理' : 'In catch-all tree', audit.generic_category],
                     [zh ? '未识别已下架' : 'Unresolved inactive', audit.inactive_unresolved],
                     [zh ? 'SEO 失败' : 'SEO failed', audit.seo_failed],
+                    [zh ? '描述问题合计' : 'Content issues', audit.content_issues || 0],
+                    [zh ? '描述缺失' : 'Missing descriptions', audit.content_missing || 0],
+                    [zh ? '描述单薄' : 'Thin descriptions', audit.content_thin || 0],
+                    [zh ? '描述缺型号' : 'Model missing in content', audit.content_model_missing || 0],
+                    [zh ? '描述品牌不符' : 'Wrong brand in content', audit.content_brand_mismatch || 0],
+                    [zh ? '描述重复' : 'Repetitive content', audit.content_repetitive || 0],
                   ].map(([label, value]) => (
                     <div key={String(label)} className="rounded-md border border-gray-200 p-3">
                       <div className="text-xs text-gray-500">{label}</div>
@@ -711,11 +718,15 @@ export default function CategoryAIToolsPanel() {
                         <div key={sample.product_id} className="px-3 py-2 text-sm">
                           <div className="flex items-center justify-between gap-3">
                             <span className="min-w-0 truncate font-mono text-xs text-gray-500">{sample.sku}</span>
-                            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{auditIssueLabel(sample.issue, zh)}</span>
+                            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{auditIssueLabel(sample.issue, zh)}</span>
+                              {sample.content_issue ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">{contentIssueLabel(sample.content_issue, zh)}</span> : null}
+                            </div>
                           </div>
                           <div className="mt-0.5 truncate text-gray-800">{sample.name}</div>
                           <div className="mt-0.5 text-xs text-gray-500">
                             {sample.category_path ? `${zh ? '当前分类：' : 'Current: '}${sample.category_path} · ` : ''}{sample.detail}
+                            {sample.content_detail ? `${sample.detail ? ' · ' : ''}${sample.content_detail}` : ''}
                           </div>
                         </div>
                       ))}
@@ -723,7 +734,7 @@ export default function CategoryAIToolsPanel() {
                   </div>
                 ) : (
                   <p className="rounded-md bg-green-50 p-4 text-sm text-green-700">
-                    {zh ? '所有产品的分类都验证正常，无需返工。' : 'Every product classification checks out — nothing to rework.'}
+                    {zh ? '所有产品的分类与描述质量都验证正常，无需返工。' : 'Every product classification and description checks out — nothing to rework.'}
                   </p>
                 )}
               </div>
@@ -739,7 +750,7 @@ export default function CategoryAIToolsPanel() {
                     className="inline-flex items-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
                   >
                     {startingRework ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <WrenchScrewdriverIcon className="h-4 w-4" />}
-                    {zh ? `启动返工任务（${audit.product_ids.length.toLocaleString()} 个产品）` : `Start rework job (${audit.product_ids.length.toLocaleString()} products)`}
+                    {zh ? `启动分类 + 描述返工（${audit.product_ids.length.toLocaleString()} 个产品）` : `Start category + content rework (${audit.product_ids.length.toLocaleString()} products)`}
                   </button>
                 )}
               </div>
@@ -852,6 +863,18 @@ function auditIssueLabel(issue: ProductClassificationIssue['issue'], zh: boolean
     generic_category: ['杂项分类', 'Catch-all tree'],
     inactive_unresolved: ['未识别已下架', 'Unresolved inactive'],
     seo_failed: ['SEO 失败', 'SEO failed'],
+    content_only: ['分类正常', 'Category OK'],
+  };
+  return labels[issue][zh ? 0 : 1];
+}
+
+function contentIssueLabel(issue: NonNullable<ProductClassificationIssue['content_issue']>, zh: boolean) {
+  const labels: Record<NonNullable<ProductClassificationIssue['content_issue']>, [string, string]> = {
+    missing_description: ['描述缺失', 'Missing content'],
+    thin_description: ['描述单薄', 'Thin content'],
+    description_model_missing: ['描述缺型号', 'Model missing'],
+    description_brand_mismatch: ['描述品牌不符', 'Wrong brand'],
+    repetitive_description: ['描述重复', 'Repetitive content'],
   };
   return labels[issue][zh ? 0 : 1];
 }

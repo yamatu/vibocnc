@@ -259,6 +259,8 @@ export interface AIAgentCategoryOptimizationOptions {
   use_llm_fallback?: boolean;
   /** Queue only products the classification audit flags for rework. */
   rework_only?: boolean;
+  /** After category repair, audit and rewrite only weak or incorrect descriptions. */
+  repair_content?: boolean;
 }
 
 export interface AIAgentSEOJobItemsPage {

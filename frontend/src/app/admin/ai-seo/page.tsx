@@ -232,7 +232,7 @@ export default function AISEORecordsPage() {
               <div>
                 <h1 className="text-2xl font-bold">{zh ? 'AI SEO / 分类优化任务记录' : 'AI SEO / Category Job Records'}</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-violet-100">
-                  {zh ? '这里统一记录 AI SEO 和自动分类后台任务。可查看每个 SKU 的处理结果，并暂停、继续，或结束已暂停任务。' : 'This page records both AI SEO and automatic category jobs. Inspect each SKU result, pause or resume work, or end a paused job.'}
+                  {zh ? '这里统一记录 AI SEO、产品描述返工和自动分类后台任务。不同产品范围可并行创建多个任务；同一产品不会被两个任务同时处理。' : 'This page records AI SEO, product-content rework, and category jobs. Multiple disjoint jobs can run together; the same product is never processed by two jobs at once.'}
                 </p>
               </div>
             </div>

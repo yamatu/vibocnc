@@ -25,6 +25,8 @@ import (
 const (
 	maxAISEOCandidateProducts = 30000
 	maxAISEOProviderRequests  = 50
+	maxActiveAISEOJobs        = 8
+	maxActiveCategoryJobs     = 3
 	// Check the persisted job status regularly while feeding workers. The item
 	// claim below is still authoritative, so a pause that races this check never
 	// starts another product request.
@@ -37,6 +39,7 @@ const (
 var aiSEOProviderSlots = make(chan struct{}, maxAISEOProviderRequests)
 
 var errAISEOProductsPending = errors.New("one or more products already belong to another queued or running optimization task")
+var errAISEOJobCapacity = errors.New("the maximum number of active AI jobs has been reached")
 
 const aiSEOSystemPrompt = `You optimize SEO metadata, product identity, and taxonomy for one industrial automation spare-part product at a time. Return JSON only, without Markdown, exactly with these fields: corrected_name, meta_title, meta_description, meta_keywords, short_description, description, category.
 
@@ -183,7 +186,7 @@ func (ac *AIAgentController) StartSelectedSEO(c *gin.Context) {
 	}
 	job, err := createAIAgentSEOJob(db, products, req.Prompt, "selected", c.GetUint("user_id"))
 	if err != nil {
-		if errors.Is(err, errAISEOProductsPending) {
+		if errors.Is(err, errAISEOProductsPending) || errors.Is(err, errAISEOJobCapacity) {
 			c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: err.Error()})
 			return
 		}
@@ -224,16 +227,6 @@ func (ac *AIAgentController) StartCandidateSEO(c *gin.Context) {
 	}
 
 	db := config.GetDB()
-	var activeJobs int64
-	if err := db.Model(&models.AIAgentSEOJob{}).Where("status IN ?", []string{"queued", "running", "paused"}).Count(&activeJobs).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to check active AI SEO jobs", Error: err.Error()})
-		return
-	}
-	if activeJobs > 0 {
-		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "An AI SEO job is already queued, running, or paused. Resume or finish it before creating another automatic candidate batch."})
-		return
-	}
-
 	limit := req.Limit
 	if limit > normalizedAISEOCandidateLimit(setting) {
 		limit = normalizedAISEOCandidateLimit(setting)
@@ -254,7 +247,7 @@ func (ac *AIAgentController) StartCandidateSEO(c *gin.Context) {
 	}
 	job, err := createAIAgentSEOJob(db, products, req.Prompt, selectionMode, c.GetUint("user_id"))
 	if err != nil {
-		if errors.Is(err, errAISEOProductsPending) {
+		if errors.Is(err, errAISEOProductsPending) || errors.Is(err, errAISEOJobCapacity) {
 			c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: err.Error()})
 			return
 		}
@@ -296,6 +289,9 @@ func createAIAgentSEOJob(db *gorm.DB, products []models.Product, prompt, selecti
 		}
 		if !effective.Enabled || strings.TrimSpace(effective.APIKeyEnc) == "" {
 			return errors.New("AI configuration changed before the SEO job could be created")
+		}
+		if err := ensureAISEOJobCapacity(tx, selectionMode); err != nil {
+			return err
 		}
 		if err := ensureNoPendingAISEOProducts(tx, products); err != nil {
 			return err
@@ -1420,6 +1416,34 @@ func ensureNoPendingAISEOProducts(tx *gorm.DB, products []models.Product) error 
 	}
 	if pendingCount > 0 {
 		return errAISEOProductsPending
+	}
+	return nil
+}
+
+func ensureAISEOJobCapacity(tx *gorm.DB, selectionMode string) error {
+	var active int64
+	if err := tx.Model(&models.AIAgentSEOJob{}).
+		Where("status IN ?", []string{"queued", "running", "paused"}).
+		Count(&active).Error; err != nil {
+		return err
+	}
+	categoryActive := int64(0)
+	if selectionMode == aiSEOCategorySelectionMode {
+		if err := tx.Model(&models.AIAgentSEOJob{}).
+			Where("selection_mode = ? AND status IN ?", aiSEOCategorySelectionMode, []string{"queued", "running", "paused"}).
+			Count(&categoryActive).Error; err != nil {
+			return err
+		}
+	}
+	return validateAISEOJobCapacity(active, categoryActive, selectionMode)
+}
+
+func validateAISEOJobCapacity(active, categoryActive int64, selectionMode string) error {
+	if active >= maxActiveAISEOJobs {
+		return fmt.Errorf("%w (%d active jobs allowed)", errAISEOJobCapacity, maxActiveAISEOJobs)
+	}
+	if selectionMode == aiSEOCategorySelectionMode && categoryActive >= maxActiveCategoryJobs {
+		return fmt.Errorf("%w (%d active category jobs allowed)", errAISEOJobCapacity, maxActiveCategoryJobs)
 	}
 	return nil
 }

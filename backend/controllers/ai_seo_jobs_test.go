@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -63,6 +64,18 @@ func TestPinAIAgentSEOJobProfile(t *testing.T) {
 	}
 	if job.AIProfileName != profile.Name || job.AIModel != profile.Model || job.AIAPIMode != profile.APIMode {
 		t.Fatalf("job profile snapshot = %#v", job)
+	}
+}
+
+func TestValidateAISEOJobCapacityAllowsParallelDisjointJobs(t *testing.T) {
+	if err := validateAISEOJobCapacity(maxActiveAISEOJobs-1, maxActiveCategoryJobs-1, aiSEOCategorySelectionMode); err != nil {
+		t.Fatalf("capacity below limit should be allowed: %v", err)
+	}
+	if !errors.Is(validateAISEOJobCapacity(maxActiveAISEOJobs, 0, "selected"), errAISEOJobCapacity) {
+		t.Fatal("global active-job limit was not enforced")
+	}
+	if !errors.Is(validateAISEOJobCapacity(2, maxActiveCategoryJobs, aiSEOCategorySelectionMode), errAISEOJobCapacity) {
+		t.Fatal("category active-job limit was not enforced")
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 func TestAISEOCategoryJobOptionsRoundTrip(t *testing.T) {
-	want := aiSEOCategoryJobOptions{UseWebSearch: true, CreateMissingCategories: true, ActivateResolved: false}
+	want := aiSEOCategoryJobOptions{UseWebSearch: true, CreateMissingCategories: true, ActivateResolved: false, RepairContent: true}
 	prompt, err := encodeAISEOCategoryJobOptions(want)
 	if err != nil {
 		t.Fatalf("encode options: %v", err)

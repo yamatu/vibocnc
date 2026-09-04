@@ -17,30 +17,39 @@ const (
 	AuditIssueGenericCategory    = "generic_category"
 	AuditIssueInactiveUnresolved = "inactive_unresolved"
 	AuditIssueSEOFailed          = "seo_failed"
+	AuditIssueContentOnly        = "content_only"
 )
 
 type ProductClassificationIssue struct {
-	ProductID    uint   `json:"product_id"`
-	SKU          string `json:"sku"`
-	Name         string `json:"name"`
-	Brand        string `json:"brand"`
-	Model        string `json:"model"`
-	CategoryID   uint   `json:"category_id"`
-	CategoryPath string `json:"category_path"`
-	Issue        string `json:"issue"`
-	Detail       string `json:"detail"`
+	ProductID     uint   `json:"product_id"`
+	SKU           string `json:"sku"`
+	Name          string `json:"name"`
+	Brand         string `json:"brand"`
+	Model         string `json:"model"`
+	CategoryID    uint   `json:"category_id"`
+	CategoryPath  string `json:"category_path"`
+	Issue         string `json:"issue"`
+	Detail        string `json:"detail"`
+	ContentIssue  string `json:"content_issue,omitempty"`
+	ContentDetail string `json:"content_detail,omitempty"`
 }
 
 type ProductClassificationAuditResult struct {
-	Scanned            int    `json:"scanned"`
-	OK                 int    `json:"ok"`
-	Uncategorized      int    `json:"uncategorized"`
-	WrongCategory      int    `json:"wrong_category"`
-	RootCategory       int    `json:"root_category"`
-	GenericCategory    int    `json:"generic_category"`
-	InactiveUnresolved int    `json:"inactive_unresolved"`
-	SEOFailed          int    `json:"seo_failed"`
-	ProductIDs         []uint `json:"product_ids"`
+	Scanned              int    `json:"scanned"`
+	OK                   int    `json:"ok"`
+	Uncategorized        int    `json:"uncategorized"`
+	WrongCategory        int    `json:"wrong_category"`
+	RootCategory         int    `json:"root_category"`
+	GenericCategory      int    `json:"generic_category"`
+	InactiveUnresolved   int    `json:"inactive_unresolved"`
+	SEOFailed            int    `json:"seo_failed"`
+	ContentIssues        int    `json:"content_issues"`
+	ContentMissing       int    `json:"content_missing"`
+	ContentThin          int    `json:"content_thin"`
+	ContentModelMissing  int    `json:"content_model_missing"`
+	ContentBrandMismatch int    `json:"content_brand_mismatch"`
+	ContentRepetitive    int    `json:"content_repetitive"`
+	ProductIDs           []uint `json:"product_ids"`
 	// Samples is a bounded illustrative list for the admin UI; ProductIDs is
 	// the complete rework selection.
 	Samples []ProductClassificationIssue `json:"samples"`
@@ -147,6 +156,17 @@ func evaluateProductClassification(product models.Product, categoryIndex map[uin
 // already queued in an active job are skipped so a rework job can always be
 // created from the result.
 func AuditProductClassifications(db *gorm.DB, maxProducts int) (*ProductClassificationAuditResult, error) {
+	return auditProductClassifications(db, maxProducts, false)
+}
+
+// AuditProductRework extends the category audit with deterministic product
+// description checks. The returned ProductIDs are the union, so one rework job
+// can repair taxonomy first and then content without conflicting queues.
+func AuditProductRework(db *gorm.DB, maxProducts int) (*ProductClassificationAuditResult, error) {
+	return auditProductClassifications(db, maxProducts, true)
+}
+
+func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bool) (*ProductClassificationAuditResult, error) {
 	if db == nil {
 		return nil, errors.New("database is nil")
 	}
@@ -176,7 +196,7 @@ func AuditProductClassifications(db *gorm.DB, maxProducts int) (*ProductClassifi
 	for {
 		var products []models.Product
 		if err := db.Model(&models.Product{}).
-			Select("id", "sku", "name", "brand", "model", "part_number", "category_id", "is_active", "ai_seo_status").
+			Select("id", "sku", "name", "brand", "model", "part_number", "category_id", "is_active", "ai_seo_status", "disable_auto_seo", "short_description", "description").
 			Where("id > ?", afterID).
 			Order("id ASC").
 			Limit(1000).
@@ -190,7 +210,11 @@ func AuditProductClassifications(db *gorm.DB, maxProducts int) (*ProductClassifi
 			afterID = product.ID
 			result.Scanned++
 			issue, detail := evaluateProductClassification(product, categoryIndex)
-			if issue == "" {
+			contentIssue, contentDetail := "", ""
+			if includeContent && !product.DisableAutoSEO {
+				contentIssue, contentDetail = EvaluateProductContentQuality(product)
+			}
+			if issue == "" && contentIssue == "" {
 				result.OK++
 				continue
 			}
@@ -208,17 +232,39 @@ func AuditProductClassifications(db *gorm.DB, maxProducts int) (*ProductClassifi
 			case AuditIssueSEOFailed:
 				result.SEOFailed++
 			}
+			if contentIssue != "" {
+				result.ContentIssues++
+				switch contentIssue {
+				case ContentIssueMissing:
+					result.ContentMissing++
+				case ContentIssueThin:
+					result.ContentThin++
+				case ContentIssueModelMissing:
+					result.ContentModelMissing++
+				case ContentIssueBrandMismatch:
+					result.ContentBrandMismatch++
+				case ContentIssueRepetitive:
+					result.ContentRepetitive++
+				}
+			}
 			if len(result.Samples) < auditSampleLimit {
+				sampleIssue := issue
+				if sampleIssue == "" {
+					sampleIssue = AuditIssueContentOnly
+					detail = "product classification is valid; description needs repair"
+				}
 				result.Samples = append(result.Samples, ProductClassificationIssue{
-					ProductID:    product.ID,
-					SKU:          product.SKU,
-					Name:         product.Name,
-					Brand:        product.Brand,
-					Model:        productClassificationModel(product),
-					CategoryID:   product.CategoryID,
-					CategoryPath: categoryIndex[product.CategoryID].Path,
-					Issue:        issue,
-					Detail:       detail,
+					ProductID:     product.ID,
+					SKU:           product.SKU,
+					Name:          product.Name,
+					Brand:         product.Brand,
+					Model:         productClassificationModel(product),
+					CategoryID:    product.CategoryID,
+					CategoryPath:  categoryIndex[product.CategoryID].Path,
+					Issue:         sampleIssue,
+					Detail:        detail,
+					ContentIssue:  contentIssue,
+					ContentDetail: contentDetail,
 				})
 			}
 			if !pending[product.ID] && len(result.ProductIDs) < maxProducts {
