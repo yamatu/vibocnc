@@ -183,6 +183,7 @@ func ConnectDatabase() {
 			&models.ProductImageArchiveJob{},
 			&models.ProductImagePolicySetting{},
 			&models.ProductImageTrustedURL{},
+			&models.ProductCatalogImportJob{},
 			&models.VisitorLog{},
 			&models.AnalyticsSetting{},
 			// News / Articles

@@ -52,6 +52,7 @@ func SetupRoutes(r *gin.Engine) {
 	ebayImportDraftController := &controllers.EbayImportDraftController{}
 	aiAgentController := &controllers.AIAgentController{}
 	services.StartEbayAutoImportDaemon(ebayImportDraftController.ConfirmDraftFn())
+	services.StartProductCatalogImportDaemon(db)
 
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
@@ -390,6 +391,16 @@ func SetupRoutes(r *gin.Engine) {
 				backup.POST("/db/restore", backupController.RestoreDBBackup)
 				backup.GET("/media", backupController.DownloadMediaBackup)
 				backup.POST("/media/restore", backupController.RestoreMediaBackup)
+				backup.GET("/products/export", backupController.DownloadProductCatalog)
+				backup.POST("/products/import/jobs", backupController.CreateProductCatalogImportJob)
+				backup.PUT("/products/import/jobs/:id/chunk", backupController.UploadProductCatalogChunk)
+				backup.POST("/products/import/jobs/:id/complete", backupController.CompleteProductCatalogImportUpload)
+				backup.GET("/products/import/jobs/:id", backupController.GetProductCatalogImportJob)
+				backup.GET("/products/import/jobs/:id/preview", backupController.GetProductCatalogImportPreview)
+				backup.POST("/products/import/jobs/:id/apply", backupController.ApplyProductCatalogImport)
+				backup.POST("/products/import/jobs/:id/pause", backupController.PauseProductCatalogImport)
+				backup.POST("/products/import/jobs/:id/resume", backupController.ResumeProductCatalogImport)
+				backup.DELETE("/products/import/jobs/:id", backupController.CancelProductCatalogImport)
 			}
 
 			// Cache & CDN (admin only)

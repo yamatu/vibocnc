@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast';
 import { ArrowDownTrayIcon, ArrowUpTrayIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 import AdminLayout from '@/components/admin/AdminLayout';
+import ProductCatalogTransferPanel from '@/components/admin/ProductCatalogTransferPanel';
 import { BackupService } from '@/services';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
@@ -19,6 +20,10 @@ function formatBytes(bytes: number) {
     idx++;
   }
   return `${val.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export default function AdminBackupPage() {
@@ -41,12 +46,12 @@ export default function AdminBackupPage() {
 
   const downloadDbMutation = useMutation({
     mutationFn: () => BackupService.downloadDbZip(),
-    onError: (e: any) => toast.error(e?.message || t('backup.downloadFailed', 'Download failed')),
+    onError: (error: unknown) => toast.error(errorMessage(error, t('backup.downloadFailed', 'Download failed'))),
   });
 
   const downloadMediaMutation = useMutation({
     mutationFn: () => BackupService.downloadMediaZip(),
-    onError: (e: any) => toast.error(e?.message || t('backup.downloadFailed', 'Download failed')),
+    onError: (error: unknown) => toast.error(errorMessage(error, t('backup.downloadFailed', 'Download failed'))),
   });
 
   const restoreDbMutation = useMutation({
@@ -56,7 +61,7 @@ export default function AdminBackupPage() {
       setDbZip(null);
       setDbConfirm(false);
     },
-    onError: (e: any) => toast.error(e?.message || t('backup.restoreFailed', 'Restore failed')),
+    onError: (error: unknown) => toast.error(errorMessage(error, t('backup.restoreFailed', 'Restore failed'))),
   });
 
   const restoreMediaMutation = useMutation({
@@ -66,7 +71,7 @@ export default function AdminBackupPage() {
       setMediaZip(null);
       setMediaConfirm(false);
     },
-    onError: (e: any) => toast.error(e?.message || t('backup.restoreFailed', 'Restore failed')),
+    onError: (error: unknown) => toast.error(errorMessage(error, t('backup.restoreFailed', 'Restore failed'))),
   });
 
   const busy =
@@ -96,6 +101,8 @@ export default function AdminBackupPage() {
             </div>
           </div>
         </div>
+
+        <ProductCatalogTransferPanel />
 
         {/* Database */}
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
