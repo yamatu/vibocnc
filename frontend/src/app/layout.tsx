@@ -9,9 +9,25 @@ import { headers } from "next/headers";
 import { PublicI18nProvider } from "@/lib/i18n/PublicI18nProvider";
 import { buildLanguageAlternates, getLocaleConfig, isLocalizablePublicPath, localizePublicPath, normalizePublicLocale } from "@/lib/i18n/config";
 import { translatePublicMessage } from "@/lib/i18n/messages";
+import TrackingCode, { type PublicTrackingConfig } from "@/components/analytics/TrackingCode";
 
 const SITE_DESCRIPTION =
   "Vibocnc supplies current, legacy and obsolete CNC and industrial automation parts across 20+ brands, with inspection, repair support and worldwide shipping.";
+
+async function getTrackingConfig(): Promise<PublicTrackingConfig | null> {
+  try {
+    const backend = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080').replace(/\/+$/, '');
+    const response = await fetch(`${backend}/api/v1/public/analytics/config`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as { success?: boolean; data?: PublicTrackingConfig };
+    return payload.success && payload.data ? payload.data : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = getSiteUrl();
@@ -106,10 +122,12 @@ export default async function RootLayout({
   const requestHeaders = await headers();
   const locale = normalizePublicLocale(requestHeaders.get('x-site-locale'));
   const localeConfig = getLocaleConfig(locale);
+  const trackingConfig = await getTrackingConfig();
 
   return (
     <html lang={localeConfig.hreflang} dir={localeConfig.dir} className="scroll-smooth" suppressHydrationWarning>
       <head>
+        <TrackingCode config={trackingConfig} />
         <link rel="icon" href="/favicon.ico?v=20260629" sizes="any" />
         <link rel="icon" href="/favicon-16x16.png?v=20260629" sizes="16x16" type="image/png" />
         <link rel="icon" href="/favicon-32x32.png?v=20260629" sizes="32x32" type="image/png" />

@@ -64,6 +64,8 @@ export interface AnalyticsSettings {
   retention_days: number;
   auto_cleanup_enabled: boolean;
   tracking_enabled: boolean;
+  tracking_code_enabled: boolean;
+  tracking_code: string;
   last_cleanup_at: string | null;
   created_at: string;
   updated_at: string;
@@ -193,7 +195,7 @@ export class AnalyticsService {
     throw new Error(response.data.message || 'Failed to fetch analytics settings');
   }
 
-  static async updateSettings(data: Partial<Pick<AnalyticsSettings, 'retention_days' | 'auto_cleanup_enabled' | 'tracking_enabled'>>): Promise<AnalyticsSettings> {
+  static async updateSettings(data: Partial<Pick<AnalyticsSettings, 'retention_days' | 'auto_cleanup_enabled' | 'tracking_enabled' | 'tracking_code_enabled' | 'tracking_code'>>): Promise<AnalyticsSettings> {
     const response = await apiClient.put<APIResponse<AnalyticsSettings>>(
       '/admin/analytics/settings',
       data

@@ -32,6 +32,8 @@ type AnalyticsSetting struct {
 	RetentionDays       int        `gorm:"default:90" json:"retention_days"`
 	AutoCleanupEnabled  bool       `gorm:"default:true" json:"auto_cleanup_enabled"`
 	TrackingEnabled     bool       `gorm:"default:true" json:"tracking_enabled"`
+	TrackingCodeEnabled bool       `gorm:"default:false" json:"tracking_code_enabled"`
+	TrackingCode        string     `gorm:"type:text" json:"tracking_code"`
 	LastCleanupAt       *time.Time `json:"last_cleanup_at"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`

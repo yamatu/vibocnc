@@ -189,6 +189,7 @@ export default function AnalyticsPage() {
 
   // Settings
   const [cleanupDate, setCleanupDate] = useState('');
+  const [trackingCodeDraft, setTrackingCodeDraft] = useState('');
 
   const baseFilters: AnalyticsFilters = useMemo(() => ({ start: startDate, end: endDate }), [startDate, endDate]);
 
@@ -243,6 +244,9 @@ export default function AnalyticsPage() {
     queryKey: queryKeys.analytics.settings(),
     queryFn: () => AnalyticsService.getSettings(),
   });
+  useEffect(() => {
+    if (settings) setTrackingCodeDraft(settings.tracking_code || '');
+  }, [settings]);
 
   const handleRefreshAnalytics = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all() });
@@ -250,7 +254,7 @@ export default function AnalyticsPage() {
 
   // Mutations
   const updateSettingsMutation = useMutation({
-    mutationFn: (data: Partial<Pick<AnalyticsSettings, 'retention_days' | 'auto_cleanup_enabled' | 'tracking_enabled'>>) =>
+    mutationFn: (data: Partial<Pick<AnalyticsSettings, 'retention_days' | 'auto_cleanup_enabled' | 'tracking_enabled' | 'tracking_code_enabled' | 'tracking_code'>>) =>
       AnalyticsService.updateSettings(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.analytics.settings() }); toast.success('Settings updated'); },
     onError: (err: Error) => toast.error(err.message),
@@ -608,6 +612,34 @@ export default function AnalyticsPage() {
                   className="px-4 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50"
                 >
                   {cleanupMutation.isPending ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={settings.tracking_code_enabled}
+                    onChange={(e) => updateSettingsMutation.mutate({ tracking_code_enabled: e.target.checked })}
+                    className="rounded border-gray-300"
+                  />
+                  Enable website tracking code
+                </label>
+                <p className="mt-1 text-xs text-gray-500">Paste the complete Google tag snippet. It will be loaded in the public site head when enabled.</p>
+                <textarea
+                  value={trackingCodeDraft}
+                  onChange={(e) => setTrackingCodeDraft(e.target.value)}
+                  placeholder={'<!-- Google tag (gtag.js) -->\n<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>'}
+                  rows={7}
+                  spellCheck={false}
+                  className="mt-3 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs text-gray-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => updateSettingsMutation.mutate({ tracking_code: trackingCodeDraft })}
+                  disabled={updateSettingsMutation.isPending}
+                  className="mt-3 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {updateSettingsMutation.isPending ? 'Saving...' : 'Save tracking code'}
                 </button>
               </div>
             </div>

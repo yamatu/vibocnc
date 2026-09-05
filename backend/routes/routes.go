@@ -104,6 +104,9 @@ func SetupRoutes(r *gin.Engine) {
 			// Social media links (public read access) - cached with homepage content.
 			public.GET("/social-media", middleware.CachePublicGET(middleware.CacheTTLHomepage(), "cache:public:homepage:social_media:"), socialMediaSettingController.GetPublic)
 
+			// Public tracking snippet; only enabled code is returned.
+			public.GET("/analytics/config", analyticsController.GetTrackingCode)
+
 			// Contact form submission (public access)
 			public.POST("/contact", contactHandler.SubmitContact)
 
