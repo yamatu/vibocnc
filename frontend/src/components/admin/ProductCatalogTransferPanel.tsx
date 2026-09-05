@@ -106,7 +106,7 @@ export default function ProductCatalogTransferPanel() {
     }
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (autoApply = false) => {
     if (!file) return;
     setBusy('upload');
     try {
@@ -115,7 +115,20 @@ export default function ProductCatalogTransferPanel() {
       setPreview(result.preview);
       setBrandMap(Object.fromEntries(result.preview.source_brands.map(brand => [brand, brand])));
       setReplacements(defaultReplacements(result.preview));
-      toast.success(zh ? '文件校验完成，请确认映射后开始导入' : 'Archive validated; review mappings before importing');
+      if (autoApply) {
+        const directBrandMap = Object.fromEntries(result.preview.source_brands.map(brand => [brand, brand]));
+        const next = await BackupService.applyProductCatalogImport(result.job.id, {
+          conflict_policy: 'upsert',
+          create_categories: true,
+          overwrite_local_files: false,
+          brand_map: directBrandMap,
+          text_replacements: [],
+        });
+        setJob(next);
+        toast.success(zh ? '产品和分类已进入后台同步' : 'Products and categories queued for background sync');
+      } else {
+        toast.success(zh ? '文件校验完成，请确认映射后开始导入' : 'Archive validated; review mappings before importing');
+      }
     } catch (error: unknown) {
       toast.error(errorMessage(error, zh ? '产品库上传失败' : 'Catalog upload failed'));
     } finally {
@@ -182,9 +195,12 @@ export default function ProductCatalogTransferPanel() {
           <input type="file" accept=".zip,application/zip" onChange={event => setFile(event.target.files?.[0] || null)} className="block w-full text-sm text-gray-700" />
           <div className="truncate text-sm text-gray-500 sm:w-[320px]">{file ? `${file.name} (${formatBytes(file.size)})` : (zh ? '未选择文件' : 'No file selected')}</div>
         </div>
-        <button type="button" onClick={handleUpload} disabled={!file || busy !== null || Boolean(active)} className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
+        <button type="button" onClick={() => handleUpload(false)} disabled={!file || busy !== null || Boolean(active)} className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
           <ArrowUpTrayIcon className="mr-2 h-4 w-4" />
           {busy === 'upload' ? (zh ? `上传并校验 ${uploadPercent}%` : `Uploading ${uploadPercent}%`) : (zh ? '分片上传并预览' : 'Upload in Chunks & Preview')}
+        </button>
+        <button type="button" onClick={() => handleUpload(true)} disabled={!file || busy !== null || Boolean(active)} className="inline-flex items-center rounded-md border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60">
+          {zh ? '上传并直接同步' : 'Upload & Sync Directly'}
         </button>
       </div>
 
