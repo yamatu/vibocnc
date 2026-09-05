@@ -73,6 +73,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
     queryKey: queryKeys.socialMedia.public(),
     queryFn: () => SocialMediaService.getPublic(),
     initialData: initialSocialSettings || undefined,
+    initialDataUpdatedAt: initialSocialSettings ? Date.now() : undefined,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });

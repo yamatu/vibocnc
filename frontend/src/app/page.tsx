@@ -302,14 +302,23 @@ export default async function Home({
   const locale = await getRequestPublicLocale();
   const previewParams = searchParams ? await searchParams : undefined;
   const isAdminPreview = previewParams?.admin_preview === '1';
-  const [list, socialMediaSettings] = await Promise.all([
-    getHomepageContentList({ fresh: isAdminPreview }),
-    getPublicSocialMediaSettings({ fresh: isAdminPreview }),
-  ]);
+  const list = await getHomepageContentList({ fresh: isAdminPreview });
+  // Social links are non-critical footer content. Fetch them during admin
+  // preview for accurate structured-data review; public requests use the
+  // client-cached footer query so the first HTML response has one backend call.
+  const socialMediaSettings = isAdminPreview
+    ? await getPublicSocialMediaSettings({ fresh: true })
+    : null;
   const byKey: Record<string, HomepageContent | undefined> = Object.fromEntries(
     list.map((c) => [c.section_key, c]),
   );
-  byKey.hero_section = await sanitizeHeroContent(byKey.hero_section);
+  // Public requests should never perform one HEAD request per hero slide.
+  // Broken upload references are handled by the image fallback; the expensive
+  // integrity scan is only needed for the admin preview where editors are
+  // actively checking stored media.
+  if (isAdminPreview) {
+    byKey.hero_section = await sanitizeHeroContent(byKey.hero_section);
+  }
 
   const renderQueue = [
     ...PRIMARY_HOME_SECTIONS.map((s) => {
@@ -387,16 +396,15 @@ export default async function Home({
           if (s.key === 'hero_section') section = <HeroSection content={s.content} />;
           else if (s.key === 'company_stats') section = <CompanyStats content={s.content} />;
           else if (s.key === 'featured_products') {
-            section = (
-              <Suspense fallback={<DeferredSectionFallback minHeight={860} />}>
-                <DeferredFeaturedProducts content={s.content} locale={locale} />
-              </Suspense>
-            );
+            // Featured products fetch in the client when this section enters
+            // the viewport; keeping the catalog request out of SSR improves
+            // TTFB and prevents slow databases delaying the hero.
+            section = <FeaturedProducts content={s.content} />;
           } else if (s.key === 'brands_section') section = <BrandsSection content={s.content} />;
           else if (s.key === 'repair_capabilities') section = <RepairCapabilitiesSection content={s.content} />;
           else if (s.key === 'workshop_section') section = <WorkshopSection content={s.content} />;
           else if (s.key === 'services_section') section = <ServicesSection content={s.content} />;
-          else if (s.key === 'home_blog') {
+          else if (s.key === 'home_blog' && isAdminPreview) {
             section = (
               <Suspense fallback={<DeferredSectionFallback minHeight={620} />}>
                 <DeferredHomeBlog content={s.content} locale={locale} />
