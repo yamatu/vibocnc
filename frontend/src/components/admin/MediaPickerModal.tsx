@@ -322,7 +322,7 @@ export default function MediaPickerModal({ open, onClose, onSelect, multiple = f
                       <button type="button" onClick={() => toggle(asset)} className="block w-full text-left">
                       <div className="aspect-square bg-gray-50 p-1">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={asset.url} alt={asset.alt_text || asset.original_name} className="h-full w-full object-contain" loading="lazy" decoding="async" />
+                        <img src={asset.thumbnail_url || asset.url} alt={asset.alt_text || asset.original_name} className="h-full w-full object-contain" loading="lazy" decoding="async" />
                       </div>
                       <div className="p-2">
                         <div className="text-xs font-medium text-gray-900 truncate">{asset.original_name}</div>

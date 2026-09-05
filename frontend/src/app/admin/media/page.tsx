@@ -1011,7 +1011,7 @@ export default function AdminMediaPage() {
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={asset.url}
+                          src={asset.thumbnail_url || asset.url}
                           alt={asset.alt_text || asset.original_name}
                           className="h-full w-full object-contain"
                           loading="lazy"

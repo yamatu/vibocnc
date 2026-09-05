@@ -633,6 +633,7 @@ func SetupRoutes(r *gin.Engine) {
 	}
 
 	// Serve static files (uploaded images)
+	r.GET("/media-thumb/*path", mediaController.Thumbnail)
 	uploads := r.Group("/uploads")
 	uploads.Use(middleware.HotlinkProtectionMiddleware())
 	uploads.Use(func(c *gin.Context) {

@@ -7,6 +7,7 @@ export interface MediaAsset {
   file_name: string;
   relative_path: string;
   url: string;
+  thumbnail_url?: string;
   sha256: string;
   mime_type: string;
   size_bytes: number;

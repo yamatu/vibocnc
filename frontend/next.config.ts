@@ -46,6 +46,10 @@ const nextConfig: NextConfig = {
           destination: `${apiBase}/uploads/:path*`,
         },
         {
+          source: '/media-thumb/:path*',
+          destination: `${apiBase}/media-thumb/:path*`,
+        },
+        {
           source: '/api/:path*',
           destination: `${apiBase}/api/:path*`,
         },
