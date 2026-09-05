@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import type { Category } from '@/types';
 
 export interface CategoriesBrandAccordionCopy {
@@ -10,8 +10,6 @@ export interface CategoriesBrandAccordionCopy {
   products: string;
   otherBrands: string;
   viewAll: string;
-  searchPlaceholder?: string;
-  noResults?: string;
 }
 
 interface CategoriesBrandAccordionProps {
@@ -51,51 +49,14 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
   }, [categories]);
 
   const [expandedId, setExpandedId] = useState<number | null>(sections[0]?.id ?? null);
-  const [query, setQuery] = useState('');
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredSections = useMemo(() => {
-    if (!normalizedQuery) return sections;
-    return sections
-      .map((category) => {
-        const rootMatches = `${category.name} ${category.description || ''}`.toLocaleLowerCase().includes(normalizedQuery);
-        const children = rootMatches
-          ? (category.children || [])
-          : (category.children || []).filter((child) =>
-            `${child.name} ${child.description || ''}`.toLocaleLowerCase().includes(normalizedQuery),
-          );
-        return rootMatches || children.length > 0
-          ? {
-          ...category,
-              children,
-            }
-          : null;
-      })
-      .filter((category): category is Category => category !== null);
-  }, [normalizedQuery, sections]);
-  const filteredOthers = useMemo(
-    () => normalizedQuery
-      ? others.filter((category) => `${category.name} ${category.description || ''}`.toLocaleLowerCase().includes(normalizedQuery))
-      : others,
-    [normalizedQuery, others],
-  );
 
   return (
-    <div className="space-y-5">
-      <div className="relative max-w-xl">
-        <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={copy.searchPlaceholder || 'Search categories'}
-          aria-label={copy.searchPlaceholder || 'Search categories'}
-          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200"
-        />
-      </div>
-      {filteredSections.map((category) => {
+    <div className="space-y-3">
+      {sections.map((category) => {
         const expanded = expandedId === category.id;
         const children = [...(category.children || [])].sort(compareCategories);
         return (
-          <section key={category.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-yellow-300">
+          <section key={category.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div
               role="button"
               tabIndex={0}
@@ -107,9 +68,9 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
                   setExpandedId(expanded ? null : category.id);
                 }
               }}
-              className="flex w-full cursor-pointer items-center gap-4 border-l-4 border-yellow-400 px-5 py-4 transition hover:bg-yellow-50/50"
+              className="flex w-full cursor-pointer items-center gap-4 px-5 py-4 transition hover:bg-slate-50"
             >
-              <ChevronDownIcon className={`h-5 w-5 shrink-0 text-yellow-600 transition-transform ${expanded ? '' : '-rotate-90'}`} />
+              <ChevronDownIcon className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${expanded ? '' : '-rotate-90'}`} />
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-lg font-bold text-slate-950">{category.name}</h2>
               </div>
@@ -133,7 +94,7 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
                     <li key={child.id}>
                       <Link
                         href={hrefs[child.id] || '#'}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 transition hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-800"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 transition hover:border-[#0b3e75] hover:text-[#0b3e75]"
                       >
                         <span className="min-w-0 truncate">{child.name}</span>
                         {typeof child.product_count === 'number' && child.product_count > 0 && (
@@ -144,7 +105,7 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
                   ))}
                 </ul>
               ) : (
-                <Link href={hrefs[category.id] || '#'} className="text-sm font-bold text-yellow-700 hover:text-yellow-900">
+                <Link href={hrefs[category.id] || '#'} className="text-sm font-bold text-[#0b3e75] hover:text-orange-700">
                   {copy.viewAll} →
                 </Link>
               )}
@@ -153,15 +114,15 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
         );
       })}
 
-      {filteredOthers.length > 0 && (
+      {others.length > 0 && (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{copy.otherBrands}</h2>
           <div className="mt-3 flex flex-wrap gap-2">
-            {filteredOthers.map((category) => (
+            {others.map((category) => (
               <Link
                 key={category.id}
                 href={hrefs[category.id] || '#'}
-                className="rounded-full border border-slate-200 px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-800"
+                className="rounded-full border border-slate-200 px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-[#0b3e75] hover:text-[#0b3e75]"
               >
                 {category.name}
                 {typeof category.product_count === 'number' && category.product_count > 0 && (
@@ -171,11 +132,6 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
             ))}
           </div>
         </section>
-      )}
-      {normalizedQuery && filteredSections.length === 0 && filteredOthers.length === 0 && (
-        <div className="rounded-xl border border-dashed border-yellow-300 bg-yellow-50 p-8 text-center text-sm text-slate-600">
-          {copy.noResults || 'No matching categories found.'}
-        </div>
       )}
     </div>
   );
