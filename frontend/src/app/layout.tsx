@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ReactQueryProvider } from "@/lib/react-query";
 import { Toaster } from "react-hot-toast";
-import Clarity from "@/components/analytics/Clarity";
 import { getSiteUrl } from "@/lib/url";
 import { SITE_NAME } from "@/lib/seo";
 import { headers } from "next/headers";
@@ -138,7 +137,6 @@ export default async function RootLayout({
       <body className="antialiased">
         <ReactQueryProvider>
           <PublicI18nProvider initialLocale={locale}>
-            <Clarity />
             {children}
             <Toaster
               position="top-right"
