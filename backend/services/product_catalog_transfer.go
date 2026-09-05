@@ -326,9 +326,15 @@ func WriteProductCatalogArchive(db *gorm.DB, target io.Writer, sourceSite, sourc
 		return ProductCatalogManifest{}, err
 	}
 	paths := categoryPaths(categories)
+	localFiles := map[string]struct{}{}
 	portableCategories := make([]ProductCatalogCategory, 0, len(categories))
 	for _, category := range categories {
-		item := ProductCatalogCategory{Path: paths[category.ID], Name: category.Name, Slug: category.Slug, Description: category.Description, ImageURL: category.ImageURL, SortOrder: category.SortOrder, IsActive: category.IsActive}
+		imageURL := category.ImageURL
+		if rel, ok := localUploadRelative(imageURL); ok {
+			localFiles[rel] = struct{}{}
+			imageURL = "/uploads/" + rel
+		}
+		item := ProductCatalogCategory{Path: paths[category.ID], Name: category.Name, Slug: category.Slug, Description: category.Description, ImageURL: imageURL, SortOrder: category.SortOrder, IsActive: category.IsActive}
 		for _, translation := range category.Translations {
 			item.Translations = append(item.Translations, ProductCatalogCategoryTranslation{LanguageCode: translation.LanguageCode, Name: translation.Name, Slug: translation.Slug, Description: translation.Description})
 		}
@@ -355,7 +361,6 @@ func WriteProductCatalogArchive(db *gorm.DB, target io.Writer, sourceSite, sourc
 		return ProductCatalogManifest{}, err
 	}
 
-	localFiles := map[string]struct{}{}
 	productCount := 0
 	lastID := uint(0)
 	first := true
@@ -1090,10 +1095,22 @@ func runProductCatalogImport(db *gorm.DB, id string) {
 		return
 	}
 	options = normalizeCatalogOptions(options)
+	categoryRestored := 0
+	for _, category := range catalog.Categories {
+		if copied, restoreErr := restoreCatalogLocalFile(job.ExtractedPath, category.ImageURL, options.OverwriteLocalFiles); restoreErr != nil {
+			finishProductCatalogJob(db, id, token, "failed", restoreErr.Error())
+			return
+		} else if copied {
+			categoryRestored++
+		}
+	}
 	categoryIDs, err := prepareCatalogCategories(db, catalog.Categories, options)
 	if err != nil {
 		finishProductCatalogJob(db, id, token, "failed", err.Error())
 		return
+	}
+	if categoryRestored > 0 {
+		_ = db.Model(&models.ProductCatalogImportJob{}).Where("id = ? AND worker_token = ?", id, token).Update("restored_files", gorm.Expr("restored_files + ?", categoryRestored)).Error
 	}
 	sort.Slice(catalog.Products, func(i, j int) bool {
 		return strings.ToLower(catalog.Products[i].SKU) < strings.ToLower(catalog.Products[j].SKU)
