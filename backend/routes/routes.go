@@ -556,6 +556,7 @@ func SetupRoutes(r *gin.Engine) {
 				contacts.GET("", contactHandler.GetContacts)
 				contacts.GET("/stats", contactHandler.GetContactStats)
 				contacts.GET("/:id", contactHandler.GetContact)
+				contacts.POST("/:id/notify", contactHandler.RetryContactNotification)
 				contacts.PUT("/:id", contactHandler.UpdateContactStatus)
 				contacts.DELETE("/:id", middleware.AdminOnly(), contactHandler.DeleteContact)
 			}

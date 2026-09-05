@@ -18,6 +18,9 @@ export interface ContactMessage {
   admin_notes?: string;
   created_at: string;
   updated_at: string;
+  notification_status?: 'queued' | 'sent' | 'failed';
+  notification_error?: string;
+  notification_sent_at?: string;
 }
 
 export interface ContactCreateRequest {
@@ -125,6 +128,11 @@ class ContactService {
   async getContactStats(): Promise<ContactStats> {
     const response = await api.get('/admin/contacts/stats');
     return response.data.data;
+  }
+
+  async retryNotification(id: number): Promise<{ message: string; notification_status: string }> {
+    const response = await api.post(`/admin/contacts/${id}/notify`);
+    return response.data;
   }
 }
 

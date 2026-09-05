@@ -846,6 +846,44 @@ func prepareCatalogCategories(db *gorm.DB, source []ProductCatalogCategory, opti
 		sourcePath := strings.ToLower(strings.Trim(item.Path, "/"))
 		wantedPath := strings.ToLower(targetCategoryPath(item.Path, options))
 		if id := byPath[wantedPath]; id != 0 {
+			if options.ConflictPolicy != "skip" {
+				name := replaceCatalogText(item.Name, options.TextReplacements)
+				if len(strings.Split(wantedPath, "/")) == 1 {
+					name = mapCatalogBrand(name, options.BrandMap)
+				}
+				updates := map[string]any{
+					"name": name,
+					"description": replaceCatalogText(item.Description, options.TextReplacements),
+					"image_url": replaceCatalogText(item.ImageURL, options.TextReplacements),
+					"sort_order": item.SortOrder,
+					"is_active": item.IsActive,
+				}
+				if err := db.Model(&models.Category{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+					return nil, err
+				}
+				for _, translation := range item.Translations {
+					row := models.CategoryTranslation{}
+					findErr := db.Where("category_id = ? AND language_code = ?", id, translation.LanguageCode).First(&row).Error
+					translationUpdates := map[string]any{
+						"name": replaceCatalogText(translation.Name, options.TextReplacements),
+						"slug": translation.Slug,
+						"description": replaceCatalogText(translation.Description, options.TextReplacements),
+					}
+					if errors.Is(findErr, gorm.ErrRecordNotFound) {
+						row = models.CategoryTranslation{CategoryID: id, LanguageCode: translation.LanguageCode}
+						for key, value := range translationUpdates {
+							if key == "name" { row.Name = value.(string) }
+							if key == "slug" { row.Slug = value.(string) }
+							if key == "description" { row.Description = value.(string) }
+						}
+						if err := db.Create(&row).Error; err != nil { return nil, err }
+					} else if findErr != nil {
+						return nil, findErr
+					} else if err := db.Model(&row).Updates(translationUpdates).Error; err != nil {
+						return nil, err
+					}
+				}
+			}
 			resolved[sourcePath] = id
 			continue
 		}

@@ -76,6 +76,15 @@ export default function ContactsPage() {
     },
   });
 
+  const retryNotificationMutation = useMutation({
+    mutationFn: (id: number) => ContactService.retryNotification(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.all() });
+      toast.success(t('contacts.toast.notificationQueued', locale === 'zh' ? '邮件通知已重新排队' : 'Notification queued'));
+    },
+    onError: () => toast.error(t('contacts.toast.notificationRetryFailed', locale === 'zh' ? '邮件通知重试失败' : 'Failed to retry notification')),
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'new': return 'bg-blue-100 text-blue-800';
@@ -407,6 +416,13 @@ export default function ContactsPage() {
               <div>
 				<label className="block text-sm font-medium text-gray-700">{t('contacts.field.message', locale === 'zh' ? '内容' : 'Message')}</label>
                 <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedMessage.message}</p>
+              </div>
+
+              <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                <span className="font-medium text-gray-700">{locale === 'zh' ? '邮件通知：' : 'Email notification: '}</span>
+                <span className={selectedMessage.notification_status === 'failed' ? 'text-red-700' : selectedMessage.notification_status === 'sent' ? 'text-green-700' : 'text-amber-700'}>{selectedMessage.notification_status || 'queued'}</span>
+                {selectedMessage.notification_error && <p className="mt-1 text-xs text-red-600">{selectedMessage.notification_error}</p>}
+                {selectedMessage.notification_status === 'failed' && <button type="button" onClick={() => retryNotificationMutation.mutate(selectedMessage.id)} disabled={retryNotificationMutation.isPending} className="mt-2 rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50">{locale === 'zh' ? '重试发送' : 'Retry send'}</button>}
               </div>
               
               <div className="grid grid-cols-3 gap-4">

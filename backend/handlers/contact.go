@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"fanuc-backend/models"
@@ -41,6 +42,7 @@ func (h *ContactHandler) SubmitContact(c *gin.Context) {
 	// 获取客户端信息
 	req.IPAddress = c.ClientIP()
 	req.UserAgent = c.GetHeader("User-Agent")
+	req.NotificationStatus = "queued"
 
 	// 保存到数据库
 	if err := h.db.Create(&req).Error; err != nil {
@@ -52,15 +54,32 @@ func (h *ContactHandler) SubmitContact(c *gin.Context) {
 
 	siteURL := contactSiteURL(c)
 	go func(messageID uint, baseURL string) {
-		if err := services.NotifyAdminContactMessage(h.db, baseURL, messageID); err != nil {
-			log.Printf("contact notification: %v", err)
-		}
+		err := services.NotifyAdminContactMessage(h.db, baseURL, messageID)
+		updates := map[string]any{"notification_status": "sent", "notification_error": ""}
+		if err != nil { updates["notification_status"] = "failed"; updates["notification_error"] = strings.TrimSpace(err.Error()); log.Printf("contact notification: %v", err) } else { now := time.Now(); updates["notification_sent_at"] = &now }
+		_ = h.db.Model(&models.ContactMessage{}).Where("id = ?", messageID).Updates(updates).Error
 	}(req.ID, siteURL)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Contact message submitted successfully",
 		"id":      req.ID,
 	})
+}
+
+// RetryContactNotification retries delivery without changing the customer message status.
+func (h *ContactHandler) RetryContactNotification(c *gin.Context) {
+	id := c.Param("id")
+	var message models.ContactMessage
+	if err := h.db.First(&message, id).Error; err != nil { c.JSON(http.StatusNotFound, gin.H{"error": "Contact message not found"}); return }
+	if err := h.db.Model(&message).Updates(map[string]any{"notification_status": "queued", "notification_error": ""}).Error; err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to queue contact notification"}); return }
+	baseURL := os.Getenv("SITE_URL")
+	go func(messageID uint, siteURL string) {
+		err := services.NotifyAdminContactMessage(h.db, siteURL, messageID)
+		updates := map[string]any{"notification_status": "sent", "notification_error": ""}
+		if err != nil { updates["notification_status"] = "failed"; updates["notification_error"] = strings.TrimSpace(err.Error()); log.Printf("contact notification retry: %v", err) } else { now := time.Now(); updates["notification_sent_at"] = &now }
+		_ = h.db.Model(&models.ContactMessage{}).Where("id = ?", messageID).Updates(updates).Error
+	}(message.ID, baseURL)
+	c.JSON(http.StatusAccepted, gin.H{"message": "Contact notification queued", "notification_status": "queued"})
 }
 
 func contactSiteURL(c *gin.Context) string {

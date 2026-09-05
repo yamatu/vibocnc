@@ -21,6 +21,9 @@ type ContactMessage struct {
 	RepliedAt   *time.Time `json:"replied_at"`
 	RepliedBy   *uint      `json:"replied_by"`
 	AdminNotes  string     `json:"admin_notes" gorm:"type:text"`
+	NotificationStatus string `json:"notification_status" gorm:"type:varchar(20);default:'queued';index"`
+	NotificationError string `json:"notification_error,omitempty" gorm:"type:text"`
+	NotificationSentAt *time.Time `json:"notification_sent_at,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
