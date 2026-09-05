@@ -64,6 +64,9 @@ func SyncMediaAssetsFromDisk(db *gorm.DB, uploadsDir string) (MediaSyncResult, e
 			return err
 		}
 		if info.IsDir() {
+			if info.Name() == ".thumbs" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		res.Scanned++
