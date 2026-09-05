@@ -48,6 +48,9 @@ func migrateAIAgentProfileSchema(db *gorm.DB) error {
 		return errors.New("database is nil")
 	}
 	migrator := db.Migrator()
+	if err := repairLegacyAIAgentSEOJobColumns(db); err != nil {
+		return err
+	}
 	for _, model := range requiredAIAgentSchemaModels() {
 		if migrator.HasTable(model) {
 			continue
@@ -66,6 +69,29 @@ func migrateAIAgentProfileSchema(db *gorm.DB) error {
 	}
 	if missing := missingAIAgentProfileSchema(db); len(missing) > 0 {
 		return fmt.Errorf("required AI profile schema is still incomplete: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// repairLegacyAIAgentSEOJobColumns fixes a migration typo from an older image
+// that created a_iprofile_* instead of ai_profile_*. Keep this repair additive
+// and data-preserving so existing queued/completed jobs remain readable.
+func repairLegacyAIAgentSEOJobColumns(db *gorm.DB) error {
+	const table = "ai_agent_seo_jobs"
+	for _, pair := range [][2]string{{"a_iprofile_id", "ai_profile_id"}, {"a_iprofile_name", "ai_profile_name"}} {
+		var legacy, current int
+		if err := db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", table, pair[0]).Scan(&legacy).Error; err != nil {
+			return fmt.Errorf("check legacy AI SEO column %s: %w", pair[0], err)
+		}
+		if err := db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", table, pair[1]).Scan(&current).Error; err != nil {
+			return fmt.Errorf("check AI SEO column %s: %w", pair[1], err)
+		}
+		if legacy == 0 || current > 0 {
+			continue
+		}
+		if err := db.Exec("ALTER TABLE `ai_agent_seo_jobs` RENAME COLUMN `" + pair[0] + "` TO `" + pair[1] + "`").Error; err != nil {
+			return fmt.Errorf("repair legacy AI SEO column %s: %w", pair[0], err)
+		}
 	}
 	return nil
 }
