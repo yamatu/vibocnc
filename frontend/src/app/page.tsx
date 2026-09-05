@@ -404,7 +404,7 @@ export default async function Home({
           else if (s.key === 'repair_capabilities') section = <RepairCapabilitiesSection content={s.content} />;
           else if (s.key === 'workshop_section') section = <WorkshopSection content={s.content} />;
           else if (s.key === 'services_section') section = <ServicesSection content={s.content} />;
-          else if (s.key === 'home_blog' && isAdminPreview) {
+          else if (s.key === 'home_blog') {
             section = (
               <Suspense fallback={<DeferredSectionFallback minHeight={620} />}>
                 <DeferredHomeBlog content={s.content} locale={locale} />

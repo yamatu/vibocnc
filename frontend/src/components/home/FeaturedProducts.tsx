@@ -20,7 +20,7 @@ import { localizeProductOrDefault } from '@/lib/i18n/content';
 
 export function FeaturedProducts({
   content,
-  initialProducts = [],
+  initialProducts,
 }: {
   content?: HomepageContent | null;
   initialProducts?: Product[];
@@ -42,7 +42,7 @@ export function FeaturedProducts({
   } = useQuery({
     queryKey: queryKeys.products.featured(),
     queryFn: () => ProductService.getFeaturedProducts(6),
-    initialData: initialProducts,
+    initialData: initialProducts && initialProducts.length > 0 ? initialProducts : undefined,
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
