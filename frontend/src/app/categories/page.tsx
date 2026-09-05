@@ -38,16 +38,18 @@ export default async function CategoriesPage() {
     ? {
         kicker: '多品牌产品目录',
         title: '工业自动化产品分类',
-        intro: '按制造商和设备系列查找自动化零部件，并通过每个分类继续浏览现有、老旧及停产型号。',
+        intro: '按制造商和设备系列查找自动化零部件，快速浏览现有、旧款和停产型号。',
         browse: '浏览',
         empty: '产品分类正在更新。',
         all: '浏览全部产品',
         parts: '全部自动化零部件',
         repair: '维修评估',
         blog: '技术博客',
-        products: '件产品',
+        products: '个产品',
         otherBrands: '更多品牌与分类',
         viewAll: '查看全部产品',
+        searchPlaceholder: '搜索分类',
+        noResults: '没有匹配的分类。',
       }
     : {
         kicker: 'Multi-brand catalogue',
@@ -62,6 +64,8 @@ export default async function CategoriesPage() {
         products: 'products',
         otherBrands: 'More brands & categories',
         viewAll: 'View all products',
+        searchPlaceholder: 'Search categories',
+        noResults: 'No matching categories found.',
       };
   let categories: Category[] = [];
   try {
@@ -122,11 +126,11 @@ export default async function CategoriesPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbData) }} />
       <div className="site-page-shell min-h-screen">
-        <section className="site-page-hero py-14 sm:py-20">
+        <section className="site-page-hero categories-page-hero py-14 sm:py-20">
           <div className="site-hero-inner mx-auto max-w-5xl px-4 text-center sm:px-6 lg:px-8">
-            <div className="site-hero-kicker mb-5">{copy.kicker}</div>
+            <div className="site-hero-kicker categories-page-kicker mb-5">{copy.kicker}</div>
             <h1 className="text-4xl font-black tracking-tight sm:text-5xl">{copy.title}</h1>
-            <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-blue-100">
+            <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-yellow-50">
               {copy.intro}
             </p>
           </div>
@@ -137,7 +141,7 @@ export default async function CategoriesPage() {
             <CategoriesBrandAccordion
               categories={categories}
               hrefs={categoryHrefs}
-              copy={{ browse: copy.browse, products: copy.products, otherBrands: copy.otherBrands, viewAll: copy.viewAll }}
+              copy={{ browse: copy.browse, products: copy.products, otherBrands: copy.otherBrands, viewAll: copy.viewAll, searchPlaceholder: copy.searchPlaceholder, noResults: copy.noResults }}
             />
           ) : (
             <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-slate-600">
@@ -146,9 +150,9 @@ export default async function CategoriesPage() {
           )}
 
           <div className="mt-12 grid gap-4 rounded-xl bg-slate-950 p-7 text-white sm:grid-cols-3">
-            <Link href={localizePublicPath('/products', locale)} className="rounded-lg border border-slate-700 p-5 hover:border-orange-400">{copy.parts} →</Link>
-            <Link href={localizePublicPath('/repair-request', locale)} className="rounded-lg border border-slate-700 p-5 hover:border-orange-400">{copy.repair} →</Link>
-            <Link href={localizePublicPath('/blog', locale)} className="rounded-lg border border-slate-700 p-5 hover:border-orange-400">{copy.blog} →</Link>
+            <Link href={localizePublicPath('/products', locale)} className="rounded-lg border border-slate-700 p-5 transition hover:border-yellow-400 hover:bg-yellow-400/10">{copy.parts} →</Link>
+            <Link href={localizePublicPath('/repair-request', locale)} className="rounded-lg border border-slate-700 p-5 transition hover:border-yellow-400 hover:bg-yellow-400/10">{copy.repair} →</Link>
+            <Link href={localizePublicPath('/blog', locale)} className="rounded-lg border border-slate-700 p-5 transition hover:border-yellow-400 hover:bg-yellow-400/10">{copy.blog} →</Link>
           </div>
         </section>
       </div>
