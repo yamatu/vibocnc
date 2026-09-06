@@ -175,8 +175,8 @@ func (ac *AIAgentController) StartSelectedSEO(c *gin.Context) {
 	}
 
 	db := config.GetDB()
-	var products []models.Product
-	if err := db.Select("id", "sku").Where("id IN ?", ids).Find(&products).Error; err != nil {
+	var products []aiSEOProductRef
+	if err := db.Model(&models.Product{}).Select("id", "sku").Where("id IN ?", ids).Find(&products).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to prepare selected products", Error: err.Error()})
 		return
 	}
@@ -207,7 +207,7 @@ func (ac *AIAgentController) StartCandidateSEO(c *gin.Context) {
 		return
 	}
 	if !validAISEOJobLimit(req.Limit) {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "AI SEO candidate limit must be between 1 and 30000"})
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "AI SEO candidate limit must be non-negative (0 = all)"})
 		return
 	}
 	req.Prompt = truncateRunes(strings.TrimSpace(req.Prompt), 2000)
@@ -228,10 +228,9 @@ func (ac *AIAgentController) StartCandidateSEO(c *gin.Context) {
 
 	db := config.GetDB()
 	limit := req.Limit
-	if limit > normalizedAISEOCandidateLimit(setting) {
-		limit = normalizedAISEOCandidateLimit(setting)
-	}
-	limit = minInt(limit, maxAISEOCandidateProducts)
+	if limit == 0 {
+		limit = -1
+	} // All matches; workers still read bounded batches.
 	products, err := findAIASEOCandidates(db, req, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to select AI SEO candidates", Error: err.Error()})
@@ -258,9 +257,9 @@ func (ac *AIAgentController) StartCandidateSEO(c *gin.Context) {
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "AI SEO candidate job started", Data: job})
 }
 
-func createAIAgentSEOJob(db *gorm.DB, products []models.Product, prompt, selectionMode string, createdByID uint) (*models.AIAgentSEOJob, error) {
-	if len(products) == 0 || len(products) > maxAISEOCandidateProducts {
-		return nil, errors.New("AI SEO jobs must contain between 1 and 30000 products")
+func createAIAgentSEOJob(db *gorm.DB, products []aiSEOProductRef, prompt, selectionMode string, createdByID uint) (*models.AIAgentSEOJob, error) {
+	if len(products) == 0 {
+		return nil, errors.New("AI SEO jobs must contain at least one product")
 	}
 	job := &models.AIAgentSEOJob{
 		ID:            uuid.NewString(),
@@ -328,7 +327,7 @@ func pinAIAgentSEOJobProfile(job *models.AIAgentSEOJob, setting *models.AIAgentS
 	}
 }
 
-func findAIASEOCandidates(db *gorm.DB, req aiSEOCandidateStartRequest, limit int) ([]models.Product, error) {
+func findAIASEOCandidates(db *gorm.DB, req aiSEOCandidateStartRequest, limit int) ([]aiSEOProductRef, error) {
 	query := db.Model(&models.Product{}).
 		Select("products.id", "products.sku").
 		Where("products.is_active = ?", true).
@@ -374,7 +373,7 @@ func findAIASEOCandidates(db *gorm.DB, req aiSEOCandidateStartRequest, limit int
 		Order("products.updated_at ASC").
 		Order("products.id ASC").
 		Limit(limit)
-	var products []models.Product
+	var products []aiSEOProductRef
 	if err := query.Find(&products).Error; err != nil {
 		return nil, err
 	}
@@ -382,6 +381,10 @@ func findAIASEOCandidates(db *gorm.DB, req aiSEOCandidateStartRequest, limit int
 }
 
 func applyAIASEOCandidateStatusScope(query *gorm.DB, req aiSEOCandidateStartRequest) *gorm.DB {
+	if req.FailedOnly {
+		return query.Where("products.ai_seo_status = ? OR EXISTS (SELECT 1 FROM ai_agent_seo_job_items latest WHERE latest.product_id = products.id AND latest.status = 'failed' AND NOT EXISTS (SELECT 1 FROM ai_agent_seo_job_items newer WHERE newer.product_id = latest.product_id AND newer.id > latest.id))", "failed")
+	}
+
 	switch strings.ToLower(strings.TrimSpace(req.SEOStatus)) {
 	case "optimized":
 		return query.Where("products.ai_seo_status = ?", "optimized")
@@ -423,7 +426,7 @@ func minInt(left, right int) int {
 }
 
 func validAISEOJobLimit(limit int) bool {
-	return limit >= 1 && limit <= maxAISEOCandidateProducts
+	return limit >= 0
 }
 
 func (ac *AIAgentController) GetSEOJob(c *gin.Context) {
@@ -619,8 +622,7 @@ func processAIAgentSEOJob(jobID string) {
 	}
 	profileID, err := loadAIAgentSEOJobProfileID(db, jobID)
 	if err != nil {
-		failQueuedAIAgentSEOItems(jobID, "AI job profile could not be loaded")
-		finishAIAgentSEOJob(jobID, workerToken, "failed", "AI job profile could not be loaded")
+		finishAIAgentSEOJob(jobID, workerToken, "paused", "AI job profile could not be loaded. Repair profile/schema and resume; existing product results are unchanged.")
 		return
 	}
 	setting, _, apiKey, err := loadAIAgentConfigForProfile(profileID)
@@ -628,16 +630,10 @@ func processAIAgentSEOJob(jobID string) {
 		if !isAISEOJobRunning(db, jobID, workerToken) {
 			return
 		}
-		failQueuedAIAgentSEOItems(jobID, "AI configuration is unavailable")
-		finishAIAgentSEOJob(jobID, workerToken, "failed", "AI configuration is unavailable")
+		finishAIAgentSEOJob(jobID, workerToken, "paused", "AI configuration is unavailable. Repair settings and resume; existing product results are unchanged.")
 		return
 	}
-	var items []models.AIAgentSEOJobItem
-	if err := db.Where("job_id = ? AND status = ?", jobID, "queued").Order("id ASC").Find(&items).Error; err != nil {
-		finishAIAgentSEOJob(jobID, workerToken, "failed", err.Error())
-		return
-	}
-	workers := minInt(normalizedAISEOJobConcurrency(setting), len(items))
+	workers := normalizedAISEOJobConcurrency(setting)
 	if workers > 0 {
 		work := make(chan models.AIAgentSEOJobItem)
 		var wg sync.WaitGroup
@@ -650,14 +646,13 @@ func processAIAgentSEOJob(jobID string) {
 				}
 			}()
 		}
-		for index, item := range items {
-			if index%aiSEOPauseCheckInterval == 0 && !isAISEOJobRunning(db, jobID, workerToken) {
-				break
-			}
-			work <- item
-		}
+		streamErr := streamAISEOItems(db, jobID, workerToken, work)
 		close(work)
 		wg.Wait()
+		if streamErr != nil {
+			finishAIAgentSEOJob(jobID, workerToken, "paused", "Queue read failed; resume after checking database")
+			return
+		}
 	}
 	// A paused job deliberately retains its queued items and must never be
 	// converted to a completed/failed terminal state by an old worker.
@@ -685,9 +680,7 @@ func loadAIAgentSEOJobProfileID(db *gorm.DB, jobID string) (*uint, error) {
 	if !hasAIAgentSEOJobProfileIDColumn(db) {
 		return nil, nil
 	}
-	var jobProfile struct {
-		AIProfileID *uint
-	}
+	var jobProfile models.AIAgentSEOJob
 	err := db.Model(&models.AIAgentSEOJob{}).
 		Select("ai_profile_id").
 		Where("id = ?", jobID).
@@ -712,10 +705,15 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	if claim.Error != nil || claim.RowsAffected == 0 {
 		return
 	}
-	db.Model(&models.Product{}).Where("id = ?", item.ProductID).Updates(map[string]interface{}{"ai_seo_status": "running", "ai_seo_optimization_job_id": jobID})
+	setAISEOItemProgress(db, item.ID, "读取产品资料 / Reading product data")
 	var product models.Product
 	if err := db.Preload("Category").First(&product, item.ProductID).Error; err != nil {
-		failAIAgentSEOItem(jobID, item, err)
+		failAIAgentSEOItem(jobID, workerToken, item, err)
+		return
+	}
+	var job models.AIAgentSEOJob
+	if err := db.Select("prompt").First(&job, "id = ?", jobID).Error; err != nil {
+		failAIAgentSEOItem(jobID, workerToken, item, err)
 		return
 	}
 	wasActive := product.IsActive
@@ -728,6 +726,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 		modelForClassification = services.NormalizeProductModel(product.SKU)
 	}
 	classificationReference := services.InferProductCategory(strings.TrimSpace(product.Brand), modelForClassification)
+	setAISEOItemProgress(db, item.ID, "核验品牌、型号与证据 / Verifying identity and evidence")
 	var webEvidence []services.ProductWebEvidence
 	if !services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
 		webEvidence, _ = services.SearchProductEvidence(ctx, product.Brand, modelForClassification)
@@ -736,29 +735,25 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	if services.NormalizeBrandKey(product.Brand) == "" && classificationReference.BrandKey != "" && classificationReference.BrandKey != "unknown" {
 		product.Brand = services.CanonicalBrandName(classificationReference.BrandKey)
 	}
+	requestedScope := aiSEOScopeFromPrompt(job.Prompt)
+	if requestedScope["all"] || requestedScope["category"] {
+		setAISEOItemProgress(db, item.ID, "AI 核验分类，无法判断则保留 / AI classification verification")
+		verified, err := classifyProductCategoryWithLLM(ctx, setting, apiKey, product, modelForClassification)
+		if err != nil {
+			failAIAgentSEOItem(jobID, workerToken, item, fmt.Errorf("Review required; product unchanged: %w", err))
+			return
+		}
+		classificationReference = verified
+	}
 	classificationCategoryID := uint(0)
 	classificationCategoryErr := error(nil)
 	if services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
 		classificationCategoryID, classificationCategoryErr = services.ResolveExistingCategoryForInference(db, classificationReference, product.Category.Name)
 	}
 	categoryNeedsReview := classificationCategoryErr != nil || classificationCategoryID == 0 || product.CategoryID == 0 || classificationCategoryID != product.CategoryID
-	if !services.IsConfirmedProductCategory(classificationReference, modelForClassification) || categoryNeedsReview {
-		// Keep SEO/content processing auditable, but never leave an item publicly
-		// enabled when its brand/type/category still cannot be verified after the
-		// bounded public search.
-		if err := db.Model(&models.Product{}).Where("id = ?", item.ProductID).Update("is_active", false).Error; err != nil {
-			failAIAgentSEOItem(jobID, item, err)
-			return
-		}
-	}
-	var job models.AIAgentSEOJob
-	if err := db.Select("prompt").First(&job, "id = ?", jobID).Error; err != nil {
-		failAIAgentSEOItem(jobID, item, err)
-		return
-	}
 	availableCategories, err := loadAISEOCategoryReferences(db)
 	if err != nil {
-		failAIAgentSEOItem(jobID, item, err)
+		failAIAgentSEOItem(jobID, workerToken, item, err)
 		return
 	}
 	productContext, _ := json.Marshal(map[string]any{
@@ -789,10 +784,11 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	})
 	aiSEOProviderSlots <- struct{}{}
 	seoMessages := []aiChatMessage{{Role: "system", Content: aiSEOSystemPrompt}, {Role: "user", Content: "ADMINISTRATOR_SEO_INSTRUCTION:\n" + job.Prompt + "\n\nPRODUCT_REFERENCE:\n" + string(productContext)}}
-	output, err := requestAIAgentSEOOutput(ctx, setting, apiKey, seoMessages, 1800)
+	setAISEOItemProgress(db, item.ID, "调用 AI 审核名称、分类、描述与 SEO / AI auditing requested fields")
+	output, err := requestAIAgentSEOOutput(ctx, setting, apiKey, seoMessages, 2600)
 	<-aiSEOProviderSlots
 	if err != nil {
-		failAIAgentSEOItem(jobID, item, err)
+		failAIAgentSEOItem(jobID, workerToken, item, err)
 		return
 	}
 	// An administrator may end a paused task while a provider request is still
@@ -802,15 +798,17 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	}
 	output = completeAISEOOutput(output, product)
 	scope := aiSEOScopeFromPrompt(job.Prompt)
+	setAISEOItemProgress(db, item.ID, "校验 AI 结果并保存 / Validating and saving results")
+	var changes []string
 	now := time.Now().UTC()
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		// Serialize the final write with the end action. If ending won the
 		// lock, no stale provider response can create a category or update SEO.
 		var currentJob models.AIAgentSEOJob
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("status").First(&currentJob, "id = ?", jobID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("status", "worker_token").First(&currentJob, "id = ?", jobID).Error; err != nil {
 			return err
 		}
-		if currentJob.Status == "cancelled" {
+		if currentJob.WorkerToken != workerToken || (currentJob.Status != "running" && currentJob.Status != "paused") {
 			return errors.New("AI SEO job was ended")
 		}
 		updates := map[string]interface{}{
@@ -844,19 +842,13 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 			updates["short_description"] = output.ShortDescription
 			updates["description"] = output.Description
 		}
+		changes = aiSEOChangeSummary(product, updates)
 		return tx.Model(&models.Product{}).Where("id = ?", item.ProductID).Updates(updates).Error
 	}); err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "classification") || strings.Contains(strings.ToLower(err.Error()), "category") {
-			// An unresolved or mismatched taxonomy must never remain publicly
-			// enabled after an automatic classification attempt.
-			if deactivateErr := db.Model(&models.Product{}).Where("id = ?", item.ProductID).Update("is_active", false).Error; deactivateErr != nil {
-				err = fmt.Errorf("%w; additionally failed to deactivate unresolved product: %v", err, deactivateErr)
-			}
-		}
-		failAIAgentSEOItem(jobID, item, err)
+		failAIAgentSEOItem(jobID, workerToken, item, err)
 		return
 	}
-	db.Model(&models.AIAgentSEOJobItem{}).Where("id = ?", item.ID).Updates(map[string]interface{}{"status": "optimized", "error": ""})
+	db.Model(&models.AIAgentSEOJobItem{}).Where("id = ?", item.ID).Updates(map[string]interface{}{"status": "optimized", "error": strings.Join(changes, "; ")})
 	incrementAIAgentSEOJob(jobID, true)
 }
 
@@ -1305,15 +1297,17 @@ func completeAISEOOutput(output aiSEOOutput, product models.Product) aiSEOOutput
 	return output
 }
 
-func failAIAgentSEOItem(jobID string, item models.AIAgentSEOJobItem, err error) {
+func failAIAgentSEOItem(jobID, workerToken string, item models.AIAgentSEOJobItem, err error) {
 	if isAISEOJobCancelled(config.GetDB(), jobID) {
 		return
 	}
 	message := truncateRunes(err.Error(), 1000)
 	db := config.GetDB()
-	db.Model(&models.AIAgentSEOJobItem{}).Where("id = ?", item.ID).Updates(map[string]interface{}{"status": "failed", "error": message})
-	db.Model(&models.Product{}).Where("id = ?", item.ProductID).Updates(map[string]interface{}{"ai_seo_status": "failed", "ai_seo_optimization_job_id": jobID})
-	incrementAIAgentSEOJob(jobID, false)
+	result := db.Model(&models.AIAgentSEOJobItem{}).Where("id = ? AND status = ?", item.ID, "running").Where("EXISTS (SELECT 1 FROM ai_agent_seo_jobs WHERE id = ? AND status IN ? AND worker_token = ?)", jobID, []string{"running", "paused"}, workerToken).Updates(map[string]interface{}{"status": "failed", "error": message})
+	if result.Error == nil && result.RowsAffected > 0 {
+		incrementAIAgentSEOJob(jobID, false)
+	}
+
 }
 
 func failQueuedAIAgentSEOItems(jobID, message string) {
@@ -1328,8 +1322,7 @@ func failQueuedAIAgentSEOItems(jobID, message string) {
 	_ = db.Model(&models.AIAgentSEOJobItem{}).
 		Where("job_id = ? AND status = ?", jobID, "queued").
 		Updates(map[string]interface{}{"status": "failed", "error": message}).Error
-	_ = db.Model(&models.Product{}).Where("id IN ?", productIDs).
-		Updates(map[string]interface{}{"ai_seo_status": "failed", "ai_seo_optimization_job_id": jobID}).Error
+
 	_ = db.Model(&models.AIAgentSEOJob{}).Where("id = ?", jobID).
 		Updates(map[string]interface{}{"processed": gorm.Expr("processed + ?", len(productIDs)), "failed": gorm.Expr("failed + ?", len(productIDs))}).Error
 }
@@ -1398,7 +1391,7 @@ func sortedLimitedProductIDs(ids []uint, limit int) []uint {
 // AI agent setting row with getAIAgentSettingForUpdate. That stable database row
 // serializes selected, candidate, and category-only job creation across server
 // processes before their queued item batches are inserted.
-func ensureNoPendingAISEOProducts(tx *gorm.DB, products []models.Product) error {
+func ensureNoPendingAISEOProducts(tx *gorm.DB, products []aiSEOProductRef) error {
 	productIDs := make([]uint, 0, len(products))
 	for _, product := range products {
 		if product.ID > 0 {
@@ -1408,14 +1401,15 @@ func ensureNoPendingAISEOProducts(tx *gorm.DB, products []models.Product) error 
 	if len(productIDs) == 0 {
 		return nil
 	}
-	var pendingCount int64
-	if err := tx.Model(&models.AIAgentSEOJobItem{}).
-		Where("product_id IN ? AND status IN ?", productIDs, []string{"queued", "running"}).
-		Count(&pendingCount).Error; err != nil {
-		return err
-	}
-	if pendingCount > 0 {
-		return errAISEOProductsPending
+	for start := 0; start < len(productIDs); start += 500 {
+		end := minInt(start+500, len(productIDs))
+		var pendingCount int64
+		if err := tx.Model(&models.AIAgentSEOJobItem{}).Where("product_id IN ? AND status IN ?", productIDs[start:end], []string{"queued", "running"}).Count(&pendingCount).Error; err != nil {
+			return err
+		}
+		if pendingCount > 0 {
+			return errAISEOProductsPending
+		}
 	}
 	return nil
 }

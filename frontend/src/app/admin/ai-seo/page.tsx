@@ -37,7 +37,13 @@ const JOB_ITEM_PAGE_SIZE = 200;
 
 function visibleJobPrompt(job: AIAgentSEOJob, zh: boolean) {
   if (job.selection_mode === 'category_optimization') {
-    return zh ? '按品牌和产品类型自动优化分类' : 'Automatically optimize categories by brand and product type';
+    try {
+      const encoded = job.prompt.split('[[VIBOCNC_CATEGORY_JOB_OPTIONS=')[1]?.split(']]')[0];
+      const opts = encoded ? JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))) : {};
+      return opts.repair_content
+        ? (zh ? '全量 AI 返工：资料读取 → 证据核验 → AI 分类判断 → 名称/简介/描述/SEO 审核 → 校验保存。无法确认时保留原数据待审核。' : 'AI rework: read data → verify evidence → classify → audit name/content/SEO → validate and save; uncertain results require review.')
+        : (zh ? 'AI 分类：读取产品 → 核验证据 → 调用 AI 判断 → 匹配分类 → 保存；不确定则待审核。' : 'AI classification: read → evidence → AI review → match category → save; uncertain results require review.');
+    } catch { return zh ? '分类任务（旧版本）' : 'Legacy category task'; }
   }
   return job.prompt;
 }
@@ -73,6 +79,7 @@ export default function AISEORecordsPage() {
   const [changingJobID, setChangingJobID] = useState<string | null>(null);
   const [itemsPage, setItemsPage] = useState<AIAgentSEOJobItemsPage | null>(null);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [itemFilter, setItemFilter] = useState('');
   const requestedJobIDRef = useRef<string | null>(null);
   const expandedJobID = expandedJob?.id;
   const expandedJobStatus = expandedJob?.status;
@@ -97,7 +104,7 @@ export default function AISEORecordsPage() {
     setItemsPage(null);
     void Promise.all([
       AIAgentService.getSEOJob(requestedJobID),
-      AIAgentService.listSEOJobItems(requestedJobID, JOB_ITEM_PAGE_SIZE, 0),
+      AIAgentService.listSEOJobItems(requestedJobID, JOB_ITEM_PAGE_SIZE, 0, itemFilter),
     ])
       .then(([job, page]) => {
         setExpandedJob(job);
@@ -115,14 +122,14 @@ export default function AISEORecordsPage() {
     const timer = window.setInterval(() => {
       void Promise.all([
         AIAgentService.getSEOJob(expandedJobID),
-        AIAgentService.listSEOJobItems(expandedJobID, JOB_ITEM_PAGE_SIZE, expandedItemsOffset),
+        AIAgentService.listSEOJobItems(expandedJobID, JOB_ITEM_PAGE_SIZE, expandedItemsOffset, itemFilter),
       ]).then(([job, page]) => {
         setExpandedJob(job);
         setItemsPage(page);
       }).catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [expandedItemsOffset, expandedJobID, expandedJobStatus]);
+  }, [expandedItemsOffset, expandedJobID, expandedJobStatus, itemFilter]);
 
   const reload = () => {
     void refetchStats();
@@ -130,7 +137,7 @@ export default function AISEORecordsPage() {
     if (expandedJob) {
       void AIAgentService.getSEOJob(expandedJob.id).then(setExpandedJob).catch(() => undefined);
       if (itemsPage) {
-        void AIAgentService.listSEOJobItems(expandedJob.id, JOB_ITEM_PAGE_SIZE, itemsPage.offset).then(setItemsPage).catch(() => undefined);
+        void AIAgentService.listSEOJobItems(expandedJob.id, JOB_ITEM_PAGE_SIZE, itemsPage.offset, itemFilter).then(setItemsPage).catch(() => undefined);
       }
     }
   };
@@ -151,7 +158,7 @@ export default function AISEORecordsPage() {
     try {
       const [details, page] = await Promise.all([
         AIAgentService.getSEOJob(job.id),
-        AIAgentService.listSEOJobItems(job.id, JOB_ITEM_PAGE_SIZE, 0),
+        AIAgentService.listSEOJobItems(job.id, JOB_ITEM_PAGE_SIZE, 0, itemFilter),
       ]);
       setExpandedJob(details);
       setItemsPage(page);
@@ -163,11 +170,11 @@ export default function AISEORecordsPage() {
     }
   };
 
-  const loadItemPage = async (offset: number) => {
+  const loadItemPage = async (offset: number, filter = itemFilter) => {
     if (!expandedJob || loadingItems) return;
     setLoadingItems(true);
     try {
-      setItemsPage(await AIAgentService.listSEOJobItems(expandedJob.id, JOB_ITEM_PAGE_SIZE, offset));
+      setItemsPage(await AIAgentService.listSEOJobItems(expandedJob.id, JOB_ITEM_PAGE_SIZE, offset, filter));
     } catch (error: unknown) {
       toast.error(error instanceof Error && error.message ? error.message : (zh ? '无法加载 SKU 明细' : 'Unable to load SKU details'));
     } finally {
@@ -289,6 +296,13 @@ export default function AISEORecordsPage() {
                                   : `${itemsPage.offset + 1}–${Math.min(itemsPage.offset + itemsPage.items.length, itemsPage.total)} of ${itemsPage.total.toLocaleString()}`)
                                 : (zh ? '暂无明细' : 'No items')}
                             </div>}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 p-3 text-sm">
+                            <span>{zh ? '处理状态 / 当前步骤' : 'Status / current stage'}</span>
+                            <select value={itemFilter} onChange={(e) => { setItemFilter(e.target.value); void loadItemPage(0,e.target.value); }} className="rounded border p-2">
+                              <option value="">{zh ? '全部' : 'All'}</option><option value="running">{zh ? '正在处理' : 'Running'}</option><option value="queued">{zh ? '待处理' : 'Queued'}</option><option value="optimized">{zh ? '完成及修改明细' : 'Completed / changes'}</option><option value="failed">{zh ? '待审核 / 失败' : 'Review / failed'}</option>
+                            </select>
+                            <span>{job.ai_profile_name || 'Default'} · {job.ai_model || 'Legacy model'}</span>
                           </div>
                           <div className="max-h-80 overflow-auto">
                             <table className="min-w-full text-sm">

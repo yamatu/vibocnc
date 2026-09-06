@@ -170,9 +170,7 @@ func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bo
 	if db == nil {
 		return nil, errors.New("database is nil")
 	}
-	if maxProducts <= 0 || maxProducts > 30000 {
-		maxProducts = 30000
-	}
+	
 
 	var categories []models.Category
 	if err := db.Order("id ASC").Find(&categories).Error; err != nil {
@@ -267,7 +265,7 @@ func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bo
 					ContentDetail: contentDetail,
 				})
 			}
-			if !pending[product.ID] && len(result.ProductIDs) < maxProducts {
+			if !pending[product.ID] && (maxProducts <= 0 || len(result.ProductIDs) < maxProducts) {
 				result.ProductIDs = append(result.ProductIDs, product.ID)
 			}
 		}

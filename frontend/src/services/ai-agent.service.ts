@@ -432,9 +432,9 @@ export class AIAgentService {
     throw new Error(response.data.message || 'Unable to load AI SEO job');
   }
 
-  static async listSEOJobItems(id: string, limit = 200, offset = 0): Promise<AIAgentSEOJobItemsPage> {
+  static async listSEOJobItems(id: string, limit = 200, offset = 0, status = ""): Promise<AIAgentSEOJobItemsPage> {
     const response = await apiClient.get<APIResponse<AIAgentSEOJobItemsPage>>(`/admin/ai-agent/seo/jobs/${encodeURIComponent(id)}/items`, {
-      params: { limit, offset },
+      params: { limit, offset, status: status || undefined },
     });
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Unable to load AI SEO job items');

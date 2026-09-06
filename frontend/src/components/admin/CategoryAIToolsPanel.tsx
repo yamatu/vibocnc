@@ -117,13 +117,13 @@ export default function CategoryAIToolsPanel() {
 
   const startClassificationJob = async () => {
     const message = zh
-      ? '启动 AI 智能分类后台任务？系统会按品牌/型号规则并结合官方资料联网核验，为产品匹配或创建规范的「品牌 > 类型」分类，无法核验的产品会保持下架待人工处理。'
-      : 'Start the AI classification background job? Products are verified against brand/model rules plus official web sources and moved into canonical "Brand > Type" categories; unverifiable products stay inactive for review.';
+      ? '启动 AI 智能分类后台任务？系统会按品牌/型号规则并结合官方资料联网核验，为产品匹配或创建规范的「品牌 > 类型」分类，无法核验的产品保留原分类并标记待审核。'
+      : 'Start the AI classification background job? Products are verified against brand/model rules plus official web sources and moved into canonical "Brand > Type" categories; uncertain results retain their original category for review.';
     if (!window.confirm(message)) return;
     setStartingClassifyJob(true);
     try {
       const job = await AIAgentService.startCategoryOptimizationJob({
-        limit: 30000,
+        limit: 0,
         status: 'all',
         include_inactive: true,
         use_web_search: true,
@@ -158,16 +158,16 @@ export default function CategoryAIToolsPanel() {
   };
 
   const startReworkJob = async () => {
-    if (!audit || audit.product_ids.length === 0) return;
+    
     const message = zh
-      ? `启动综合返工任务？将对 ${audit.product_ids.length} 个有问题的产品先重新核验分类，再检测产品描述；缺失、单薄、型号/品牌不一致或重复的描述会由 AI 重写。仍无法核验分类的产品保持下架待人工处理。`
-      : `Start the combined rework job? ${audit.product_ids.length} flagged products will be reclassified first, then weak, missing, repetitive, or inconsistent descriptions will be rewritten by AI. Unverifiable products remain inactive for review.`;
+      ? `启动综合返工任务？将对 全部未占用的产品（包括规则检查通过的产品）先重新核验分类，再检测产品描述；缺失、单薄、型号/品牌不一致或重复的描述会由 AI 重写。无法核验时保留原数据并标记待审核。`
+      : `Start the combined rework job? all available products, including those passing rule checks, will be reclassified first, then weak, missing, repetitive, or inconsistent descriptions will be rewritten by AI. Uncertain products retain their original data for review.`;
     if (!window.confirm(message)) return;
     setStartingRework(true);
     try {
       const job = await AIAgentService.startCategoryOptimizationJob({
         rework_only: true,
-        limit: 30000,
+        limit: 0,
         status: 'all',
         include_inactive: true,
         use_web_search: true,
@@ -419,18 +419,20 @@ export default function CategoryAIToolsPanel() {
           </h3>
           <p className="mt-1 flex-1 text-xs leading-5 text-gray-500">
             {zh
-              ? '扫描全部产品的分类与描述质量；分类错误会重新核验，描述缺失、单薄、型号/品牌不一致或重复时会由 AI 自动重写。'
+              ? '扫描全部产品的分类与描述质量；逐项调用 AI 核验分类、名称、简介、描述和 SEO，不限总量；无法核验则保留原数据待审核。'
               : 'Scans classification and description quality. Category problems are reverified, while missing, thin, inconsistent, or repetitive descriptions are rewritten by AI.'}
           </p>
           <button
-            onClick={runAudit}
+            onClick={startReworkJob}
             disabled={!isAdmin || auditing || startingRework}
             className="mt-3 inline-flex items-center justify-center gap-2 rounded-md bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {auditing ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <DocumentMagnifyingGlassIcon className="h-4 w-4" />}
-            {zh ? '检测问题产品' : 'Detect issues'}
+            {zh ? '全量 AI 检测并返工' : 'Full AI audit and repair'}
           </button>
         </div>
+
+        <button type="button" onClick={runAudit} disabled={auditing || !isAdmin} className="text-sm text-gray-600 underline">{zh ? '仅规则预检（不调用 AI）' : 'Rules preview only (no AI request)'}</button>
 
         {/* Title standardization card */}
         <div className="flex flex-col rounded-lg border border-gray-200 p-4">
@@ -750,7 +752,7 @@ export default function CategoryAIToolsPanel() {
                     className="inline-flex items-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
                   >
                     {startingRework ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <WrenchScrewdriverIcon className="h-4 w-4" />}
-                    {zh ? `启动分类 + 描述返工（${audit.product_ids.length.toLocaleString()} 个产品）` : `Start category + content rework (${audit.product_ids.length.toLocaleString()} products)`}
+                    {zh ? '启动全量 AI 返工（分类、名称、内容、SEO）' : 'Start full AI rework (category, name, content, SEO)'}
                   </button>
                 )}
               </div>

@@ -64,10 +64,9 @@ func (ac *AIAgentController) StartSEOAutoFix(c *gin.Context) {
 
 	db := config.GetDB()
 	limit := req.Limit
-	if limit <= 0 || limit > maxAISEOCandidateProducts {
-		limit = maxAISEOCandidateProducts
+	if limit < 0 {
+		limit = 0
 	}
-	limit = minInt(limit, normalizedAISEOCandidateLimit(setting))
 	audit, err := services.AuditProductSEO(db, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "SEO audit failed", Error: err.Error()})
@@ -78,10 +77,10 @@ func (ac *AIAgentController) StartSEOAutoFix(c *gin.Context) {
 		return
 	}
 
-	products := make([]models.Product, 0, len(audit.ProductIDs))
+	products := make([]aiSEOProductRef, 0, len(audit.ProductIDs))
 	for start := 0; start < len(audit.ProductIDs); start += 1000 {
 		end := minInt(start+1000, len(audit.ProductIDs))
-		var batch []models.Product
+		var batch []aiSEOProductRef
 		if err := db.Model(&models.Product{}).
 			Select("products.id", "products.sku").
 			Where("products.id IN ?", audit.ProductIDs[start:end]).

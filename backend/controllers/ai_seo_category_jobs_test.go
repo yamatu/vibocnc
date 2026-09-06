@@ -42,7 +42,7 @@ func TestValidAISEOJobLimit(t *testing.T) {
 	for _, test := range []struct {
 		limit int
 		valid bool
-	}{{0, false}, {1, true}, {30000, true}, {30001, false}} {
+	}{{-1, false}, {0, true}, {1, true}, {30000, true}, {30001, true}, {150000, true}} {
 		if got := validAISEOJobLimit(test.limit); got != test.valid {
 			t.Fatalf("validAISEOJobLimit(%d) = %v, want %v", test.limit, got, test.valid)
 		}

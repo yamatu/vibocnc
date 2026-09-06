@@ -96,6 +96,9 @@ func ConnectDatabase() {
 
 	// Auto migrate the schema (can be disabled by DB_AUTO_MIGRATE=false)
 	if os.Getenv("DB_AUTO_MIGRATE") != "false" {
+		if err := repairAISEOProfileColumnNames(DB); err != nil {
+			log.Fatalf("AI job profile schema: %v", err)
+		}
 		// Named AI profiles add columns to tables that may already contain years
 		// of settings and SEO job history. Repair those additive fields first so
 		// a benign error in the broader migration cannot leave a partial schema.

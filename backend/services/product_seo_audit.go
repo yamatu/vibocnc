@@ -125,9 +125,7 @@ func AuditProductSEO(db *gorm.DB, maxProducts int) (*ProductSEOAuditResult, erro
 	if db == nil {
 		return nil, errors.New("database is nil")
 	}
-	if maxProducts <= 0 || maxProducts > 30000 {
-		maxProducts = 30000
-	}
+	
 
 	pending := map[uint]bool{}
 	var pendingIDs []uint
@@ -193,7 +191,7 @@ func AuditProductSEO(db *gorm.DB, maxProducts int) (*ProductSEOAuditResult, erro
 					Detail:    detail,
 				})
 			}
-			if !pending[product.ID] && len(result.ProductIDs) < maxProducts {
+			if !pending[product.ID] && (maxProducts <= 0 || len(result.ProductIDs) < maxProducts) {
 				result.ProductIDs = append(result.ProductIDs, product.ID)
 			}
 		}

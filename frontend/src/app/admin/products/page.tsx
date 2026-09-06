@@ -63,7 +63,7 @@ type BulkProgress = {
 
 type AISEOFilter = 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed';
 
-const AI_SEO_MAX_PRODUCTS = 30000;
+const AI_SEO_DEFAULT_PROMPT = "逐项审核品牌、完整型号、产品名称、分类、简介、描述和 SEO。保留已经准确的内容；名称采用品牌 + 完整型号 + 经证实的产品类型；简介简洁，描述原创且具体，SEO 标题和描述自然包含型号与类型。严格遵循本次选择的优化范围。分类必须有明确证据，无法确认则待人工审核，绝不强行归类。不编造参数、库存、认证、兼容性或保修承诺。不修改价格、库存、图片或管理员设置。输出网站默认语言英文内容，并说明修改依据。";
 
 const AI_SEO_FOCUS_COPY: Record<AIAgentSEOFocus, { zh: string; en: string; instruction: string }> = {
   all: { zh: '全部字段', en: 'All fields', instruction: 'Optimize all supported product fields, including taxonomy, SEO metadata, and product content.' },
@@ -108,7 +108,7 @@ function AdminProductsContent() {
   const [aiSEOJobMode, setAISEOJobMode] = useState<'selected' | 'auto_candidates' | 'failed_only'>('selected');
   const [aiSEOIncludeFailed, setAISEOIncludeFailed] = useState(false);
   const [aiSEOFocus, setAISEOFocus] = useState<AIAgentSEOFocus>('all');
-  const [aiSEOPrompt, setAISEOPrompt] = useState('');
+  const [aiSEOPrompt, setAISEOPrompt] = useState(AI_SEO_DEFAULT_PROMPT);
   const [activeAISEOJob, setActiveAISEOJob] = useState<AIAgentSEOJob | null>(null);
   const [isPausingAISEOJob, setIsPausingAISEOJob] = useState(false);
   const [isStartingAISEOJob, setIsStartingAISEOJob] = useState(false);
@@ -479,9 +479,8 @@ function AdminProductsContent() {
     const nextScope = hasExplicitSelection ? 'selected' : 'filtered';
     const available = nextScope === 'selected' ? selectedCurrentPageIds.length : totalProducts;
     setCategoryOptimizationScope(nextScope);
-    // Default to the full scope (capped by the 30,000 job ceiling) so "all
-    // products" really queues everything instead of a silent 500-item batch.
-    setCategoryOptimizationLimit(String(Math.min(available, AI_SEO_MAX_PRODUCTS)));
+    // Zero queues the full filtered scope; processing is batched on the server.
+    setCategoryOptimizationLimit("0");
     setShowCategoryOptimizationModal(true);
   };
 
@@ -489,11 +488,11 @@ function AdminProductsContent() {
     const explicitSelection = categoryOptimizationScope === 'selected';
     const available = explicitSelection ? selectedCurrentPageIds.length : totalProducts;
     const parsedLimit = Number(categoryOptimizationLimit);
-    const maximum = Math.min(available, AI_SEO_MAX_PRODUCTS);
-    if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > maximum) {
+    const maximum = available;
+    if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 0 || parsedLimit > maximum) {
       toast.error(locale === 'zh'
-        ? `请输入 1 到 ${maximum.toLocaleString()} 之间的商品数量`
-        : `Enter a product count between 1 and ${maximum.toLocaleString()}`);
+        ? `请输入 0（全部）或 1 到 ${maximum.toLocaleString()} 之间的商品数量`
+        : `Use 0 for all, or a product count between 1 and ${maximum.toLocaleString()}`);
       return;
     }
     if (explicitSelection && selectedCurrentPageIds.length === 0) {
@@ -505,7 +504,7 @@ function AdminProductsContent() {
     try {
       const categoryID = Number(selectedCategory);
       const job = await AIAgentService.startCategoryOptimizationJob({
-        product_ids: explicitSelection ? selectedCurrentPageIds.slice(0, parsedLimit) : undefined,
+        product_ids: explicitSelection ? (parsedLimit === 0 ? selectedCurrentPageIds : selectedCurrentPageIds.slice(0, parsedLimit)) : undefined,
         limit: parsedLimit,
         category_id: !explicitSelection && Number.isSafeInteger(categoryID) && categoryID > 0 ? categoryID : undefined,
         include_descendants: !explicitSelection && Boolean(selectedCategory),
@@ -959,14 +958,6 @@ function AdminProductsContent() {
       toast.error(locale === 'zh' ? '请先勾选当前页需要 AI SEO 优化的商品' : 'Select products on this page for AI SEO first');
       return;
     }
-    if (isSelectAllScope && totalProducts > AI_SEO_MAX_PRODUCTS) {
-      toast.error(locale === 'zh' ? `当前筛选结果有 ${totalProducts.toLocaleString()} 个商品，AI SEO 每次最多处理 ${AI_SEO_MAX_PRODUCTS.toLocaleString()} 个。请缩小筛选范围。` : `The current filter matches ${totalProducts.toLocaleString()} products. AI SEO supports at most ${AI_SEO_MAX_PRODUCTS.toLocaleString()} per job; narrow the filters first.`);
-      return;
-    }
-    if (aiSEOJobMode === 'selected' && !isSelectAllScope && selectedCurrentPageIds.length > AI_SEO_MAX_PRODUCTS) {
-      toast.error(locale === 'zh' ? `每次 AI SEO 任务最多选择 ${AI_SEO_MAX_PRODUCTS.toLocaleString()} 个商品` : `An AI SEO job can include up to ${AI_SEO_MAX_PRODUCTS.toLocaleString()} products`);
-      return;
-    }
     const prompt = aiSEOPrompt.trim();
     if (prompt.length < 2) {
       toast.error(locale === 'zh' ? '请输入至少 2 个字符的 SEO 优化提示词' : 'Enter an SEO instruction with at least 2 characters');
@@ -982,7 +973,7 @@ function AdminProductsContent() {
       const job = useCandidateScope
         ? await AIAgentService.startSEOCandidateJob({
             prompt: promptWithFocus,
-            limit: AI_SEO_MAX_PRODUCTS,
+            limit: 0,
             category_id: Number.isSafeInteger(categoryID) && categoryID > 0 ? categoryID : undefined,
             include_descendants: Boolean(selectedCategory),
             brand: selectedBrand || undefined,
@@ -998,7 +989,7 @@ function AdminProductsContent() {
       setShowAISEOModal(false);
       if (aiSEOJobMode === 'selected') setSelectedIds([]);
       if (isSelectAllScope) setSelectAllResults(false);
-      setAISEOPrompt('');
+      setAISEOPrompt(AI_SEO_DEFAULT_PROMPT);
       toast.success(locale === 'zh'
         ? `${isSelectAllScope ? 'AI SEO 全部筛选结果任务' : aiSEOJobMode === 'failed_only' ? 'AI SEO 失败重试任务' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO 自动候选任务' : 'AI SEO 任务'}已启动：${job.total} 个商品`
         : `${isSelectAllScope ? 'AI SEO filtered-results job' : aiSEOJobMode === 'failed_only' ? 'AI SEO failed-item retry job' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO candidate job' : 'AI SEO job'} started for ${job.total} products`);
@@ -1470,24 +1461,16 @@ function AdminProductsContent() {
 
               <button
                 onClick={() => {
-                  if (selectAllResults && totalProducts > AI_SEO_MAX_PRODUCTS) {
-                    toast.error(locale === 'zh' ? `当前筛选结果超过 ${AI_SEO_MAX_PRODUCTS.toLocaleString()} 个，请缩小范围后再启动 AI SEO。` : `The current filter exceeds ${AI_SEO_MAX_PRODUCTS.toLocaleString()} products. Narrow the scope before starting AI SEO.`);
-                    return;
-                  }
                   if (!selectAllResults && selectedCurrentPageIds.length === 0) {
                     toast.error(locale === 'zh' ? '请先勾选当前页需要优化的商品' : 'Select products on the current page first');
-                    return;
-                  }
-                  if (!selectAllResults && selectedCurrentPageIds.length > AI_SEO_MAX_PRODUCTS) {
-                    toast.error(locale === 'zh' ? `每次最多可选 ${AI_SEO_MAX_PRODUCTS.toLocaleString()} 个商品进行 AI SEO 优化` : `Choose no more than ${AI_SEO_MAX_PRODUCTS.toLocaleString()} products for each AI SEO job`);
                     return;
                   }
                   setAISEOJobMode('selected');
                   setShowAISEOModal(true);
                 }}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isStartingAISEOJob || (!selectAllResults && (selectedCurrentPageIds.length === 0 || selectedCurrentPageIds.length > AI_SEO_MAX_PRODUCTS)) || (selectAllResults && totalProducts > AI_SEO_MAX_PRODUCTS)}
-                title={locale === 'zh' ? `优化当前勾选或全部筛选结果，每次最多 ${AI_SEO_MAX_PRODUCTS.toLocaleString()} 个` : `Optimize checked products or all filtered results, up to ${AI_SEO_MAX_PRODUCTS.toLocaleString()} per job`}
+                disabled={isStartingAISEOJob || (!selectAllResults && (selectedCurrentPageIds.length === 0))}
+                title={locale === 'zh' ? `优化当前勾选或全部筛选结果，不限总量，后台分批执行` : `Optimize checked products or all filtered results, with background batching`}
               >
                 <SparklesIcon className="h-4 w-4 mr-2" />
                 {selectAllResults
@@ -1499,20 +1482,20 @@ function AdminProductsContent() {
                 onClick={() => { setAISEOJobMode('auto_candidates'); setShowAISEOModal(true); }}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-fuchsia-700 hover:bg-fuchsia-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isStartingAISEOJob}
-                title={locale === 'zh' ? '自动选择最多 30000 个启用、未 AI 优化且内容较薄弱的产品；可按当前分类、品牌和搜索范围限定。' : 'Automatically select up to 30000 active, not-yet-AI-optimized products with thinner content, optionally scoped by the current category, brand, and search.'}
+                title={locale === 'zh' ? '自动选择全部匹配的启用、未 AI 优化且内容较薄弱的产品；可按当前分类、品牌和搜索范围限定。' : 'Automatically select all matching active, not-yet-AI-optimized products with thinner content, optionally scoped by the current category, brand, and search.'}
               >
                 <SparklesIcon className="h-4 w-4 mr-2" />
-                {locale === 'zh' ? 'AI 自动候选优化（最多 30000）' : 'AI Auto Candidates (up to 30000)'}
+                {locale === 'zh' ? 'AI 自动候选优化（不限总量）' : 'AI Auto Candidates (all matching)'}
               </button>
 
               <button
                 onClick={() => { setAISEOJobMode('failed_only'); setAISEOIncludeFailed(false); setShowAISEOModal(true); }}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-rose-700 hover:bg-rose-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isStartingAISEOJob}
-                title={locale === 'zh' ? '只选择此前 AI SEO 优化失败的启用商品，最多 30000 个；可按当前分类、品牌和搜索范围限定。' : 'Retry only active products whose previous AI SEO optimization failed, up to 30000, scoped by the current category, brand, and search.'}
+                title={locale === 'zh' ? '只选择此前 AI SEO 优化失败的启用商品，不限总量；可按当前分类、品牌和搜索范围限定。' : 'Retry only active products whose previous AI SEO optimization failed, all matching, scoped by the current category, brand, and search.'}
               >
                 <SparklesIcon className="h-4 w-4 mr-2" />
-                {locale === 'zh' ? 'AI 自动重试失败（最多 30000）' : 'AI Retry Failed (up to 30000)'}
+                {locale === 'zh' ? 'AI 自动重试失败（不限总量）' : 'AI Retry Failed (all matching)'}
               </button>
 
               <button
@@ -1562,8 +1545,8 @@ function AdminProductsContent() {
             {selectAllResults && (
               <p className="mt-3 text-sm text-amber-700">
                 {locale === 'zh'
-                  ? `已选择全部筛选结果。AI SEO 将按当前搜索、分类、品牌和状态筛选通过候选接口处理，最多 ${AI_SEO_MAX_PRODUCTS.toLocaleString()} 个；已优化商品也会按提示词重新处理。`
-                  : `All filtered results are selected. AI SEO will use the candidate endpoint with the current search, category, brand, and status scope, up to ${AI_SEO_MAX_PRODUCTS.toLocaleString()}; optimized products are included for rewrites.`}
+                  ? `已选择全部筛选结果。AI SEO 将按当前搜索、分类、品牌和状态筛选通过候选接口处理，全部匹配商品；已优化商品也会按提示词重新处理。`
+                  : `All filtered results are selected. AI SEO will use the candidate endpoint with the current search, category, brand, and status scope, all matching; optimized products are included for rewrites.`}
               </p>
             )}
             {activeAISEOJob && (
@@ -2107,8 +2090,8 @@ function AdminProductsContent() {
                 {locale === 'zh' ? '本次处理数量' : 'Products to process'}
                 <input
                   type="number"
-                  min={1}
-                  max={Math.min(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts, AI_SEO_MAX_PRODUCTS)}
+                  min={0}
+                  max={(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts)}
                   step={1}
                   value={categoryOptimizationLimit}
                   onChange={(event) => setCategoryOptimizationLimit(event.target.value)}
@@ -2116,8 +2099,8 @@ function AdminProductsContent() {
                 />
                 <span className="mt-1.5 block text-xs font-normal text-gray-500">
                   {locale === 'zh'
-                    ? `可自定义 1–${Math.min(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts, AI_SEO_MAX_PRODUCTS).toLocaleString()} 个；默认 500 个，按商品 ID 顺序选择。`
-                    : `Choose 1–${Math.min(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts, AI_SEO_MAX_PRODUCTS).toLocaleString()}; defaults to 500 and selects by product ID order.`}
+                    ? `可自定义 1–${(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts).toLocaleString()} 个；0 表示全部，后台分批处理。`
+                    : `Choose 1–${(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts).toLocaleString()}; 0 means all, processed in background batches.`}
                 </span>
               </label>
 
@@ -2154,8 +2137,8 @@ function AdminProductsContent() {
                 <div className="flex items-center gap-2 text-violet-700"><SparklesIcon className="h-5 w-5" /><h2 id="ai-seo-modal-title" className="text-lg font-semibold text-gray-900">{locale === 'zh' ? (isAISEOSelectAllMode ? 'AI SEO 优化全部筛选结果' : isAISEOFailedOnly ? 'AI SEO 自动重试失败商品' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO 自动候选优化' : 'AI SEO 优化已选商品') : (isAISEOSelectAllMode ? 'AI SEO optimize all filtered results' : isAISEOFailedOnly ? 'AI SEO retry failed products' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO automatic candidate optimization' : 'AI SEO optimize selected products')}</h2></div>
                 <p className="mt-2 text-sm text-gray-600">{isAISEOCandidateMode
                   ? (locale === 'zh'
-                    ? (isAISEOSelectAllMode ? `系统会按当前筛选结果启动任务，最多处理 ${AI_SEO_MAX_PRODUCTS.toLocaleString()} 个商品；已优化、失败和未优化商品都会纳入，已在其他 AI SEO 任务中排队或处理的商品会被排除。` : isAISEOFailedOnly ? '系统会在当前分类、品牌、搜索词范围内，自动选择最多 30000 个此前 AI SEO 优化失败的启用商品进行重试。已在其他 AI SEO 任务中排队或处理的商品会被排除。' : '系统会在当前分类、品牌、搜索词范围内，自动选择最多 30000 个启用商品；默认选择从未 AI 优化且内容较薄弱的商品，也可同时纳入失败商品。已在其他 AI SEO 任务中排队或处理的商品会被排除。')
-                    : (isAISEOSelectAllMode ? `The current filters will be sent to the candidate endpoint, up to ${AI_SEO_MAX_PRODUCTS.toLocaleString()} products. Optimized, failed, and never-optimized products are included; products already queued or running elsewhere are excluded.` : isAISEOFailedOnly ? 'The system will retry up to 30000 active products whose previous AI SEO attempt failed within the current category, brand, and search scope. Products queued or running in another AI SEO job are excluded.' : 'The system will choose up to 30000 active products within the current category, brand, and search scope. By default it selects never-optimized products with thinner content, and it can also include failed attempts. Products queued or running in another AI SEO job are excluded.'))
+                    ? (isAISEOSelectAllMode ? `系统会按当前筛选结果启动任务，处理全部匹配商品；已优化、失败和未优化商品都会纳入，已在其他 AI SEO 任务中排队或处理的商品会被排除。` : isAISEOFailedOnly ? '系统会在当前分类、品牌、搜索词范围内，自动选择全部匹配的此前 AI SEO 优化失败的启用商品进行重试。已在其他 AI SEO 任务中排队或处理的商品会被排除。' : '系统会在当前分类、品牌、搜索词范围内，自动选择全部匹配的启用商品；默认选择从未 AI 优化且内容较薄弱的商品，也可同时纳入失败商品。已在其他 AI SEO 任务中排队或处理的商品会被排除。')
+                    : (isAISEOSelectAllMode ? `The current filters will be sent to the candidate endpoint, all matching products. Optimized, failed, and never-optimized products are included; products already queued or running elsewhere are excluded.` : isAISEOFailedOnly ? 'The system will retry all matching active products whose previous AI SEO attempt failed within the current category, brand, and search scope. Products queued or running in another AI SEO job are excluded.' : 'The system will choose all matching active products within the current category, brand, and search scope. By default it selects never-optimized products with thinner content, and it can also include failed attempts. Products queued or running in another AI SEO job are excluded.'))
                   : (locale === 'zh' ? `本次只处理当前页手动勾选的 ${selectedCurrentPageIds.length} 个商品。每个商品由 AI 单独处理。` : `This job will process only the ${selectedCurrentPageIds.length} products explicitly checked on this page. AI handles each product separately.`)}</p>
               </div>
               <button type="button" onClick={() => setShowAISEOModal(false)} disabled={isStartingAISEOJob} className="rounded-md p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-50" aria-label={locale === 'zh' ? '关闭' : 'Close'}><XMarkIcon className="h-5 w-5" /></button>
@@ -2169,7 +2152,7 @@ function AdminProductsContent() {
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {(Object.keys(AI_SEO_FOCUS_COPY) as AIAgentSEOFocus[]).map((focus) => (
                     <label key={focus} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition ${aiSEOFocus === focus ? 'border-violet-400 bg-violet-50 text-violet-900 ring-1 ring-violet-200' : 'border-gray-200 bg-white text-gray-700 hover:border-violet-200'}`}>
-                      <input type="radio" name="ai-seo-focus" value={focus} checked={aiSEOFocus === focus} onChange={() => setAISEOFocus(focus)} className="mt-0.5 border-gray-300 text-violet-600 focus:ring-violet-500" />
+                      <input type="radio" name="ai-seo-focus" value={focus} checked={aiSEOFocus === focus} onChange={() => { setAISEOFocus(focus); setAISEOPrompt(AI_SEO_FOCUS_COPY[focus].instruction + "\n\n" + AI_SEO_DEFAULT_PROMPT); }} className="mt-0.5 border-gray-300 text-violet-600 focus:ring-violet-500" />
                       <span>{locale === 'zh' ? AI_SEO_FOCUS_COPY[focus].zh : AI_SEO_FOCUS_COPY[focus].en}</span>
                     </label>
                   ))}
@@ -2197,7 +2180,7 @@ function AdminProductsContent() {
             </div>
             <div className="flex flex-col-reverse gap-2 border-t border-gray-200 px-5 py-4 sm:flex-row sm:justify-end">
               <button type="button" onClick={() => setShowAISEOModal(false)} disabled={isStartingAISEOJob} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{locale === 'zh' ? '取消' : 'Cancel'}</button>
-              <button type="button" onClick={() => void startAISEO()} disabled={isStartingAISEOJob || aiSEOPrompt.trim().length < 2} className="inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"><SparklesIcon className="mr-2 h-4 w-4" />{isStartingAISEOJob ? (locale === 'zh' ? '正在创建任务…' : 'Starting job…') : isAISEOSelectAllMode ? (locale === 'zh' ? `优化全部筛选结果（最多 ${AI_SEO_MAX_PRODUCTS}）` : `Optimize all filtered results (up to ${AI_SEO_MAX_PRODUCTS})`) : isAISEOFailedOnly ? (locale === 'zh' ? '自动重试失败商品' : 'Retry failed products') : aiSEOJobMode === 'auto_candidates' ? (locale === 'zh' ? '自动选择并优化最多 30000 个商品' : 'Select and optimize up to 30000 candidates') : (locale === 'zh' ? `开始优化 ${selectedCurrentPageIds.length} 个商品` : `Optimize ${selectedCurrentPageIds.length} products`)}</button>
+              <button type="button" onClick={() => void startAISEO()} disabled={isStartingAISEOJob || aiSEOPrompt.trim().length < 2} className="inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"><SparklesIcon className="mr-2 h-4 w-4" />{isStartingAISEOJob ? (locale === 'zh' ? '正在创建任务…' : 'Starting job…') : isAISEOSelectAllMode ? (locale === 'zh' ? `优化全部筛选结果（全量）` : `Optimize all filtered results (all matches)`) : isAISEOFailedOnly ? (locale === 'zh' ? '自动重试失败商品' : 'Retry failed products') : aiSEOJobMode === 'auto_candidates' ? (locale === 'zh' ? '自动选择并优化全部匹配商品' : 'Select and optimize all matching candidates') : (locale === 'zh' ? `开始优化 ${selectedCurrentPageIds.length} 个商品` : `Optimize ${selectedCurrentPageIds.length} products`)}</button>
             </div>
           </div>
         </div>
