@@ -61,6 +61,14 @@ function getCategoryTitleSuffix(brandName: string): string {
   return brandName === 'FANUC' ? 'FANUC CNC Parts' : `${brandName} Automation Parts`;
 }
 
+function trimMetaText(value: string, maxLength: number): string {
+  const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  const cut = normalized.slice(0, maxLength);
+  const boundary = cut.lastIndexOf(' ');
+  return (boundary >= 24 ? cut.slice(0, boundary) : cut).trim();
+}
+
 // Category-specific meta description templates
 function getCategoryMetaDescription(categoryName: string, baseDescription?: string, brandName = 'Industrial Automation'): string {
   const name = categoryName.toLowerCase();
@@ -82,12 +90,12 @@ function getCategoryMetaDescription(categoryName: string, baseDescription?: stri
   };
 
   for (const [key, template] of Object.entries(templates)) {
-    if (name.includes(key)) return template;
+    if (name.includes(key)) return trimMetaText(template, 160);
   }
 
-  if (baseDescription && baseDescription.length > 50) return baseDescription;
+  if (baseDescription && baseDescription.length > 50) return trimMetaText(baseDescription, 160);
 
-  return `Browse ${categoryName} from Vibocnc. Quality ${titleSuffix}, tested with 12-month warranty and fast worldwide shipping via DHL and FedEx.`;
+  return trimMetaText(`Browse ${categoryName} from Vibocnc. Quality ${titleSuffix}, tested with 12-month warranty and fast worldwide shipping via DHL and FedEx.`, 160);
 }
 
 export async function generateMetadata({ params }: CategoryPathPageProps): Promise<Metadata> {
@@ -112,8 +120,10 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
     const titleSuffix = getCategoryTitleSuffix(brandName);
     const metaDescription = getCategoryMetaDescription(category.name, category.description, brandName);
     return {
-      title: `${category.name} - ${titleSuffix} | Buy Online`,
-      description: metaDescription,
+      // The root layout appends "| Vibocnc". Leave room for that suffix so
+      // category titles stay within the ~70-character SERP display limit.
+      title: trimMetaText(`${category.name} - ${titleSuffix} | Buy Online`, 58),
+      description: trimMetaText(metaDescription, 160),
       robots: { index: hasRequestedTranslation, follow: true },
       openGraph: {
         title: withSiteName(`${category.name} - ${titleSuffix} | Buy Online`),
