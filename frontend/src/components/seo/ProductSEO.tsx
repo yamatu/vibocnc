@@ -61,6 +61,18 @@ function toAbsoluteUrl(url: string | undefined, baseUrl: string): string {
   return `${baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
 }
 
+/**
+ * The backend renders a public JPEG placeholder with the SKU overlaid. It is
+ * preferable to the old default-product.jpg path, which is not deployed and
+ * returned 404 to crawlers (making Product image markup invalid).
+ */
+function getProductImageFallback(product: Product, baseUrl: string): string {
+  const sku = normalizeText(product.sku);
+  if (!sku) return `${baseUrl}/images/default-product.svg`;
+  const safeSku = sku.replace(/[\\/]+/g, '-').replace(/\s+/g, '-');
+  return `${baseUrl}/api/v1/public/products/default-image/${encodeURIComponent(safeSku)}?sku=${encodeURIComponent(sku)}`;
+}
+
 function normalizeText(value?: string): string {
   return String(value || '').trim();
 }
@@ -121,9 +133,11 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     : schemaLocale;
 
   // Build image array
-  const imageUrls = (product.images?.map(img => typeof img === 'string' ? img : img.url) ||
+  const imageSources = product.images?.map(img => typeof img === 'string' ? img : img.url) ||
     product.image_urls ||
-    [`${baseUrl}/images/default-product.jpg`]).map((url) => toAbsoluteUrl(url, baseUrl));
+    [];
+  const imageUrls = (imageSources.length > 0 ? imageSources : [getProductImageFallback(product, baseUrl)])
+    .map((url) => toAbsoluteUrl(url, baseUrl));
 
   // Reviews & aggregate rating
   const approvedReviews = product.reviews?.filter(r => r.is_approved) || [];

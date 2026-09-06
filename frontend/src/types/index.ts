@@ -389,6 +389,19 @@ export interface Category {
   translations?: CategoryTranslation[];
 }
 
+// Lightweight shape used by public category navigation. Keeping this
+// separate from Category prevents admin/database fields from being serialized
+// into the large categories directory page.
+export interface CategoryNavigationNode {
+  id: number;
+  name: string;
+  slug: string;
+  path?: string;
+  sort_order?: number;
+  product_count?: number;
+  children?: CategoryNavigationNode[];
+}
+
 export interface CategoryTranslation {
   id: number;
   category_id: number;

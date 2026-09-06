@@ -8,7 +8,7 @@ import { localizeCategoryContent } from '@/lib/i18n/content';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME } from '@/lib/seo';
-import type { Category } from '@/types';
+import type { Category, CategoryNavigationNode } from '@/types';
 
 export const revalidate = 3600;
 
@@ -28,8 +28,20 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-function categoryPath(category: Category): string {
+function categoryPath(category: Pick<Category, 'path' | 'slug'>): string {
   return `/categories/${category.path || category.slug}`;
+}
+
+function toNavigationCategory(category: Category): CategoryNavigationNode {
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    path: category.path,
+    sort_order: category.sort_order,
+    product_count: category.product_count,
+    children: category.children?.map(toNavigationCategory),
+  };
 }
 
 export default async function CategoriesPage() {
@@ -63,9 +75,11 @@ export default async function CategoriesPage() {
         otherBrands: 'More brands & categories',
         viewAll: 'View all products',
       };
-  let categories: Category[] = [];
+  let categories: CategoryNavigationNode[] = [];
   try {
-    categories = (await CategoryService.getCategories()).map((category) => localizeCategoryContent(category, locale));
+    categories = (await CategoryService.getCategories())
+      .map((category) => localizeCategoryContent(category, locale))
+      .map(toNavigationCategory);
   } catch (error) {
     console.error('Failed to load categories index:', error);
   }

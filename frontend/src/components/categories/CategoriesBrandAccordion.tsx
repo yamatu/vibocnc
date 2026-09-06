@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
-import type { Category } from '@/types';
+import type { CategoryNavigationNode } from '@/types';
 
 export interface CategoriesBrandAccordionCopy {
   browse: string;
@@ -13,7 +13,7 @@ export interface CategoriesBrandAccordionCopy {
 }
 
 interface CategoriesBrandAccordionProps {
-  categories: Category[];
+  categories: CategoryNavigationNode[];
   copy: CategoriesBrandAccordionCopy;
   /** Locale-aware path builder supplied by the server component. */
   hrefs: Record<number, string>;
@@ -21,11 +21,11 @@ interface CategoriesBrandAccordionProps {
 
 const MAJOR_SECTION_MIN_PRODUCTS = 20;
 
-function categorySortValue(category: Category) {
+function categorySortValue(category: CategoryNavigationNode) {
   return [category.sort_order ?? 0, -(category.product_count ?? 0), category.name] as const;
 }
 
-function compareCategories(a: Category, b: Category) {
+function compareCategories(a: CategoryNavigationNode, b: CategoryNavigationNode) {
   const [aOrder, aCount, aName] = categorySortValue(a);
   const [bOrder, bCount, bName] = categorySortValue(b);
   if (aOrder !== bOrder) return aOrder - bOrder;

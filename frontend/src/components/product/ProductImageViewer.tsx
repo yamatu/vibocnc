@@ -44,7 +44,7 @@ export default function ProductImageViewer({
 
   const currentImage = images.length > 0
     ? getProductImageUrlByIndex(images, selectedImageIndex)
-    : (fallbackImage || '/images/default-product.jpg');
+    : (fallbackImage || '/images/default-product.svg');
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
     if (!imageRef.current) return;

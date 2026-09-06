@@ -12,6 +12,7 @@ import { getLocalizedMetadataPaths, getRequestPublicLocale } from '@/lib/i18n/se
 import { getAvailableTranslationLocales, hasTranslationForLocale, localizeCategoryContent } from '@/lib/i18n/content';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
+import type { Category, CategoryNavigationNode } from '@/types';
 
 interface CategoryPathPageProps {
   params: Promise<{ categoryPath: string[] }>;
@@ -37,6 +38,18 @@ const brandDisplayNames: Record<string, string> = {
   sick: 'SICK',
   tamagawa: 'Tamagawa',
 };
+
+function toNavigationCategory(category: Category): CategoryNavigationNode {
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    path: category.path,
+    sort_order: category.sort_order,
+    product_count: category.product_count,
+    children: category.children?.map(toNavigationCategory),
+  };
+}
 
 function getCategoryBrandName(category: any, breadcrumb?: any[]): string {
   const rootCategory = breadcrumb?.[0] || category;
@@ -235,7 +248,9 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
     breadcrumb: (resolved.breadcrumb || []).map((item: any) => localizeCategoryContent(item, categoryContentLocale)),
   };
 
-  const tree = (await CategoryService.getCategories()).map((item: any) => localizeCategoryContent(item, locale));
+  const tree = (await CategoryService.getCategories())
+    .map((item) => localizeCategoryContent(item, locale))
+    .map(toNavigationCategory);
   const breadcrumbIds = (resolved.breadcrumb || [])
     .map((c: any) => Number(c.id))
     .filter((n: number) => Number.isFinite(n) && n > 0);
