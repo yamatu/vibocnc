@@ -79,6 +79,10 @@ func SetupRoutes(r *gin.Engine) {
 			public.GET("/products", middleware.CachePublicGET(middleware.CacheTTLProducts(), "cache:public:products:"), productController.GetProducts)
 			public.GET("/products/default-image", watermarkController.DefaultProductImage)
 			public.GET("/products/default-image/:sku", watermarkController.DefaultProductImage)
+			// Media validators and crawlers may probe image URLs with HEAD before
+			// downloading them. Reuse the image handler so headers and status match GET.
+			public.HEAD("/products/default-image", watermarkController.DefaultProductImage)
+			public.HEAD("/products/default-image/:sku", watermarkController.DefaultProductImage)
 
 			// Shipping (public)
 			public.GET("/shipping/countries", shippingRateController.PublicCountries)
