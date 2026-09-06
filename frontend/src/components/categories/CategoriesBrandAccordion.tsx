@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import type { CategoryNavigationNode } from '@/types';
+import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 
 export interface CategoriesBrandAccordionCopy {
   browse: string;
@@ -15,8 +16,6 @@ export interface CategoriesBrandAccordionCopy {
 interface CategoriesBrandAccordionProps {
   categories: CategoryNavigationNode[];
   copy: CategoriesBrandAccordionCopy;
-  /** Locale-aware path builder supplied by the server component. */
-  hrefs: Record<number, string>;
 }
 
 const MAJOR_SECTION_MIN_PRODUCTS = 20;
@@ -37,7 +36,8 @@ function compareCategories(a: CategoryNavigationNode, b: CategoryNavigationNode)
 // sections (only the first is expanded), and long-tail roots collapse into a
 // compact link cloud. Collapsed sections stay in the DOM (hidden) so every
 // category link remains crawlable.
-export default function CategoriesBrandAccordion({ categories, copy, hrefs }: CategoriesBrandAccordionProps) {
+export default function CategoriesBrandAccordion({ categories, copy }: CategoriesBrandAccordionProps) {
+  const { href } = usePublicI18n();
   const { sections, others } = useMemo(() => {
     const sorted = [...categories].sort(compareCategories);
     const sections = sorted.filter(
@@ -80,7 +80,7 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
                 </span>
               )}
               <Link
-                href={hrefs[category.id] || '#'}
+                href={href(`/categories/${category.path || category.slug}`)}
                 onClick={(event) => event.stopPropagation()}
                 className="shrink-0 text-sm font-bold text-[#0b3e75] hover:text-orange-700"
               >
@@ -93,7 +93,7 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
                   {children.map((child) => (
                     <li key={child.id}>
                       <Link
-                        href={hrefs[child.id] || '#'}
+                        href={href(`/categories/${child.path || child.slug}`)}
                         className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 transition hover:border-[#0b3e75] hover:text-[#0b3e75]"
                       >
                         <span className="min-w-0 truncate">{child.name}</span>
@@ -105,7 +105,7 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
                   ))}
                 </ul>
               ) : (
-                <Link href={hrefs[category.id] || '#'} className="text-sm font-bold text-[#0b3e75] hover:text-orange-700">
+                <Link href={href(`/categories/${category.path || category.slug}`)} className="text-sm font-bold text-[#0b3e75] hover:text-orange-700">
                   {copy.viewAll} →
                 </Link>
               )}
@@ -121,7 +121,7 @@ export default function CategoriesBrandAccordion({ categories, copy, hrefs }: Ca
             {others.map((category) => (
               <Link
                 key={category.id}
-                href={hrefs[category.id] || '#'}
+                href={href(`/categories/${category.path || category.slug}`)}
                 className="rounded-full border border-slate-200 px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-[#0b3e75] hover:text-[#0b3e75]"
               >
                 {category.name}

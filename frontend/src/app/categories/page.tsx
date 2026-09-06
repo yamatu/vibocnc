@@ -84,15 +84,6 @@ export default async function CategoriesPage() {
     console.error('Failed to load categories index:', error);
   }
 
-  // Pre-localized hrefs for the client accordion (roots and direct children).
-  const categoryHrefs: Record<number, string> = {};
-  for (const category of categories) {
-    categoryHrefs[category.id] = localizePublicPath(categoryPath(category), locale);
-    for (const child of category.children || []) {
-      categoryHrefs[child.id] = localizePublicPath(categoryPath(child), locale);
-    }
-  }
-
   const baseUrl = getSiteUrl();
   const pageUrl = `${baseUrl}${localizePublicPath('/categories', locale)}`;
   const structuredData = {
@@ -150,7 +141,6 @@ export default async function CategoriesPage() {
           {categories.length > 0 ? (
             <CategoriesBrandAccordion
               categories={categories}
-              hrefs={categoryHrefs}
               copy={{ browse: copy.browse, products: copy.products, otherBrands: copy.otherBrands, viewAll: copy.viewAll }}
             />
           ) : (
