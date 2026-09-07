@@ -1,5 +1,7 @@
-import EditableSitePage, { buildEditablePageMetadata } from '@/components/content/EditableSitePage';
+import { permanentRedirect } from 'next/navigation';
+import { getRequestPublicLocale } from '@/lib/i18n/server';
+import { localizePublicPath } from '@/lib/i18n/config';
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-export const generateMetadata = () => buildEditablePageMetadata('warranty');
-export default function Page() { return <EditableSitePage pageKey="warranty" />; }
+export default async function Page() {
+  permanentRedirect(localizePublicPath('/warranty-policy', await getRequestPublicLocale()));
+}

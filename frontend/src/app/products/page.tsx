@@ -8,7 +8,8 @@ import { withSiteName } from '@/lib/seo';
 import { toProductPathId } from '@/lib/utils';
 import ProductsPageClient from './ProductsPageClient';
 import ScrollRestorer from '@/components/common/ScrollRestorer';
-import { getLocalizedMetadataPaths, getRequestPublicLocale } from '@/lib/i18n/server';
+import { getLocalizedMetadataPaths, getLocalizedMetadataPathsWithQuery, getRequestPublicLocale } from '@/lib/i18n/server';
+import { normalizeProductPageSize } from '@/lib/product-listing';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 import { localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
 import { localizePublicPath, type PublicLocale } from '@/lib/i18n/config';
@@ -22,6 +23,7 @@ type ProductsPageServerData = {
   total: number;
   categories: Category[];
   currentPage: number;
+  pageSize: number;
   selectedCategory: string;
   searchQuery: string;
   selectedBrand: string;
@@ -126,11 +128,16 @@ export async function generateMetadata({ searchParams }: {
   const searchQuery = getFirstParamValue(params.search);
   const brand = getFirstParamValue(params.brand);
   const hasSearch = !!searchQuery;
+  const pageSize = normalizeProductPageSize(params.page_size);
+  const page = Math.max(1, Number.parseInt(getFirstParamValue(params.page) || '1', 10) || 1);
+  const paginationQuery = new URLSearchParams();
+  if (page > 1) paginationQuery.set('page', String(page));
+  if (pageSize !== 12) paginationQuery.set('page_size', String(pageSize));
 
   let title = 'Industrial Automation Parts & Components';
   let description = 'Industrial automation and CNC parts supplier since 2007. Browse current, legacy and obsolete components across 20+ brands with worldwide shipping.';
   const requestLocale = await getRequestPublicLocale();
-  const defaultMetadataPaths = await getLocalizedMetadataPaths('/products');
+  const defaultMetadataPaths = await getLocalizedMetadataPathsWithQuery('/products', paginationQuery.toString());
 
   if (requestLocale !== 'en') {
     title = translatePublicMessage(requestLocale, 'products.title');
@@ -194,10 +201,12 @@ export async function generateMetadata({ searchParams }: {
     description = `Search results for "${searchQuery}" in CNC and industrial automation parts from a multi-brand supplier established in 2007.`;
   }
 
+  if (page > 1) title = `${title} - Page ${page}`;
+
   return {
     title,
     description,
-    robots: hasSearch || !!brand ? { index: false, follow: true } : { index: true, follow: true },
+    robots: hasSearch || !!brand || pageSize !== 12 ? { index: false, follow: true } : { index: true, follow: true },
     keywords: [
       'CNC parts', 'industrial automation', 'servo motors', 'PCB boards',
       'I/O modules', 'control units', searchQuery,
@@ -220,7 +229,8 @@ async function getServerSideData(searchParams: PageSearchParams, locale: PublicL
   const categoryId = getFirstParamValue(searchParams.category_id) || getFirstParamValue(searchParams.category);
   const search = getFirstParamValue(searchParams.search);
   const brand = getFirstParamValue(searchParams.brand);
-  const page = parseInt(getFirstParamValue(searchParams.page) || '1', 10);
+  const page = Math.max(1, Number.parseInt(getFirstParamValue(searchParams.page) || '1', 10) || 1);
+  const pageSize = normalizeProductPageSize(searchParams.page_size);
 
   try {
     // Fetch products and categories in parallel to reduce TTFB
@@ -232,7 +242,7 @@ async function getServerSideData(searchParams: PageSearchParams, locale: PublicL
         include_descendants: categoryId ? 'true' : undefined,
         is_active: 'true',
         page,
-        page_size: 12,
+        page_size: pageSize,
       }),
       CategoryService.getCategories(),
     ]);
@@ -242,10 +252,11 @@ async function getServerSideData(searchParams: PageSearchParams, locale: PublicL
       // language. Translated fields override the English record when they
       // exist; missing translations fall back to the canonical product data.
       products: (productsData.data || []).map((product) => localizeProductContent(product, locale)),
-      totalPages: Math.ceil((productsData.total || 0) / 12),
+      totalPages: Math.max(1, Math.ceil((productsData.total || 0) / pageSize)),
       total: productsData.total || 0,
       categories: (categories || []).map((category) => localizeCategoryContent(category, locale)),
       currentPage: page,
+      pageSize,
       selectedCategory: categoryId || '',
       searchQuery: search || '',
       selectedBrand: brand || '',
@@ -259,6 +270,7 @@ async function getServerSideData(searchParams: PageSearchParams, locale: PublicL
       total: 0,
       categories: [],
       currentPage: 1,
+      pageSize,
       selectedCategory: '',
       searchQuery: '',
       selectedBrand: '',

@@ -85,13 +85,6 @@ export async function GET() {
       availableLocales: EN_ZH_LOCALES,
     },
     {
-      pathname: '/warranty',
-      lastModified,
-      changeFrequency: 'monthly',
-      priority: '0.5',
-      availableLocales: EN_ZH_LOCALES,
-    },
-    {
       pathname: '/warranty-policy',
       lastModified,
       changeFrequency: 'monthly',

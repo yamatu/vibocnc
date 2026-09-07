@@ -25,6 +25,8 @@ const en = {
   'footer.privacy': 'Privacy Policy', 'footer.terms': 'Terms of Service', 'footer.sitemap': 'Sitemap',
   'footer.allProducts': 'All Products', 'footer.productCategories': 'Product Categories',
   'footer.since': 'Since 2007',
+  'footer.popularBrands': 'Popular Brands', 'footer.weAccept': 'We accept',
+  'products.show': 'Show', 'products.perPage': 'Products per page',
   'home.hero.kicker': 'Industrial Automation Supply', 'home.hero.previous': 'Previous slide',
   'home.hero.next': 'Next slide', 'home.hero.goTo': 'Go to slide {number}', 'home.hero.scroll': 'Scroll Down',
   'home.hero.title': 'Vibocnc Industrial Automation Parts',
@@ -152,6 +154,8 @@ type Messages = Partial<Record<MessageKey, string>>;
 
 const translations: Record<Exclude<PublicLocale, 'en'>, Messages> = {
   zh: {
+    'footer.popularBrands': '热门品牌', 'footer.weAccept': '支持付款方式',
+    'products.show': '显示', 'products.perPage': '每页产品数量',
     'home.hero.title': 'Vibocnc 工业自动化零部件',
     'home.hero.subtitle': '数控与机器人备件，完成检测后快速发货',
     'home.hero.description': '从充足库存中采购多品牌工业自动化零部件，享受检测、技术支持、维修评估和全球运输服务。',

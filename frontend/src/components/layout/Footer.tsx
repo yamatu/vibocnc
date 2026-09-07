@@ -11,7 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { FaFacebookF, FaInstagram, FaLinkedinIn, FaXTwitter } from 'react-icons/fa6';
+import { FaFacebookF, FaInstagram, FaLinkedinIn, FaPaypal, FaXTwitter } from 'react-icons/fa6';
 import { queryKeys } from '@/lib/react-query';
 import type { SocialMediaURLKey } from '@/lib/social-media';
 import type { SocialMediaSettings } from '@/types';
@@ -19,26 +19,33 @@ import { SocialMediaService } from '@/services/social-media.service';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 
 const footerNavigation = {
+  brands: [
+    { name: 'FANUC', href: '/categories/fanuc' },
+    { name: 'Siemens', href: '/categories/siemens' },
+    { name: 'Mitsubishi', href: '/categories/mitsubishi' },
+    { name: 'Allen-Bradley', href: '/categories/ab' },
+    { name: 'OMRON', href: '/categories/omron' },
+    { name: 'Yaskawa', href: '/categories/yaskawa' },
+    { name: 'ABB', href: '/categories/abb' },
+    { name: 'SICK', href: '/categories/sick' },
+    { name: 'Tamagawa', href: '/categories/tamagawa' },
+  ],
   products: [
     { name: 'All Automation Parts', href: '/products' },
     { name: 'FANUC Servo Drives', href: '/categories/fanuc/fanuc-servo-amplifier-drive' },
-    { name: 'FANUC Operator Panels', href: '/categories/fanuc/fanuc-operator-panel-mdi' },
-    { name: 'FANUC I/O Modules', href: '/categories/fanuc/fanuc-i-o-module' },
-    { name: 'FANUC Power Supplies', href: '/categories/fanuc/fanuc-power-supply' },
-  ],
-  services: [
-    { name: 'Multi-Brand Parts Supply', href: '/products' },
-    { name: 'Repair Evaluation', href: '/repair-request' },
-    { name: 'Testing & Inspection', href: '/about' },
-    { name: 'Technical Support', href: '/contact' },
-    { name: 'Global Shipping', href: '/contact' },
+    { name: 'Siemens HMI Panels', href: '/categories/siemens/operator-panels-hmi' },
+    { name: 'Mitsubishi FX PLCs', href: '/categories/mitsubishi/fx-series' },
+    { name: 'Allen-Bradley Drives', href: '/categories/ab/variable-frequency-drive' },
+    { name: 'OMRON Servo Drives', href: '/categories/omron/servo-drives' },
+    { name: 'Yaskawa Servo Motors', href: '/categories/yaskawa/yaskawa-servo-motor' },
+    { name: 'ABB Inverters', href: '/categories/abb/variable-frequency-drives' },
+    { name: 'SICK Sensors', href: '/categories/sick/sick-photoelectric-sensors' },
   ],
   company: [
     { name: 'About Vibocnc', href: '/about' },
     { name: 'Product Categories', href: '/categories' },
     { name: 'Brands We Supply', href: '/#brands-we-supply' },
-    { name: 'Our Workshop', href: '/about' },
-    { name: 'Company Profile', href: '/about' },
+    { name: 'Repair Evaluation', href: '/repair-request' },
     { name: 'News', href: '/news' },
     { name: 'Blog', href: '/blog' },
   ],
@@ -46,11 +53,10 @@ const footerNavigation = {
     { name: 'Contact Us', href: '/contact' },
     { name: 'FAQ', href: '/faq' },
     { name: 'Documentation', href: '/docs' },
-    { name: 'Warranty', href: '/warranty' },
     { name: 'Warranty Policy', href: '/warranty-policy' },
     { name: 'Shipping Policy', href: '/shipping-policy' },
     { name: 'Technical Support', href: '/technical-support' },
-    { name: 'Returns Policy', href: '/returns' },
+    { name: 'Returns & Refunds', href: '/returns' },
   ],
 };
 
@@ -170,11 +176,11 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
             )}
           </div>
 
-          {/* Products */}
+          {/* Popular Brands */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">{t('footer.products')}</h3>
+            <h3 className="text-lg font-semibold mb-4">{t('footer.popularBrands')}</h3>
             <ul className="space-y-2">
-              {footerNavigation.products.map((item) => (
+              {footerNavigation.brands.map((item) => (
                 <li key={item.name}>
                   <Link
                     href={href(item.href)}
@@ -187,11 +193,11 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
             </ul>
           </div>
 
-          {/* Services */}
+          {/* Products */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">{t('footer.services')}</h3>
+            <h3 className="text-lg font-semibold mb-4">{t('footer.products')}</h3>
             <ul className="space-y-2">
-              {footerNavigation.services.map((item) => (
+              {footerNavigation.products.map((item) => (
                 <li key={item.name}>
                   <Link
                     href={href(item.href)}
@@ -241,8 +247,8 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
         </div>
 
         {/* Newsletter Signup */}
-        <div className="mt-12 pt-8 border-t border-slate-800">
-          <div className="max-w-md">
+        <div className="mt-12 flex flex-col gap-8 border-t border-slate-800 pt-8 md:flex-row md:items-end md:justify-between">
+          <div className="w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">{t('footer.stayUpdated')}</h3>
             <p className="text-slate-300 mb-4">
               {t('footer.newsletter')}
@@ -255,7 +261,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 placeholder={t('footer.emailPlaceholder')}
                 value={newsletterEmail}
                 onChange={(e) => setNewsletterEmail(e.target.value)}
-                className="flex-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#003a78] text-white placeholder-slate-400"
+                className="min-w-0 flex-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#003a78] text-white placeholder-slate-400"
               />
               <button
                 type="submit"
@@ -264,6 +270,13 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 {t('footer.subscribe')}
               </button>
             </form>
+          </div>
+          <div className="flex shrink-0 items-center gap-3 text-sm text-slate-300">
+            <span>{t('footer.weAccept')}</span>
+            <span className="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 font-semibold text-[#003087]">
+              <FaPaypal className="h-6 w-6" aria-hidden="true" />
+              PayPal
+            </span>
           </div>
         </div>
       </div>
@@ -299,16 +312,10 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 {t('nav.repair')}
               </Link>
               <Link
-                href={href('/products')}
+                href={href('/categories')}
                 className="text-slate-400 hover:text-white text-sm transition-colors duration-200"
               >
                 {t('footer.productCategories')}
-              </Link>
-              <Link
-                href={href('/products')}
-                className="text-slate-400 hover:text-white text-sm transition-colors duration-200"
-              >
-                {t('footer.allProducts')}
               </Link>
             </div>
           </div>

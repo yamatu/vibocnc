@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -19,14 +19,17 @@ import CategoryFilterTree from '@/components/categories/CategoryFilterTree';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
+import { buildProductListingPath, normalizeProductPageSize, PRODUCT_PAGE_SIZES } from '@/lib/product-listing';
+import type { Category, Product } from '@/types';
 
 interface ProductsPageClientProps {
   initialData: {
-    products: any[];
+    products: Product[];
     totalPages: number;
     total: number;
-    categories: any[];
+    categories: Category[];
     currentPage: number;
+    pageSize: number;
     selectedCategory: string;
     searchQuery: string;
     selectedBrand: string;
@@ -39,23 +42,24 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
   const { t, href } = usePublicI18n();
 
   const [searchQuery, setSearchQuery] = useState(initialData.searchQuery);
-  const [selectedCategory, setSelectedCategory] = useState(initialData.selectedCategory);
-  const selectedBrand = initialData.selectedBrand;
+  const selectedCategory = initialData.selectedCategory;
   const [sortBy, setSortBy] = useState('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  const [currentPage, setCurrentPage] = useState(initialData.currentPage);
+  const currentPage = initialData.currentPage;
+  const pageSize = initialData.pageSize;
   const [favorites, setFavorites] = useState<number[]>([]);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
   const { addItem } = useCartStore();
 
   useEffect(() => {
-    setCurrentPage(initialData.currentPage);
-  }, [initialData.currentPage]);
+    setSearchQuery(initialData.searchQuery);
+  }, [initialData.searchQuery]);
 
   // Client-side sorting only (filtering is done server-side)
-  const sortedProducts = [...initialData.products].sort((a: any, b: any) => {
+  const sortedProducts = [...initialData.products].sort((a, b) => {
     switch (sortBy) {
       case 'name_desc':
         return b.name.localeCompare(a.name);
@@ -82,7 +86,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
   const totalPages = initialData.totalPages;
   const totalProducts = initialData.total;
 
-  const handleAddToCart = (product: any) => {
+  const handleAddToCart = (product: Product) => {
     if (!hasProductPrice(product)) return;
     addItem(product, 1);
   };
@@ -96,64 +100,54 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
   };
 
   const clearAllFilters = () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
     setSearchQuery('');
-    setSelectedCategory('');
     setSortBy('name');
-    setCurrentPage(1);
 
     // Update URL
-    router.push(href('/products'));
+    router.push(href(buildProductListingPath({}, { page_size: pageSize })));
   };
 
-  // Handle search with debounce and URL update
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const params = new URLSearchParams();
-      if (searchQuery) params.set('search', searchQuery);
-      if (selectedBrand) params.set('brand', selectedBrand);
-      if (selectedCategory) {
-        params.set('category_id', selectedCategory);
-        params.set('include_descendants', 'true');
-      }
-      if (currentPage > 1) {
-        params.set('page', String(currentPage));
-      }
+  // Navigation cancels an older search so it cannot overwrite a new page size.
+  useEffect(() => () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+  }, [searchParams]);
 
-      const newUrl = href(`/products${params.toString() ? '?' + params.toString() : ''}`);
-      if (newUrl !== window.location.pathname + window.location.search) {
-        router.push(newUrl, { scroll: false });
-      }
-    }, 500); // Increased debounce time
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, selectedBrand, selectedCategory, currentPage, router, href]);
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      router.push(href(buildProductListingPath(searchParams, { search: value.trim(), page: 1 })), { scroll: false });
+    }, 500);
+  };
 
 
 
   // Handle category change
   const handleCategoryChange = (categoryId: string) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
     try {
       window.sessionStorage.setItem('products-scroll-y', String(window.scrollY || 0));
     } catch {
       // ignore
     }
-    setSelectedCategory(categoryId);
-    // The useEffect above will handle the URL update
+    router.push(href(buildProductListingPath(searchParams, {
+      category: undefined,
+      category_id: categoryId,
+      include_descendants: categoryId ? 'true' : undefined,
+      search: searchQuery.trim(),
+      page: 1,
+    })), { scroll: false });
   };
 
   // Handle pagination with URL update
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    const params = new URLSearchParams();
-    if (searchQuery) params.set('search', searchQuery);
-    if (selectedBrand) params.set('brand', selectedBrand);
-    if (selectedCategory) {
-      params.set('category_id', selectedCategory);
-      params.set('include_descendants', 'true');
-    }
-    if (page > 1) params.set('page', page.toString());
-
-    router.push(href(`/products?${params.toString()}`), { scroll: false });
+  const getPageHref = (page: number) => href(buildProductListingPath(searchParams, { page }));
+  const handlePageChange = (page: number) => router.push(getPageHref(page), { scroll: false });
+  const handlePageSizeChange = (value: string) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    router.push(href(buildProductListingPath(searchParams, {
+      page_size: normalizeProductPageSize(value), page: 1, search: searchQuery.trim(),
+    })), { scroll: false });
   };
 
 
@@ -202,7 +196,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                   <input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleSearchChange(e.target.value)}
                     className="site-input block w-full pl-10 pr-3 py-2 leading-5 placeholder-slate-400"
                     placeholder={t('products.searchPlaceholder')}
                   />
@@ -218,7 +212,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
               <div className="site-panel p-6">
                 <h3 className="text-lg font-semibold text-slate-950 mb-4">{t('nav.categories')}</h3>
                 <CategoryFilterTree
-                  tree={initialData.categories as any}
+                  tree={initialData.categories}
                   selectedCategoryId={selectedCategory ? Number(selectedCategory) : null}
                   onSelectCategory={(id) => handleCategoryChange(id ? String(id) : '')}
                   storageKey="products-category-open-ids"
@@ -230,7 +224,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
             </div>
 
             {/* Main Content */}
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               {/* Enhanced Toolbar */}
               <div className="site-toolbar mb-6 p-3 sm:p-4">
                 <div className="flex flex-col gap-3 sm:gap-4">
@@ -273,7 +267,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
 
                   {/* Bottom row - Sort and page size */}
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1 sm:flex-none">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 sm:flex-none">
                       {/* Sort */}
                       <select
                         value={sortBy}
@@ -288,8 +282,17 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                         <option value="stock_desc">{t('products.sortStock')}</option>
                         <option value="featured">{t('products.sortFeatured')}</option>
                       </select>
-
-
+                      <label className="flex shrink-0 items-center gap-2 text-sm text-slate-700">
+                        <span>{t('products.show')}</span>
+                        <select
+                          value={pageSize}
+                          onChange={(event) => handlePageSizeChange(event.target.value)}
+                          aria-label={t('products.perPage')}
+                          className="site-select w-20 px-3 py-2 text-sm"
+                        >
+                          {PRODUCT_PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+                        </select>
+                      </label>
                     </div>
 
                     {/* Clear filters and page info */}
@@ -313,7 +316,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
               {/* Products Grid/List */}
               {viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {sortedProducts.map((product: any) => (
+                  {sortedProducts.map((product) => (
                     <div key={product.id} className="site-product-card">
                       <div className="relative">
                         <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-media block aspect-[4/3] w-full">
@@ -390,7 +393,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {sortedProducts.map((product: any) => (
+                  {sortedProducts.map((product) => (
                     <div key={product.id} className="site-product-card p-4 sm:p-6">
                       <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                         <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="flex-shrink-0">
@@ -470,6 +473,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                     currentPage={currentPage}
                     totalPages={totalPages}
                     onPageChange={handlePageChange}
+                    getPageHref={getPageHref}
                   />
                 </div>
               )}

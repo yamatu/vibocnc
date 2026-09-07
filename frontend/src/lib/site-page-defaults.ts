@@ -61,9 +61,13 @@ To the extent permitted by law, liability is limited to the amount paid for the 
 ## Contact
 
 Questions may be sent to [sales@vibocnc.com](mailto:sales@vibocnc.com).` },
-  { pageKey: 'warranty', title: 'Warranty', summary: 'Warranty information for Vibocnc products and services.', metaDescription: 'Warranty information for Vibocnc CNC and industrial automation parts.', metaKeywords: 'warranty, CNC parts warranty, automation parts support', content: `## Warranty Coverage
+  { pageKey: 'warranty-policy', title: 'Warranty Policy', summary: 'Coverage, exclusions, and claims process for products supplied by Vibocnc.', metaDescription: 'Review warranty coverage, exclusions, and the claims process for Vibocnc industrial automation and CNC parts.', metaKeywords: 'warranty policy, FANUC parts warranty, CNC repair claim', content: `## Coverage
 
-Warranty coverage depends on the product condition, manufacturer, and quotation. Unless otherwise stated in writing, supplied products include a 12-month warranty against functional defects under normal use.
+- Standard coverage is 12 months unless the quotation or product page states otherwise
+- Coverage applies to verified functional defects under normal operating conditions
+- Repair, replacement, or another appropriate remedy is determined after inspection
+
+Warranty coverage depends on the product condition, manufacturer, and quotation.
 
 ## Exclusions
 
@@ -72,21 +76,14 @@ Warranty coverage depends on the product condition, manufacturer, and quotation.
 - Unauthorized repair, modification, or disassembly
 - Normal wear or failure elsewhere in the machine
 
-## Making a Claim
-
-Contact us with the order number, product SKU, serial number when available, fault description, and supporting photos or video. Do not return an item until return instructions are issued.` },
-  { pageKey: 'warranty-policy', title: 'Warranty Policy', summary: 'Coverage, exclusions, and claims process for products supplied by Vibocnc.', metaDescription: 'Review warranty coverage, exclusions, and the claims process for Vibocnc industrial automation and CNC parts.', metaKeywords: 'warranty policy, FANUC parts warranty, CNC repair claim', content: `## Coverage
-
-- Standard coverage is 12 months unless the quotation or product page states otherwise
-- Coverage applies to verified functional defects under normal operating conditions
-- Repair, replacement, or another appropriate remedy is determined after inspection
-
 ## Claims Process
 
-1. Contact us with your order number and product SKU.
+1. Contact us with your order number, product SKU, and serial number when available.
 2. Provide a clear fault description plus photos or video where possible.
 3. Follow the issued return and packaging instructions.
 4. We inspect the item and confirm the available remedy.
+
+Do not return an item until return instructions are issued. See our [Returns & Refunds Policy](/returns) for return eligibility and refund terms.
 
 ## Contact
 
