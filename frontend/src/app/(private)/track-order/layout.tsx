@@ -13,15 +13,11 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     alternates: { canonical, languages },
     robots: {
-      index: false,
-      follow: false,
-      nocache: true,
-      noarchive: true,
-      nosnippet: true,
+      index: true,
+      follow: true,
       googleBot: {
-        index: false,
-        follow: false,
-        noimageindex: true,
+        index: true,
+        follow: true,
       },
     },
     openGraph: {

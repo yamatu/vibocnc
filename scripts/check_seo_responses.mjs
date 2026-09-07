@@ -13,10 +13,10 @@ const routes = [
   { path: '/news', indexable: true, hreflang: true },
   { path: '/fr', indexable: false, hreflang: false, localizedHomepage: true },
   { path: '/products?search=fanuc', indexable: false, hreflang: false },
-  { path: '/login', indexable: false, hreflang: false },
+  { path: '/login', indexable: true, hreflang: false },
   { path: '/account', indexable: false, hreflang: false },
   { path: '/checkout', indexable: false, hreflang: false },
-  { path: '/track-order', indexable: false, hreflang: false },
+  { path: '/track-order', indexable: true, hreflang: true },
 ];
 
 const auditedSku = process.env.SEO_AUDIT_SKU || (targetOrigin.includes('vibocnc.com') ? 'A06B-6092-H275#H508' : '');
@@ -237,10 +237,11 @@ try {
   const errors = [];
   if (!robotsResponse.ok) errors.push(`HTTP ${robotsResponse.status}`);
   if (!/text\/plain/i.test(robotsResponse.headers.get('content-type') || '')) errors.push('invalid content type');
-  if (!/Content-Signal:\s*[^\r\n]*ai-train=yes/i.test(robotsTxt)) errors.push('robots.txt does not allow AI training');
   if (/Content-Signal:\s*[^\r\n]*ai-train=no/i.test(robotsTxt)) errors.push('robots.txt still contains ai-train=no');
-  for (const crawler of ['GPTBot', 'Google-Extended', 'ClaudeBot', 'PerplexityBot']) {
-    if (!new RegExp(`\\bUser-agent:\\s*${crawler}\\b`, 'i').test(robotsTxt)) errors.push(`${crawler} rule is missing`);
+  if (!/^User-agent:\s*\*\s*$/im.test(robotsTxt)) errors.push('wildcard crawler policy is missing');
+  if (!/^Disallow:\s*\/admin\s*$/im.test(robotsTxt)) errors.push('admin crawl restriction is missing');
+  for (const match of robotsTxt.matchAll(/^Disallow:\s*(\S+)[ \t]*$/gim)) {
+    if (match[1] !== '/admin') errors.push(`unexpected crawl restriction: ${match[1]}`);
   }
   if (!new RegExp(`Sitemap:\\s*${canonicalOrigin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/sitemap\\.xml`, 'i').test(robotsTxt)) errors.push('primary sitemap is missing');
   if (!/\bai-train=yes\b/i.test(contentSignalHeader)) errors.push('Content-Signal response header does not allow AI training');

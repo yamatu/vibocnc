@@ -360,10 +360,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/account') ||
     pathname.startsWith('/checkout') ||
-    pathname === '/login' ||
     pathname === '/register' ||
-    pathname === '/forgot-password' ||
-    pathname === '/track-order'
+    pathname === '/forgot-password'
   ) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
   }
