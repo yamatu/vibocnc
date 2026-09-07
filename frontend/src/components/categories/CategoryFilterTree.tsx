@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Category } from '@/types';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
+import { findCategoryTrail, prioritizeCategoryTrail } from '@/lib/category-navigation';
 
 type Props = {
   tree: Category[];
@@ -20,8 +21,13 @@ export default function CategoryFilterTree({
   storageKey = 'products-category-open-ids',
   allLabel = 'All Products',
 }: Props) {
+  const trail = useMemo(() => findCategoryTrail(tree, selectedCategoryId), [tree, selectedCategoryId]);
   const [openIds, setOpenIds] = useState<Set<number>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [selectedCategoryId]);
 
   // Load persisted state
   useEffect(() => {
@@ -29,6 +35,7 @@ export default function CategoryFilterTree({
       const raw = window.localStorage.getItem(storageKey);
       const parsed = raw ? (JSON.parse(raw) as unknown) : null;
       const restored = new Set<number>();
+      for (const id of trail) restored.add(id);
       if (Array.isArray(parsed)) {
         for (const v of parsed) {
           const n = Number(v);
@@ -37,11 +44,11 @@ export default function CategoryFilterTree({
       }
       setOpenIds(restored);
     } catch {
-      setOpenIds(new Set());
+      setOpenIds(new Set(trail));
     } finally {
       setHydrated(true);
     }
-  }, [storageKey]);
+  }, [storageKey, trail]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -63,7 +70,7 @@ export default function CategoryFilterTree({
 
   const renderNode = (node: Category, depth: number) => {
     const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-    const isOpen = openIds.has(node.id);
+    const isOpen = openIds.has(node.id) || (!hydrated && trail.includes(node.id));
     const isSelected = selectedCategoryId === node.id;
 
     return (
@@ -98,7 +105,7 @@ export default function CategoryFilterTree({
         </div>
 
         {hasChildren && isOpen ? (
-          <div className="mt-1 space-y-1">{node.children!.map((c) => renderNode(c, depth + 1))}</div>
+          <div className="mt-1 space-y-1">{prioritizeCategoryTrail(node.children!, trail).map((c) => renderNode(c, depth + 1))}</div>
         ) : null}
       </div>
     );
@@ -118,7 +125,7 @@ export default function CategoryFilterTree({
       >
         {allLabel}
       </button>
-      <div className="space-y-1">{tree.map((n) => renderNode(n, 0))}</div>
+      <div ref={scrollRef} className="max-h-[70vh] space-y-1 overflow-y-auto overscroll-contain">{prioritizeCategoryTrail(tree, trail).map((n) => renderNode(n, 0))}</div>
     </div>
   );
 }

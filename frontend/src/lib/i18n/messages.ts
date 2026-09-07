@@ -5,6 +5,7 @@ export type PublicMessageVariables = Record<string, string | number>;
 
 const en = {
   'language.label': 'Language and region',
+  'header.searchCategories': 'Search categories', 'header.noCategories': 'No matching categories',
   'nav.home': 'Home', 'nav.products': 'Products', 'nav.categories': 'Categories', 'nav.news': 'News',
   'nav.blog': 'Blog', 'nav.about': 'About', 'nav.contact': 'Contact', 'nav.repair': 'Repair Request',
   'header.supply': 'Industrial automation parts supply | Vibocnc Since 2007',
@@ -154,6 +155,7 @@ type Messages = Partial<Record<MessageKey, string>>;
 
 const translations: Record<Exclude<PublicLocale, 'en'>, Messages> = {
   zh: {
+    'header.searchCategories': '搜索分类', 'header.noCategories': '没有匹配的分类',
     'footer.popularBrands': '热门品牌', 'footer.weAccept': '支持付款方式',
     'products.show': '显示', 'products.perPage': '每页产品数量',
     'home.hero.title': 'Vibocnc 工业自动化零部件',

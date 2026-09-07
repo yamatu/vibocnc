@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryNavigationNode } from '@/types';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
+import { findCategoryTrail, prioritizeCategoryTrail } from '@/lib/category-navigation';
 
 type Props = {
   tree: CategoryNavigationNode[];
@@ -24,9 +25,14 @@ export default function CategorySidebarTree({
   storageKey = 'category-sidebar-open-ids',
 }: Props) {
   const { href } = usePublicI18n();
-  const defaultOpenSet = useMemo(() => new Set<number>(defaultOpenIds), [defaultOpenIds]);
+  const trail = useMemo(() => findCategoryTrail(tree, activeCategoryId), [tree, activeCategoryId]);
+  const defaultOpenSet = useMemo(() => new Set<number>([...defaultOpenIds, ...trail]), [defaultOpenIds, trail]);
   const [openIds, setOpenIds] = useState<Set<number>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [activeCategoryId]);
 
   // Load persisted state on mount
   useEffect(() => {
@@ -87,7 +93,7 @@ export default function CategorySidebarTree({
 
   const renderNode = (node: CategoryNavigationNode, depth: number) => {
     const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-    const isOpen = openIds.has(node.id);
+    const isOpen = openIds.has(node.id) || (!hydrated && trail.includes(node.id));
     const isActive = node.id === activeCategoryId;
 
     return (
@@ -108,6 +114,7 @@ export default function CategorySidebarTree({
           )}
 
           <Link
+            aria-current={isActive ? 'page' : undefined}
             href={href(nodeHref(node))}
             scroll={false}
             onClick={() => {
@@ -125,12 +132,12 @@ export default function CategorySidebarTree({
 
         {hasChildren && isOpen && (
           <div className="mt-1 space-y-1">
-            {node.children!.map((child) => renderNode(child, depth + 1))}
+            {prioritizeCategoryTrail(node.children!, trail).map((child) => renderNode(child, depth + 1))}
           </div>
         )}
       </div>
     );
   };
 
-  return <div className="space-y-1">{tree.map((n) => renderNode(n, 0))}</div>;
+  return <div ref={scrollRef} className="max-h-[70vh] space-y-1 overflow-y-auto overscroll-contain">{prioritizeCategoryTrail(tree, trail).map((n) => renderNode(n, 0))}</div>;
 }

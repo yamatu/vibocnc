@@ -315,10 +315,10 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[256px_minmax(0,1fr)]">
             {/* Left sidebar */}
-            <aside className="lg:col-span-3">
+            <aside className="min-w-0">
               <div className="site-panel p-4 lg:sticky lg:top-28">
                 <div className="mb-3 border-b border-slate-200 pb-3 text-sm font-semibold uppercase tracking-wide text-slate-900">{translatePublicMessage(locale, 'nav.categories')}</div>
                 <CategorySidebarTree
@@ -331,7 +331,7 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
             </aside>
 
             {/* Products */}
-            <section className="lg:col-span-9">
+            <section className="min-w-0">
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center py-12">

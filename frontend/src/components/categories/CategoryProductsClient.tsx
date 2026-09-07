@@ -25,6 +25,7 @@ import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
 import type { ProductFilters as ProductServiceFilters } from '@/services/product.service';
 import type { Category, Product } from '@/types';
+import { normalizeProductPageSize } from '@/lib/product-listing';
 
 interface CategoryProductsClientProps {
   category: Category;
@@ -46,6 +47,7 @@ function normalizeSortDirection(value: string | null): CategoryProductFilters['s
 
 export default function CategoryProductsClient({
   category,
+  initialSearchParams,
 }: CategoryProductsClientProps) {
   const router = useRouter();
   const { locale, t, href } = usePublicI18n();
@@ -57,7 +59,7 @@ export default function CategoryProductsClient({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filters, setFilters] = useState<CategoryProductFilters>({
     page: 1,
-    page_size: 12,
+    page_size: normalizeProductPageSize(initialSearchParams.page_size),
     category_id: String(category.id),
     include_descendants: 'true',
     sort_by: 'created_at',
@@ -72,7 +74,7 @@ export default function CategoryProductsClient({
   useEffect(() => {
     const urlFilters = {
       page: parseInt(searchParams.get('page') || '1'),
-      page_size: parseInt(searchParams.get('page_size') || '12'),
+      page_size: normalizeProductPageSize(searchParams.get('page_size')),
       category_id: String(category.id),
       include_descendants: 'true',
       sort_by: normalizeSortBy(searchParams.get('sort_by')),
@@ -164,7 +166,7 @@ export default function CategoryProductsClient({
   const clearFilters = () => {
     const clearedFilters: CategoryProductFilters = {
       page: 1,
-      page_size: 12,
+      page_size: 48,
       category_id: String(category.id),
       include_descendants: 'true',
       sort_by: 'created_at',
@@ -305,7 +307,7 @@ export default function CategoryProductsClient({
       ) : products.length > 0 ? (
         <>
           {viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-4 mb-8">
               {products.map((product) => (
                 <div key={product.id} className="site-product-card">
                   <div className="relative">
@@ -318,7 +320,7 @@ export default function CategoryProductsClient({
                         alt={`${product.name} - ${product.sku}`}
                         width={300}
                         height={300}
-                        sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        sizes="(min-width: 1536px) 15vw, (min-width: 1280px) 20vw, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
                         className="h-full w-full object-contain object-center p-3 transition-transform duration-300 hover:scale-105"
                         loading="lazy"
                       />
@@ -338,9 +340,13 @@ export default function CategoryProductsClient({
                       </p>
                     )}
 
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="text-xl font-bold text-[#0b3e75]">
-                        {hasProductPrice(product) ? formatCurrency(product.price) : t('products.contactForQuote')}
+                        {hasProductPrice(product) ? formatCurrency(product.price) : (
+                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                                {t('products.contactForQuote')}
+                              </Link>
+                            )}
                       </span>
 
                       <div className="flex items-center space-x-2">
@@ -403,7 +409,11 @@ export default function CategoryProductsClient({
 
                     <div className="flex-shrink-0 text-left sm:text-right">
                       <div className="text-xl font-bold text-[#0b3e75] mb-2">
-                        {hasProductPrice(product) ? formatCurrency(product.price) : t('products.contactForQuote')}
+                        {hasProductPrice(product) ? formatCurrency(product.price) : (
+                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                                {t('products.contactForQuote')}
+                              </Link>
+                            )}
                       </div>
                       <div className="flex items-center gap-2">
                         <Link

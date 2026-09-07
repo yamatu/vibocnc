@@ -1,10 +1,11 @@
 export const PRODUCT_PAGE_SIZES = [12, 24, 36, 48, 96] as const;
 export type ProductPageSize = (typeof PRODUCT_PAGE_SIZES)[number];
+export const DEFAULT_PRODUCT_PAGE_SIZE = 48;
 type ListingParams = Record<string, string | string[] | undefined>;
 
 export function normalizeProductPageSize(value: unknown): ProductPageSize {
   const size = Number(Array.isArray(value) ? value[0] : value);
-  return PRODUCT_PAGE_SIZES.find((option) => option === size) ?? 12;
+  return PRODUCT_PAGE_SIZES.find((option) => option === size) ?? DEFAULT_PRODUCT_PAGE_SIZE;
 }
 
 export function buildProductListingPath(params: ListingParams, updates: Record<string, string | number | undefined> = {}): string {
@@ -18,7 +19,7 @@ export function buildProductListingPath(params: ListingParams, updates: Record<s
     else query.set(key, String(value));
   }
   const pageSize = normalizeProductPageSize(query.get('page_size'));
-  if (pageSize === 12) query.delete('page_size');
+  if (pageSize === DEFAULT_PRODUCT_PAGE_SIZE) query.delete('page_size');
   else query.set('page_size', String(pageSize));
   if (query.get('page') === '1') query.delete('page');
   return `/products${query.size ? `?${query.toString()}` : ''}`;

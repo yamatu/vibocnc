@@ -157,7 +157,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
       <div className="site-page-shell min-h-screen">
         {/* Hero Section */}
         <div className="site-page-hero py-16">
-          <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="site-hero-inner max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
               <div className="site-hero-kicker mb-5">{t('nav.products')}</div>
               <h1 className="text-4xl md:text-5xl font-bold mb-6">{t('products.title')}</h1>
@@ -182,7 +182,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col lg:flex-row gap-8">
             {/* Sidebar Filters */}
             <div className="lg:w-64 space-y-6">
@@ -315,7 +315,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
 
               {/* Products Grid/List */}
               {viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-4">
                   {sortedProducts.map((product) => (
                     <div key={product.id} className="site-product-card">
                       <div className="relative">
@@ -328,7 +328,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             alt={`${product.name} - ${product.sku} | Professional ${product.category?.name || 'Industrial'} Part | In Stock at Vibocnc`}
                             width={300}
                             height={300}
-                            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                            sizes="(min-width: 1536px) 15vw, (min-width: 1280px) 20vw, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
                             className="h-full w-full object-contain object-center p-3 transition-transform duration-300 hover:scale-105"
                             priority={false}
                             loading="lazy"
@@ -362,9 +362,13 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                           </p>
                         )}
 
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                           <span className="text-xl font-bold text-[#0b3e75]">
-                            {hasProductPrice(product) ? formatCurrency(product.price) : t('products.contactForQuote')}
+                            {hasProductPrice(product) ? formatCurrency(product.price) : (
+                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                                {t('products.contactForQuote')}
+                              </Link>
+                            )}
                           </span>
 
                           <div className="flex items-center space-x-2">
@@ -428,7 +432,11 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
 
                         <div className="flex-shrink-0 text-left sm:text-right">
                           <div className="text-xl font-bold text-[#0b3e75] mb-2">
-                            {hasProductPrice(product) ? formatCurrency(product.price) : t('products.contactForQuote')}
+                            {hasProductPrice(product) ? formatCurrency(product.price) : (
+                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                                {t('products.contactForQuote')}
+                              </Link>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             <button

@@ -90,7 +90,6 @@ function buildCategoryRedirectPath(category: CategoryNode | null, params: PageSe
     const value = getFirstParamValue(params[key]);
     if (!value) continue;
     if (key === 'page' && value === '1') continue;
-    if (key === 'page_size' && value === '12') continue;
     redirectParams.set(key, value);
   }
 
@@ -132,7 +131,7 @@ export async function generateMetadata({ searchParams }: {
   const page = Math.max(1, Number.parseInt(getFirstParamValue(params.page) || '1', 10) || 1);
   const paginationQuery = new URLSearchParams();
   if (page > 1) paginationQuery.set('page', String(page));
-  if (pageSize !== 12) paginationQuery.set('page_size', String(pageSize));
+  if (pageSize !== 48) paginationQuery.set('page_size', String(pageSize));
 
   let title = 'Industrial Automation Parts & Components';
   let description = 'Industrial automation and CNC parts supplier since 2007. Browse current, legacy and obsolete components across 20+ brands with worldwide shipping.';
@@ -206,7 +205,7 @@ export async function generateMetadata({ searchParams }: {
   return {
     title,
     description,
-    robots: hasSearch || !!brand || pageSize !== 12 ? { index: false, follow: true } : { index: true, follow: true },
+    robots: hasSearch || !!brand || pageSize !== 48 ? { index: false, follow: true } : { index: true, follow: true },
     keywords: [
       'CNC parts', 'industrial automation', 'servo motors', 'PCB boards',
       'I/O modules', 'control units', searchQuery,
