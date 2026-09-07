@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME, withSiteName, withoutSiteNameSuffix } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
+import { getArticleBySlug } from '@/services/news.server';
 import ArticleDetailClient from '@/app/news/[slug]/ArticleDetailClient';
 import { getLocalizedMetadataPaths, getRequestPublicLocale } from '@/lib/i18n/server';
 import {
@@ -17,7 +17,7 @@ import type { Article } from '@/types';
 export const revalidate = 900;
 
 async function loadArticle(slug: string) {
-  return NewsService.getArticleBySlug(slug, 'blog');
+  return getArticleBySlug(slug, 'blog');
 }
 
 async function loadRelatedArticles(article: Article, locale: Awaited<ReturnType<typeof getRequestPublicLocale>>) {
@@ -45,40 +45,35 @@ function wordCount(value?: string): number {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  try {
-    const locale = await getRequestPublicLocale();
-    const sourceArticle = await loadArticle(slug);
-    const hasRequestedTranslation = hasTranslationForLocale(sourceArticle.translations, locale);
-    const article = localizeArticleContent(sourceArticle, locale);
-    const { canonical: canonicalUrl, languages } = await getLocalizedMetadataPaths(
-      article.public_path || `/blog/${article.slug}`,
-      getAvailableTranslationLocales(sourceArticle.translations),
-    );
-    const title = withoutSiteNameSuffix(article.meta_title?.trim() || article.title);
-    const description = article.meta_description?.trim() || article.summary || `${article.title} - Vibocnc industrial automation guide.`;
-    const images = article.featured_image ? [article.featured_image] : [];
-    const canonical = hasRequestedTranslation
-      ? canonicalUrl
-      : `${getSiteUrl()}${article.public_path || `/blog/${article.slug}`}`;
-    return {
-      title,
-      description,
-      keywords: article.meta_keywords || [article.title, 'industrial automation', 'CNC guide'].join(', '),
-      robots: { index: hasRequestedTranslation, follow: true },
-      alternates: { canonical, languages },
-      openGraph: { title: withSiteName(title), description, type: 'article', url: canonical, images, publishedTime: article.published_at || article.created_at, modifiedTime: article.updated_at },
-      twitter: { card: 'summary_large_image', title: withSiteName(title), description, images },
-    };
-  } catch {
-    return { title: 'Article Not Found', robots: { index: false, follow: false } };
-  }
+  const locale = await getRequestPublicLocale();
+  const sourceArticle = await loadArticle(slug);
+  const hasRequestedTranslation = hasTranslationForLocale(sourceArticle.translations, locale);
+  const article = localizeArticleContent(sourceArticle, locale);
+  const { canonical: canonicalUrl, languages } = await getLocalizedMetadataPaths(
+    article.public_path || `/blog/${article.slug}`,
+    getAvailableTranslationLocales(sourceArticle.translations),
+  );
+  const title = withoutSiteNameSuffix(article.meta_title?.trim() || article.title);
+  const description = article.meta_description?.trim() || article.summary || `${article.title} - Vibocnc industrial automation guide.`;
+  const images = article.featured_image ? [article.featured_image] : [];
+  const canonical = hasRequestedTranslation
+    ? canonicalUrl
+    : `${getSiteUrl()}${article.public_path || `/blog/${article.slug}`}`;
+  return {
+    title,
+    description,
+    keywords: article.meta_keywords || [article.title, 'industrial automation', 'CNC guide'].join(', '),
+    robots: { index: hasRequestedTranslation, follow: true, 'max-image-preview': 'large' },
+    alternates: { canonical, languages },
+    openGraph: { title: withSiteName(title), description, type: 'article', url: canonical, images, publishedTime: article.published_at || article.created_at, modifiedTime: article.updated_at },
+    twitter: { card: 'summary_large_image', title: withSiteName(title), description, images },
+  };
 }
 
 export default async function BlogArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const locale = await getRequestPublicLocale();
-  let sourceArticle;
-  try { sourceArticle = await loadArticle(slug); } catch { notFound(); }
+  const sourceArticle = await loadArticle(slug);
   const hasRequestedTranslation = hasTranslationForLocale(sourceArticle.translations, locale);
   const article = localizeArticleContent(sourceArticle, locale);
   const relatedArticles = await loadRelatedArticles(sourceArticle, locale);
@@ -102,5 +97,5 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
     { '@type': 'ListItem', position: 2, name: translatePublicMessage(locale, 'nav.blog'), item: `${baseUrl}${localizePublicPath('/blog', locale)}` },
     { '@type': 'ListItem', position: 3, name: article.title, item: articleUrl },
   ] };
-  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs) }} /><ArticleDetailClient article={article} relatedArticles={relatedArticles} contentLocale={hasRequestedTranslation ? locale : 'en'} /></>;
+  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs).replace(/</g, '\\u003c') }} /><ArticleDetailClient article={article} relatedArticles={relatedArticles} contentLocale={hasRequestedTranslation ? locale : 'en'} /></>;
 }

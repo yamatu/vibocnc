@@ -8,6 +8,7 @@ import Layout from '@/components/layout/Layout';
 import SmartPagination from '@/components/ui/SmartPagination';
 import type { Article } from '@/types';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
+import { hasTranslationForLocale } from '@/lib/i18n/content';
 
 interface NewsPageClientProps {
   initialData: {
@@ -53,15 +54,24 @@ export default function NewsPageClient({ initialData, contentType = 'news' }: Ne
     router.push(`${basePath}?${params.toString()}`);
   };
 
-  const handlePageChange = (page: number) => {
+  const getPageHref = (page: number) => {
     const params = new URLSearchParams();
     if (initialData.searchQuery) params.set('search', initialData.searchQuery);
-    params.set('page', String(page));
-    router.push(`${basePath}?${params.toString()}`);
+    if (page > 1) params.set('page', String(page));
+    return `${basePath}${params.size ? `?${params.toString()}` : ''}`;
+  };
+  const handlePageChange = (page: number) => router.push(getPageHref(page));
+  const articleHref = (article: Article) => {
+    const path = article.public_path || `${rawBasePath}/${article.slug}`;
+    return hasTranslationForLocale(article.translations, locale) ? href(path) : path;
   };
 
-  const featuredArticles = initialData.articles.filter((a) => a.is_featured);
-  const regularArticles = initialData.articles.filter((a) => !a.is_featured);
+  const featuredArticles = !initialData.searchQuery && initialData.currentPage === 1
+    ? initialData.articles.filter((article) => article.is_featured).slice(0, 2)
+    : [];
+  const featuredIds = new Set(featuredArticles.map((article) => article.id));
+  // Only remove articles actually displayed in the featured section.
+  const regularArticles = initialData.articles.filter((article) => !featuredIds.has(article.id));
 
   return (
     <Layout>
@@ -122,10 +132,10 @@ export default function NewsPageClient({ initialData, contentType = 'news' }: Ne
                 <div className="mb-12">
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('news.featured')}</h2>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {featuredArticles.slice(0, 2).map((article) => (
+                    {featuredArticles.map((article) => (
                       <Link
                         key={article.id}
-                        href={href(article.public_path || `${rawBasePath}/${article.slug}`)}
+                        href={articleHref(article)}
                         className="group site-product-card block"
                       >
                         {article.featured_image ? (
@@ -174,10 +184,10 @@ export default function NewsPageClient({ initialData, contentType = 'news' }: Ne
                   <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('news.latest')}</h2>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {(initialData.searchQuery ? initialData.articles : regularArticles).map((article) => (
+                  {regularArticles.map((article) => (
                     <Link
                       key={article.id}
-                      href={href(article.public_path || `${rawBasePath}/${article.slug}`)}
+                      href={articleHref(article)}
                       className="group site-product-card flex flex-col"
                     >
                       {article.featured_image ? (
@@ -223,6 +233,7 @@ export default function NewsPageClient({ initialData, contentType = 'news' }: Ne
                     currentPage={initialData.currentPage}
                     totalPages={initialData.totalPages}
                     onPageChange={handlePageChange}
+                    getPageHref={getPageHref}
                   />
                 </div>
               )}

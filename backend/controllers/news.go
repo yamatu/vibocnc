@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fanuc-backend/config"
 	"fanuc-backend/models"
 	"fanuc-backend/services"
@@ -17,6 +18,15 @@ import (
 )
 
 type NewsController struct{}
+
+func respondArticleReadError(c *gin.Context, err error) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Article not found"})
+		return
+	}
+	_ = c.Error(err)
+	c.JSON(http.StatusServiceUnavailable, models.APIResponse{Success: false, Message: "Articles temporarily unavailable"})
+}
 
 func withArticlePreloads(db *gorm.DB) *gorm.DB {
 	return db.Preload("Author").Preload("Translations").Preload("FeaturedMedia")
@@ -322,13 +332,19 @@ func (nc *NewsController) GetPublicArticles(c *gin.Context) {
 	}
 
 	var total int64
-	q.Model(&models.Article{}).Count(&total)
+	if err := q.Model(&models.Article{}).Count(&total).Error; err != nil {
+		respondArticleReadError(c, err)
+		return
+	}
 
 	var articles []models.Article
-	q.Order("sort_order DESC, published_at DESC, created_at DESC").
+	if err := q.Order("sort_order DESC, published_at DESC, created_at DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
-		Find(&articles)
+		Find(&articles).Error; err != nil {
+		respondArticleReadError(c, err)
+		return
+	}
 
 	totalPages := int(total) / pageSize
 	if int(total)%pageSize > 0 {
@@ -363,7 +379,7 @@ func (nc *NewsController) GetPublicArticle(c *gin.Context) {
 
 	var article models.Article
 	if err := withArticlePreloads(db).Where("id = ? AND is_published = ?", id, true).First(&article).Error; err != nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Article not found"})
+		respondArticleReadError(c, err)
 		return
 	}
 
@@ -387,7 +403,7 @@ func (nc *NewsController) GetPublicArticleBySlug(c *gin.Context) {
 		q = withContentTypeFilter(q, contentType)
 	}
 	if err := q.First(&article).Error; err != nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Article not found"})
+		respondArticleReadError(c, err)
 		return
 	}
 
@@ -412,7 +428,7 @@ func (nc *NewsController) GetPublicArticleByPath(c *gin.Context) {
 
 	var article models.Article
 	if err := withArticlePreloads(db).Where("custom_path = ? AND is_published = ?", path, true).First(&article).Error; err != nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Article not found"})
+		respondArticleReadError(c, err)
 		return
 	}
 

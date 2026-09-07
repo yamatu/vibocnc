@@ -43,7 +43,7 @@ export class NewsService {
 
   static async getArticleBySlug(slug: string, contentType?: 'news' | 'blog'): Promise<Article> {
     const suffix = contentType ? `?content_type=${contentType}` : '';
-    const response = await apiClient.get<APIResponse<Article>>(`/public/news/slug/${slug}${suffix}`);
+    const response = await apiClient.get<APIResponse<Article>>(`/public/news/slug/${encodeURIComponent(slug)}${suffix}`);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Article not found');
   }

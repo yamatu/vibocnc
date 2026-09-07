@@ -38,6 +38,8 @@ export const LIMITED_TRANSLATION_PUBLIC_PATHS = [
 // choose a translated version. This keeps support and policy links reliably
 // English by default while still allowing the language selector to opt in.
 export const AUTO_LOCALE_REDIRECT_EXCLUDED_PATHS = [
+  '/blog',
+  '/news',
   '/track-order',
   '/categories',
   '/repair-request',

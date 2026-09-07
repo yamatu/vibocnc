@@ -7,6 +7,7 @@ import Layout from '@/components/layout/Layout';
 import type { Article } from '@/types';
 import MarkdownContent from '@/components/content/MarkdownContent';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
+import { hasTranslationForLocale } from '@/lib/i18n/content';
 
 function estimateReadTime(content: string): number {
   const words = content.split(/\s+/).length;
@@ -29,7 +30,7 @@ export default function ArticleDetailClient({
   const localeTag = (contentLocale || locale) === 'zh' ? 'zh-CN' : (contentLocale || locale);
   const relatedHref = (related: Article) => {
     const path = related.public_path || `/${related.content_type}/${related.slug}`;
-    return locale === 'en' || related.translations?.some((translation) => translation.language_code.split(/[-_]/)[0] === locale)
+    return hasTranslationForLocale(related.translations, locale)
       ? href(path)
       : path;
   };
@@ -104,7 +105,7 @@ export default function ArticleDetailClient({
 
           {/* Article Content */}
           <article className="py-8 sm:py-10" lang={contentLocale || locale}>
-            <MarkdownContent content={article.content} className="max-w-none text-lg" />
+            <MarkdownContent content={article.content} minHeadingLevel={2} className="max-w-none text-lg" />
           </article>
 
           {relatedArticles.length > 0 && (

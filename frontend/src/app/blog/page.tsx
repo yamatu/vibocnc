@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { notFound } from 'next/navigation';
 import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME, withSiteName } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
 import NewsPageClient from '@/app/news/NewsPageClient';
-import type { PaginationResponse, Article } from '@/types';
 import { getLocalizedMetadataPathsWithQuery, getRequestPublicLocale } from '@/lib/i18n/server';
 import { localizeArticleOrDefault } from '@/lib/i18n/content';
 import { localizePublicPath } from '@/lib/i18n/config';
@@ -16,7 +16,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const page = Math.max(1, Number.parseInt(typeof params.page === 'string' ? params.page : '1', 10) || 1);
   const pageQuery = page > 1 ? `page=${page}` : '';
   const { locale, canonical: url, languages } = await getLocalizedMetadataPathsWithQuery('/blog', pageQuery);
-  const title = search ? `Search: ${search} - Blog` : translatePublicMessage(locale, 'news.blogTitle');
+  const title = search ? `Search: ${search} - Blog` : `${translatePublicMessage(locale, 'news.blogTitle')}${page > 1 ? ` - Page ${page}` : ''}`;
   const description = search
     ? `Search results for "${search}" in the Vibocnc industrial automation blog.`
     : translatePublicMessage(locale, 'news.blogDescription');
@@ -36,14 +36,10 @@ export const revalidate = 300;
 export default async function BlogPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
   const locale = await getRequestPublicLocale();
-  const page = Number.parseInt(typeof params.page === 'string' ? params.page : '1', 10) || 1;
+  const page = Math.max(1, Number.parseInt(typeof params.page === 'string' ? params.page : '1', 10) || 1);
   const search = typeof params.search === 'string' && params.search.trim() ? params.search.trim() : undefined;
-  let data: PaginationResponse<Article> = { data: [], page, page_size: 12, total_pages: 1, total: 0 };
-  try {
-    data = await NewsService.getArticles({ page, page_size: 12, search, content_type: 'blog' });
-  } catch (error) {
-    console.error('Failed to fetch blog articles:', error);
-  }
+  const data = await NewsService.getArticles({ page, page_size: 12, search, content_type: 'blog' });
+  if (page > Math.max(1, data.total_pages)) notFound();
 
   const baseUrl = getSiteUrl();
   const articles = (data.data || [])

@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { notFound } from 'next/navigation';
 import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME, withSiteName } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
@@ -18,7 +19,7 @@ export async function generateMetadata({ searchParams }: {
   const pageQuery = page > 1 ? `page=${page}` : '';
   const { locale, canonical: canonicalUrl, languages } = await getLocalizedMetadataPathsWithQuery('/news', pageQuery);
 
-  let title = translatePublicMessage(locale, 'news.title');
+  let title = `${translatePublicMessage(locale, 'news.title')}${page > 1 ? ` - Page ${page}` : ''}`;
   let description = translatePublicMessage(locale, 'news.description');
 
   if (search) {
@@ -47,36 +48,26 @@ export async function generateMetadata({ searchParams }: {
 
 async function getServerSideData(searchParams: { [key: string]: string | string[] | undefined }, locale: Awaited<ReturnType<typeof getRequestPublicLocale>>) {
   const search = searchParams.search;
-  const page = parseInt((searchParams.page as string) || '1', 10);
+  const page = Math.max(1, Number.parseInt(typeof searchParams.page === 'string' ? searchParams.page : '1', 10) || 1);
 
   const searchStr = typeof search === 'string' && search.trim() ? search.trim() : undefined;
 
-  try {
-    const data = await NewsService.getArticles({
-      search: searchStr,
-      page,
-      page_size: 12,
-      content_type: 'news',
-    });
+  const data = await NewsService.getArticles({
+    search: searchStr,
+    page,
+    page_size: 12,
+    content_type: 'news',
+  });
+  if (page > Math.max(1, data.total_pages)) notFound();
 
-    return {
-      articles: (data.data || [])
-        .map((article) => localizeArticleOrDefault(article, locale)),
-      totalPages: data.total_pages || 1,
-      total: data.total || 0,
-      currentPage: page,
-      searchQuery: (search as string) || '',
-    };
-  } catch (error) {
-    console.error('Failed to fetch news:', error);
-    return {
-      articles: [],
-      totalPages: 1,
-      total: 0,
-      currentPage: 1,
-      searchQuery: '',
-    };
-  }
+  return {
+    articles: (data.data || [])
+      .map((article) => localizeArticleOrDefault(article, locale)),
+    totalPages: data.total_pages || 1,
+    total: data.total || 0,
+    currentPage: page,
+    searchQuery: (search as string) || '',
+  };
 }
 
 export const revalidate = 300;

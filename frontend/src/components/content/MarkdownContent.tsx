@@ -3,6 +3,7 @@ import React from 'react';
 interface MarkdownContentProps {
   content: string;
   className?: string;
+  minHeadingLevel?: 1 | 2;
 }
 
 function safeUrl(value: string): string | null {
@@ -61,7 +62,7 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   });
 }
 
-export default function MarkdownContent({ content, className = '' }: MarkdownContentProps) {
+export default function MarkdownContent({ content, className = '', minHeadingLevel = 1 }: MarkdownContentProps) {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const blocks: React.ReactNode[] = [];
   let index = 0;
@@ -101,7 +102,7 @@ export default function MarkdownContent({ content, className = '' }: MarkdownCon
 
     const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
-      const level = heading[1].length;
+      const level = Math.max(minHeadingLevel, heading[1].length);
       const classes = level === 1 ? 'mt-10 mb-4 text-3xl font-bold' : level === 2 ? 'mt-9 mb-3 text-2xl font-bold' : 'mt-7 mb-3 text-xl font-semibold';
       blocks.push(React.createElement(`h${level}`, { key: `h-${index}`, className: classes }, renderInline(heading[2], `h-${index}`)));
       index++;

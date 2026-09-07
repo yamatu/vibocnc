@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME, withSiteName, withoutSiteNameSuffix } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
+import { getArticleByPath } from '@/services/news.server';
 import ArticleDetailClient from '@/app/news/[slug]/ArticleDetailClient';
 import { getLocalizedMetadataPaths, getRequestPublicLocale } from '@/lib/i18n/server';
 import {
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 async function loadArticle(parts: string[]) {
-  return NewsService.getArticleByPath(parts.join('/'));
+  return getArticleByPath(parts.join('/'));
 }
 
 function stripMarkup(value?: string): string {
@@ -46,37 +46,32 @@ async function loadRelatedArticles(article: Article, locale: Awaited<ReturnType<
 
 export async function generateMetadata({ params }: { params: Promise<{ articlePath: string[] }> }): Promise<Metadata> {
   const { articlePath } = await params;
-  try {
-    const locale = await getRequestPublicLocale();
-    const sourceArticle = await loadArticle(articlePath);
-    const hasRequestedTranslation = hasTranslationForLocale(sourceArticle.translations, locale);
-    const article = localizeArticleContent(sourceArticle, locale);
-    const path = article.public_path || `/${articlePath.join('/')}`;
-    const { canonical: canonicalUrl, languages } = await getLocalizedMetadataPaths(
-      path,
-      getAvailableTranslationLocales(sourceArticle.translations),
-    );
-    const title = withoutSiteNameSuffix(article.meta_title?.trim() || article.title);
-    const description = article.meta_description?.trim() || article.summary || `${article.title} - Vibocnc.`;
-    const images = article.featured_image ? [article.featured_image] : [];
-    const canonical = hasRequestedTranslation ? canonicalUrl : `${getSiteUrl()}${path}`;
-    return {
-      title, description, keywords: article.meta_keywords || undefined,
-      robots: { index: hasRequestedTranslation, follow: true },
-      alternates: { canonical, languages },
-      openGraph: { title: withSiteName(title), description, type: 'article', url: canonical, images, publishedTime: article.published_at || article.created_at, modifiedTime: article.updated_at },
-      twitter: { card: 'summary_large_image', title: withSiteName(title), description, images },
-    };
-  } catch {
-    return { title: 'Page Not Found', robots: { index: false, follow: false } };
-  }
+  const locale = await getRequestPublicLocale();
+  const sourceArticle = await loadArticle(articlePath);
+  const hasRequestedTranslation = hasTranslationForLocale(sourceArticle.translations, locale);
+  const article = localizeArticleContent(sourceArticle, locale);
+  const path = article.public_path || `/${articlePath.join('/')}`;
+  const { canonical: canonicalUrl, languages } = await getLocalizedMetadataPaths(
+    path,
+    getAvailableTranslationLocales(sourceArticle.translations),
+  );
+  const title = withoutSiteNameSuffix(article.meta_title?.trim() || article.title);
+  const description = article.meta_description?.trim() || article.summary || `${article.title} - Vibocnc.`;
+  const images = article.featured_image ? [article.featured_image] : [];
+  const canonical = hasRequestedTranslation ? canonicalUrl : `${getSiteUrl()}${path}`;
+  return {
+    title, description, keywords: article.meta_keywords || undefined,
+    robots: { index: hasRequestedTranslation, follow: true, 'max-image-preview': 'large' },
+    alternates: { canonical, languages },
+    openGraph: { title: withSiteName(title), description, type: 'article', url: canonical, images, publishedTime: article.published_at || article.created_at, modifiedTime: article.updated_at },
+    twitter: { card: 'summary_large_image', title: withSiteName(title), description, images },
+  };
 }
 
 export default async function CustomArticlePage({ params }: { params: Promise<{ articlePath: string[] }> }) {
   const { articlePath } = await params;
   const locale = await getRequestPublicLocale();
-  let sourceArticle;
-  try { sourceArticle = await loadArticle(articlePath); } catch { notFound(); }
+  const sourceArticle = await loadArticle(articlePath);
   const hasRequestedTranslation = hasTranslationForLocale(sourceArticle.translations, locale);
   const article = localizeArticleContent(sourceArticle, locale);
   const relatedArticles = await loadRelatedArticles(sourceArticle, locale);
@@ -103,5 +98,5 @@ export default async function CustomArticlePage({ params }: { params: Promise<{ 
     { '@type': 'ListItem', position: 2, name: sectionName, item: `${baseUrl}${localizePublicPath(sectionPath, locale)}` },
     { '@type': 'ListItem', position: 3, name: article.title, item: articleUrl },
   ] };
-  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs) }} /><ArticleDetailClient article={article} relatedArticles={relatedArticles} contentLocale={hasRequestedTranslation ? locale : 'en'} /></>;
+  return <><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs).replace(/</g, '\\u003c') }} /><ArticleDetailClient article={article} relatedArticles={relatedArticles} contentLocale={hasRequestedTranslation ? locale : 'en'} /></>;
 }

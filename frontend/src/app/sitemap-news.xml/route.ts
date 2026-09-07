@@ -56,19 +56,11 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Error generating news sitemap:', error)
-    // Fallback: at least include the news listing page
-    const sitemap = renderLocalizedSitemap(baseUrl, [{
-      pathname: '/news',
-      lastModified: undefined,
-      changeFrequency: 'daily',
-      priority: '0.8',
-      availableLocales: ALL_PUBLIC_LOCALES,
-    }])
-
-    return new NextResponse(sitemap, {
+    return new NextResponse('Sitemap temporarily unavailable', {
+      status: 503,
       headers: {
-        'Content-Type': 'application/xml',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600',
+        'Cache-Control': 'no-store',
+        'Retry-After': '300',
       },
     })
   }

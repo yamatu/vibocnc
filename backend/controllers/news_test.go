@@ -1,9 +1,37 @@
 package controllers
 
 import (
+	"errors"
 	"fanuc-backend/models"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+func TestArticleReadFailuresDoNotMasqueradeAsMissingContent(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{"missing", gorm.ErrRecordNotFound, http.StatusNotFound},
+		{"wrapped missing", fmt.Errorf("lookup: %w", gorm.ErrRecordNotFound), http.StatusNotFound},
+		{"database outage", errors.New("connection lost"), http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			respondArticleReadError(ctx, test.err)
+			if recorder.Code != test.status {
+				t.Fatalf("status = %d, want %d", recorder.Code, test.status)
+			}
+		})
+	}
+}
 
 func TestNormalizeContentType(t *testing.T) {
 	for input, expected := range map[string]string{"blog": "blog", " BLOG ": "blog", "news": "news", "": "news", "other": "news"} {

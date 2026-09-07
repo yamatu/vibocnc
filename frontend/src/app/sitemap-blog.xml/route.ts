@@ -26,6 +26,10 @@ export async function GET() {
     articles = await getAllPublishedArticles('blog');
   } catch (error) {
     console.error('Error generating blog sitemap:', error);
+    return new NextResponse('Sitemap temporarily unavailable', {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store', 'Retry-After': '300' },
+    });
   }
   const urls = [{ pathname: '/blog', lastModified: latestArticleModifiedAt(articles), changeFrequency: 'daily', priority: '0.8', availableLocales: ALL_PUBLIC_LOCALES }, ...articles.map((article) => ({
     pathname: article.public_path || `/blog/${article.slug}`,
