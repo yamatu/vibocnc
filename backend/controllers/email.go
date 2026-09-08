@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -542,6 +543,17 @@ type broadcastRequest struct {
 	Limit   int    `json:"limit"`
 }
 
+const maxMarketingRecipients = 500
+
+func validMarketingEmail(value string) bool {
+	address, err := mail.ParseAddress(strings.TrimSpace(value))
+	if err != nil || address == nil {
+		return false
+	}
+	parts := strings.Split(address.Address, "@")
+	return len(parts) == 2 && strings.EqualFold(address.Address, strings.TrimSpace(value)) && strings.Contains(parts[1], ".")
+}
+
 // Admin: POST /api/v1/admin/email/broadcast
 func (ec *EmailController) Broadcast(c *gin.Context) {
 	var req broadcastRequest
@@ -560,8 +572,20 @@ func (ec *EmailController) Broadcast(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Email marketing is disabled"})
 		return
 	}
+	if strings.TrimSpace(req.Subject) == "" || len([]rune(req.Subject)) > 180 {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Subject must be between 1 and 180 characters"})
+		return
+	}
+	if len(req.HTML) > 2*1024*1024 || len(req.Text) > 512*1024 {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Email content is too large"})
+		return
+	}
 
 	if req.TestTo != "" {
+		if !validMarketingEmail(req.TestTo) {
+			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid test recipient email"})
+			return
+		}
 		// test send only
 		err := services.SendEmail(db, services.EmailSendOptions{
 			To:      req.TestTo,
@@ -585,18 +609,28 @@ func (ec *EmailController) Broadcast(c *gin.Context) {
 		return
 	}
 	limit := req.Limit
-	if limit <= 0 || limit > len(customers) {
-		limit = len(customers)
+	if limit <= 0 || limit > maxMarketingRecipients {
+		limit = maxMarketingRecipients
 	}
 
 	sent := 0
 	failed := 0
-	for i := 0; i < limit; i++ {
+	skipped := 0
+	seen := make(map[string]struct{}, limit)
+	considered := 0
+	for i := 0; i < len(customers) && considered < limit; i++ {
 		cust := customers[i]
-		to := cust.Email
-		if strings.TrimSpace(to) == "" {
+		to := strings.ToLower(strings.TrimSpace(cust.Email))
+		if !cust.IsVerified || !validMarketingEmail(to) {
+			skipped++
 			continue
 		}
+		if _, exists := seen[to]; exists {
+			skipped++
+			continue
+		}
+		seen[to] = struct{}{}
+		considered++
 
 		html := strings.ReplaceAll(req.HTML, "{{full_name}}", cust.FullName)
 		html = strings.ReplaceAll(html, "{{email}}", cust.Email)
@@ -617,5 +651,5 @@ func (ec *EmailController) Broadcast(c *gin.Context) {
 		sent++
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Broadcast finished", Data: gin.H{"sent": sent, "failed": failed, "total": limit}})
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Broadcast finished", Data: gin.H{"sent": sent, "failed": failed, "skipped": skipped, "total": considered, "limit": maxMarketingRecipients}})
 }

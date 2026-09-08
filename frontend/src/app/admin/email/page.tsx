@@ -151,7 +151,7 @@ export default function AdminEmailPage() {
     return [mk1, mk2];
   });
 
-  const [mk, setMk] = useState({ subject: '', html: '', text: '', test_to: '', limit: 0 });
+  const [mk, setMk] = useState({ subject: '', html: '', text: '', test_to: '', limit: 100 });
   const [single, setSingle] = useState({ to: '', subject: '', html: '', text: '' });
 
   useEffect(() => {
@@ -211,8 +211,8 @@ export default function AdminEmailPage() {
         toast.success(
           t(
             'email.marketing.broadcastDone',
-            locale === 'zh' ? '群发完成：成功 {sent}，失败 {failed}' : 'Broadcast finished: sent {sent}, failed {failed}',
-            { sent: res.sent || 0, failed: res.failed || 0 }
+            locale === 'zh' ? '群发完成：成功 {sent}，失败 {failed}，跳过 {skipped}' : 'Broadcast finished: sent {sent}, failed {failed}, skipped {skipped}',
+            { sent: res.sent || 0, failed: res.failed || 0, skipped: res.skipped || 0 }
           )
         );
       }
@@ -798,6 +798,9 @@ export default function AdminEmailPage() {
           </div>
         ) : tab === 'marketing' ? (
           <div className="bg-white rounded-lg shadow p-6 space-y-4">
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              {t('email.marketing.deliveryHint', locale === 'zh' ? '营销邮件只发送给已验证且格式有效的唯一邮箱。单次最多 500 封；建议先填写测试收件人确认模板。' : 'Marketing sends only to unique, verified, valid customer emails. Each broadcast is capped at 500 recipients; send a test first to verify the template.')}
+            </div>
             <div className="text-sm text-gray-600">
               {canSendMarketing ? (
                 <div>
@@ -867,6 +870,8 @@ export default function AdminEmailPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('email.marketing.limit', locale === 'zh' ? '发送上限（0 = 全部）' : 'Limit (0 = all)')}</label>
                 <input
                   type="number"
+                  min={1}
+                  max={500}
                   value={mk.limit}
                   onChange={(e) => setMk((p) => ({ ...p, limit: Number(e.target.value) }))}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2"
