@@ -14,6 +14,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useAdminI18n } from '@/lib/admin-i18n';
+import type { APIResponse } from '@/types';
 
 interface Ticket {
   id: number;
@@ -80,7 +81,7 @@ export default function AdminTicketsPage() {
   const loadTickets = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get('/admin/tickets');
+      const response = await apiClient.get<APIResponse<Ticket[]>>('/admin/tickets');
       if (response.data.success) {
         setTickets(response.data.data || []);
       }
@@ -94,7 +95,7 @@ export default function AdminTicketsPage() {
 
   const updateTicketStatus = async (ticketId: number, newStatus: string) => {
     try {
-      const response = await apiClient.put(`/admin/tickets/${ticketId}`, {
+      const response = await apiClient.put<APIResponse<unknown>>(`/admin/tickets/${ticketId}`, {
         status: newStatus,
       });
 

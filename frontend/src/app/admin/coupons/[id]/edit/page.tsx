@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { toast } from 'react-hot-toast';
@@ -29,6 +29,14 @@ type CouponFormData = {
   is_active: boolean;
   starts_at?: string | null;
   expires_at?: string | null;
+};
+type CouponSchemaData = Omit<CouponFormData, 'description' | 'max_discount_amount' | 'usage_limit' | 'user_usage_limit' | 'starts_at' | 'expires_at'> & {
+  description: string | undefined;
+  max_discount_amount: number | null | undefined;
+  usage_limit: number | null | undefined;
+  user_usage_limit: number | null | undefined;
+  starts_at: string | null | undefined;
+  expires_at: string | null | undefined;
 };
 
 export default function EditCouponPage() {
@@ -88,8 +96,8 @@ export default function EditCouponPage() {
     watch,
     setValue,
     reset
-  } = useForm<CouponFormData>({
-    resolver: yupResolver(couponSchema)
+  } = useForm<CouponSchemaData>({
+    resolver: yupResolver(couponSchema) as unknown as Resolver<CouponSchemaData>
   });
 
   const watchType = watch('type');
@@ -135,7 +143,7 @@ export default function EditCouponPage() {
     }
   }, [couponId]);
 
-  const onSubmit = async (data: CouponFormData) => {
+  const onSubmit = async (data: CouponSchemaData) => {
     setIsSubmitting(true);
 
     try {
@@ -148,6 +156,9 @@ export default function EditCouponPage() {
       // Format dates
       const formattedData: CouponCreateRequest = {
         ...data,
+        max_discount_amount: data.max_discount_amount ?? undefined,
+        usage_limit: data.usage_limit ?? undefined,
+        user_usage_limit: data.user_usage_limit ?? undefined,
         code: data.code.toUpperCase(),
         starts_at: data.starts_at || undefined,
         expires_at: data.expires_at || undefined
@@ -572,4 +583,3 @@ export default function EditCouponPage() {
     </AdminLayout>
   );
 }
-

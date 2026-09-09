@@ -11,8 +11,10 @@ import {
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
+import type { Product } from '@/types';
 
-interface Product {
+/* Product shape is shared with cart and API services. */
+/* interface Product {
   id: number;
   sku: string;
   name: string;
@@ -31,7 +33,7 @@ interface Product {
   image_urls?: string[];
   created_at: string;
   updated_at: string;
-}
+} */
 
 interface ProductCardProps {
   product: Product;

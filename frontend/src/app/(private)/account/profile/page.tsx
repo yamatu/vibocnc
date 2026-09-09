@@ -12,13 +12,13 @@ import { CustomerService } from '@/services/customer.service';
 
 const profileSchema = yup.object({
   full_name: yup.string().required('Full name is required'),
-  phone: yup.string().optional(),
-  company: yup.string().optional(),
-  address: yup.string().optional(),
-  city: yup.string().optional(),
-  state: yup.string().optional(),
-  country: yup.string().optional(),
-  postal_code: yup.string().optional(),
+  phone: yup.string().defined().default(''),
+  company: yup.string().defined().default(''),
+  address: yup.string().defined().default(''),
+  city: yup.string().defined().default(''),
+  state: yup.string().defined().default(''),
+  country: yup.string().defined().default(''),
+  postal_code: yup.string().defined().default(''),
 });
 
 const passwordSchema = yup.object({

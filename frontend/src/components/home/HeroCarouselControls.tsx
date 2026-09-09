@@ -31,13 +31,13 @@ export default function HeroCarouselControls({ slides, autoPlayMs }: HeroCarouse
     if (!isAutoPlaying || slides.length <= 1) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    let interval: ReturnType<typeof setInterval> | undefined;
+    let interval: number | undefined;
     const initialDelay = Math.max(autoPlayMs, MIN_INITIAL_AUTOPLAY_DELAY_MS);
-    const startHandle = window.setTimeout(() => {
+    const startHandle = setTimeout(() => {
       setCurrentSlide((previous) => (previous + 1) % slides.length);
-      interval = window.setInterval(() => {
+      interval = Number(setInterval(() => {
         setCurrentSlide((previous) => (previous + 1) % slides.length);
-      }, autoPlayMs);
+      }, autoPlayMs));
     }, initialDelay);
 
     return () => {

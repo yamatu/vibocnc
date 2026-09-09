@@ -13,11 +13,14 @@ type Props = {
   onUpdated?: () => void;
 };
 
-type TreeNode = Category & { children: TreeNode[] };
+type TreeNode = Omit<Category, 'children'> & { children: TreeNode[] };
 
 function buildTree(list: Category[]): TreeNode[] {
   const byId = new Map<number, TreeNode>();
-  for (const c of list) byId.set(c.id, { ...(c as any), children: [] });
+  for (const c of list) {
+    const { children: _children, ...category } = c;
+    byId.set(c.id, { ...category, children: [] });
+  }
 
   const roots: TreeNode[] = [];
   for (const c of byId.values()) {

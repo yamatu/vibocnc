@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Category } from '@/types';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ type Props = {
   onSelectCategory: (categoryId: number | null) => void;
   storageKey?: string;
   allLabel?: string;
+  collapsibleOnMobile?: boolean;
 };
 
 export default function CategoryFilterTree({
@@ -20,7 +21,14 @@ export default function CategoryFilterTree({
   onSelectCategory,
   storageKey = 'products-category-open-ids',
   allLabel = 'All Products',
+  collapsibleOnMobile = false,
 }: Props) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const panelId = useId();
+  const selectCategory = (id: number | null) => {
+    setMobileOpen(false);
+    onSelectCategory(id);
+  };
   const trail = useMemo(() => findCategoryTrail(tree, selectedCategoryId), [tree, selectedCategoryId]);
   const [openIds, setOpenIds] = useState<Set<number>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
@@ -97,7 +105,7 @@ export default function CategoryFilterTree({
 
           <button
             type="button"
-            onClick={() => onSelectCategory(node.id)}
+            onClick={() => selectCategory(node.id)}
             className="min-w-0 flex-1 truncate text-left text-sm font-medium"
           >
             {node.name}
@@ -115,9 +123,22 @@ export default function CategoryFilterTree({
 
   return (
     <div className="space-y-1">
+      {collapsibleOnMobile && (
+        <button
+          type="button"
+          aria-expanded={mobileOpen}
+          aria-controls={panelId}
+          onClick={() => setMobileOpen((open) => !open)}
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md bg-blue-50 px-3 py-2 text-left text-sm font-medium text-[#0b3e75] ring-1 ring-blue-100 lg:hidden"
+        >
+          <span>{allLabel}</span>
+          <ChevronDownIcon className={cn('h-5 w-5 shrink-0 transition-transform', mobileOpen && 'rotate-180')} />
+        </button>
+      )}
+      <div id={panelId} className={cn('space-y-1', collapsibleOnMobile && !mobileOpen && 'hidden lg:block')}>
       <button
         type="button"
-        onClick={() => onSelectCategory(null)}
+        onClick={() => selectCategory(null)}
         className={cn(
           'w-full rounded-md px-2 py-2 text-left text-sm font-medium',
           !hasSelection ? 'bg-blue-50 text-[#0b3e75] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[#0b3e75]'
@@ -125,7 +146,8 @@ export default function CategoryFilterTree({
       >
         {allLabel}
       </button>
-      <div ref={scrollRef} className="max-h-[70vh] space-y-1 overflow-y-auto overscroll-contain">{prioritizeCategoryTrail(tree, trail).map((n) => renderNode(n, 0))}</div>
+      <div ref={scrollRef} className="max-h-[40vh] space-y-1 overflow-y-auto lg:max-h-[70vh] lg:overscroll-contain">{prioritizeCategoryTrail(tree, trail).map((n) => renderNode(n, 0))}</div>
+      </div>
     </div>
   );
 }

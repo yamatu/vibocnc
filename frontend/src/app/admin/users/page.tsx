@@ -18,6 +18,7 @@ import AdminLayout from '@/components/admin/AdminLayout';
 import { apiClient } from '@/lib/api';
 import Link from 'next/link';
 import { useAdminI18n } from '@/lib/admin-i18n';
+import type { APIResponse, PaginationResponse } from '@/types';
 
 interface User {
   id: number;
@@ -51,18 +52,18 @@ export default function AdminUsersPage() {
 
       // Fetch both admin users and customers in parallel
       const [adminResponse, customerResponse] = await Promise.all([
-        apiClient.get('/admin/users'),
-        apiClient.get('/admin/customers'),
+        apiClient.get<APIResponse<User[]>>('/admin/users'),
+        apiClient.get<APIResponse<PaginationResponse<Omit<User, 'user_type'>>>>('/admin/customers'),
       ]);
 
       // Process admin users
-      const adminUsers = (adminResponse.data.data || []).map((user: any) => ({
+      const adminUsers = (adminResponse.data.data || []).map((user) => ({
         ...user,
         user_type: 'admin' as const,
       }));
 
       // Process customers
-      const customers = (customerResponse.data.data?.data || []).map((customer: any) => ({
+      const customers = (customerResponse.data.data?.data || []).map((customer) => ({
         ...customer,
         user_type: 'customer' as const,
         role: 'customer', // Add role for consistency

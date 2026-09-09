@@ -212,6 +212,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
               <div className="site-panel p-6">
                 <h3 className="text-lg font-semibold text-slate-950 mb-4">{t('nav.categories')}</h3>
                 <CategoryFilterTree
+                  collapsibleOnMobile
                   tree={initialData.categories}
                   selectedCategoryId={selectedCategory ? Number(selectedCategory) : null}
                   onSelectCategory={(id) => handleCategoryChange(id ? String(id) : '')}

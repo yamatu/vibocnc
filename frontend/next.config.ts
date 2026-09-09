@@ -12,7 +12,6 @@ const nextConfig: NextConfig = {
   },
 
   // Silence workspace root inference warning when monorepo-like structure exists
-  // @ts-expect-error - supported by Next runtime, may not be in TS types
   outputFileTracingRoot: path.join(__dirname, '..'),
 
   // 确保环境变量正确注入

@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { apiClient } from '@/lib/api';
 import { useAdminI18n } from '@/lib/admin-i18n';
+import type { APIResponse, PaginationResponse } from '@/types';
 
 interface Customer {
   id: number;
@@ -44,10 +45,11 @@ export default function CustomersPage() {
       if (searchTerm) params.search = searchTerm;
       if (statusFilter !== 'all') params.status = statusFilter;
 
-      const response = await apiClient.get('/admin/customers', { params });
+      const response = await apiClient.get<APIResponse<PaginationResponse<Customer>>>('/admin/customers', { params });
       if (response.data.success) {
-        setCustomers(response.data.data.data || []);
-        setTotalPages(response.data.data.total_pages || 1);
+        const result = response.data.data;
+        setCustomers(result?.data || []);
+        setTotalPages(result?.total_pages || 1);
       }
     } catch (error: any) {
       console.error('Failed to load customers:', error);
@@ -59,7 +61,7 @@ export default function CustomersPage() {
 
   const toggleCustomerStatus = async (customerId: number, currentStatus: boolean) => {
     try {
-      const response = await apiClient.put(`/admin/customers/${customerId}/status`, {
+      const response = await apiClient.put<APIResponse<unknown>>(`/admin/customers/${customerId}/status`, {
         is_active: !currentStatus,
       });
 

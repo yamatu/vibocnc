@@ -134,7 +134,7 @@ export class EmailService {
   }
 
   static async downloadAttachment(messageId: string, attachmentId: string): Promise<{ blob: Blob; filename: string }> {
-    const res = await apiClient.get(`/admin/email/mailbox/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/download`, {
+    const res = await apiClient.get<Blob>(`/admin/email/mailbox/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/download`, {
       responseType: 'blob',
     });
     const disposition = String(res.headers?.['content-disposition'] || '');
@@ -172,7 +172,7 @@ export class EmailService {
     text?: string;
     test_to?: string;
     limit?: number;
-  }): Promise<{ sent?: number; failed?: number; total?: number }> {
+  }): Promise<{ sent?: number; failed?: number; total?: number; skipped?: number }> {
     const res = await apiClient.post<APIResponse<any>>('/admin/email/broadcast', payload);
     if (res.data.success) return res.data.data || {};
     throw new Error(res.data.message || res.data.error || 'Failed to send broadcast');

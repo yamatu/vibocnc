@@ -21,13 +21,13 @@ import {
 const registerSchema = yup.object({
   full_name: yup.string().required('Full name is required'),
   email: yup.string().email('Invalid email').required('Email is required'),
-  email_code: yup.string(),
+  email_code: yup.string().defined().default(''),
   password: yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
   confirmPassword: yup.string()
     .oneOf([yup.ref('password')], 'Passwords must match')
     .required('Please confirm your password'),
-  phone: yup.string(),
-  company: yup.string(),
+  phone: yup.string().defined().default(''),
+  company: yup.string().defined().default(''),
 });
 
 type RegisterFormData = yup.InferType<typeof registerSchema>;

@@ -29,6 +29,7 @@ export interface OrderFilters {
   payment_status?: string;
   customer_email?: string;
   order_number?: string;
+  search?: string;
   date_from?: string;
   date_to?: string;
 }

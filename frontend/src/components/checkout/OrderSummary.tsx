@@ -14,7 +14,7 @@ interface OrderSummaryProps {
   total: number;
   shippingFee?: number;
   readonly?: boolean;
-  onCouponApplied?: (couponResponse: CouponValidateResponse) => void;
+  onCouponApplied?: (couponResponse: CouponValidateResponse | null) => void;
   appliedCoupon?: CouponValidateResponse | null;
   customerEmail?: string;
   freeShippingCountryCodes?: string[];

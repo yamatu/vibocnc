@@ -7,6 +7,7 @@ import { toast } from 'react-hot-toast';
 import { apiClient } from '@/lib/api';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { useAdminI18n } from '@/lib/admin-i18n';
+import type { APIResponse } from '@/types';
 import {
   ChevronLeftIcon,
   PaperAirplaneIcon,
@@ -65,10 +66,13 @@ export default function AdminTicketDetailPage() {
   const loadTicket = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`/admin/tickets/${ticketId}`);
+      const response = await apiClient.get<APIResponse<Ticket>>(`/admin/tickets/${ticketId}`);
       if (response.data.success) {
-        setTicket(response.data.data);
-        setStatus(response.data.data.status);
+        const result = response.data.data;
+        if (result) {
+          setTicket(result);
+          setStatus(result.status);
+        }
       }
     } catch (error: any) {
       console.error('Failed to load ticket:', error);
@@ -84,7 +88,7 @@ export default function AdminTicketDetailPage() {
 
     try {
       setSubmitting(true);
-      const response = await apiClient.post(`/admin/tickets/${ticketId}/reply`, {
+      const response = await apiClient.post<APIResponse<unknown>>(`/admin/tickets/${ticketId}/reply`, {
         message: replyMessage,
       });
 
@@ -102,7 +106,7 @@ export default function AdminTicketDetailPage() {
 
   const handleStatusChange = async (newStatus: string) => {
     try {
-      const response = await apiClient.put(`/admin/tickets/${ticketId}`, {
+      const response = await apiClient.put<APIResponse<unknown>>(`/admin/tickets/${ticketId}`, {
         status: newStatus,
       });
 

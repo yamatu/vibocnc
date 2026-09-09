@@ -5,6 +5,7 @@ import Header from './Header';
 import Footer from './Footer';
 import WhatsAppButton from '../ui/WhatsAppButton';
 import MobileLanguageSwitcher from './MobileLanguageSwitcher';
+import FloatingCartButton from '../cart/FloatingCartButton';
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,6 +21,7 @@ export default function Layout({ children }: LayoutProps) {
       <Footer />
       <MobileLanguageSwitcher />
       <WhatsAppButton />
+      <FloatingCartButton />
     </div>
   );
 }

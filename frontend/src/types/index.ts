@@ -98,6 +98,7 @@ export interface Product {
   packaging_info?: string;
   certifications?: string;
   technical_specs?: string;
+  specifications?: Record<string, string> | string;
   compatibility_info?: string;
   installation_guide?: string;
   maintenance_tips?: string;

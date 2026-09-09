@@ -11,18 +11,13 @@ import { AdminUser, LoginRequest } from '@/types';
 export function useProfile() {
   const { user, setUser } = useAuthStore();
   
-  return useQuery({
+  const query = useQuery<AdminUser>({
     queryKey: queryKeys.auth.profile(),
-    queryFn: AuthService.getProfile,
+    queryFn: async (): Promise<AdminUser> => AuthService.getProfile() as Promise<AdminUser>,
     enabled: !!user, // Only fetch if user exists in store
-    onSuccess: (data: AdminUser) => {
-      setUser(data);
-    },
-    onError: () => {
-      // If profile fetch fails, user might be logged out
-      useAuthStore.getState().logout();
-    },
   });
+  React.useEffect(() => { if (query.data) setUser(query.data as AdminUser); }, [query.data, setUser]);
+  return query;
 }
 
 // Hook for login mutation
