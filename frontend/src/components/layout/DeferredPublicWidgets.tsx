@@ -1,11 +1,7 @@
 'use client';
 
 import { lazy, Suspense, useEffect, useState } from 'react';
-import FloatingCartButton from '@/components/cart/FloatingCartButton';
 
-const CartSidebar = lazy(() =>
-  import('@/components/cart/CartSidebar').then((module) => ({ default: module.CartSidebar })),
-);
 const MobileLanguageSwitcher = lazy(() => import('./MobileLanguageSwitcher'));
 const WhatsAppButton = lazy(() => import('@/components/ui/WhatsAppButton'));
 
@@ -46,8 +42,6 @@ export default function DeferredPublicWidgets() {
 
   return (
     <Suspense fallback={null}>
-      <CartSidebar />
-      <FloatingCartButton />
       <MobileLanguageSwitcher />
       <WhatsAppButton />
     </Suspense>

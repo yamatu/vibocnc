@@ -3,6 +3,8 @@ import Header from './Header';
 import Footer from './Footer';
 import DeferredPublicWidgets from './DeferredPublicWidgets';
 import type { SocialMediaSettings } from '@/types';
+import FloatingCartButton from '../cart/FloatingCartButton';
+import { CartSidebar } from '../cart/CartSidebar';
 
 interface PublicLayoutProps {
   children: ReactNode;
@@ -23,6 +25,8 @@ export function PublicLayout({ children, socialMediaSettings }: PublicLayoutProp
         {children}
       </main>
       <Footer initialSocialSettings={socialMediaSettings} />
+      <FloatingCartButton />
+      <CartSidebar />
       <DeferredPublicWidgets />
     </div>
   );
