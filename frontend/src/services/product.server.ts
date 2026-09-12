@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import type { Product } from '@/types';
 
 // Minimal types to avoid circular imports
 interface APIResponse<T> {
@@ -38,15 +39,15 @@ export const getProductBySkuCached = cache(async (sku: string) => {
     });
 
     if (res.ok) {
-      const json = (await res.json()) as APIResponse<any>;
+      const json = (await res.json()) as APIResponse<Product>;
       if (json?.success && json?.data) {
         return json.data;
       }
     } else {
       // Try to extract API error payload for more context (non-fatal here)
-      try { await res.json(); } catch (_) {}
+      try { await res.json(); } catch {}
     }
-  } catch (_) {
+  } catch {
     // Network error: fall through to search-based fallback
   }
 
@@ -58,12 +59,13 @@ export const getProductBySkuCached = cache(async (sku: string) => {
       headers: { 'Content-Type': 'application/json' },
     });
     if (res2.ok) {
-      const json2 = (await res2.json()) as APIResponse<{ data: any[] }>;
-      const first = (json2 as any)?.data?.data?.[0] || (json2 as any)?.data?.[0];
+      const json2 = (await res2.json()) as APIResponse<{ data?: Product[] } | Product[]>;
+      const payload = json2.data;
+      const first = Array.isArray(payload) ? payload[0] : payload?.data?.[0];
       if (first) return first;
     }
-  } catch (_) {}
+  } catch {}
 
   // As a final fallback, return null to avoid crashing SSR
-  return null as any;
+  return null;
 });

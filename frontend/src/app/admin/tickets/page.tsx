@@ -85,7 +85,7 @@ export default function AdminTicketsPage() {
       if (response.data.success) {
         setTickets(response.data.data || []);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load tickets:', error);
 	  toast.error(t('tickets.toast.loadFailed', locale === 'zh' ? '加载工单失败' : 'Failed to load support tickets'));
     } finally {
@@ -103,7 +103,7 @@ export default function AdminTicketsPage() {
 		toast.success(t('tickets.toast.statusUpdated', locale === 'zh' ? '工单状态已更新' : 'Ticket status updated'));
         loadTickets();
       }
-    } catch (error: any) {
+    } catch {
 	  toast.error(t('tickets.toast.statusUpdateFailed', locale === 'zh' ? '更新工单状态失败' : 'Failed to update ticket status'));
     }
   };

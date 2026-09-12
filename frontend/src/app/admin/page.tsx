@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import {
   CubeIcon,
   ShoppingBagIcon,
@@ -79,7 +80,6 @@ export default function AdminDashboard() {
   const {
     data: dashboardData,
     isLoading: isStatsLoading,
-    error: statsError,
   } = useQuery({
     queryKey: queryKeys.dashboard.stats(),
     queryFn: DashboardService.getDashboardStats,
@@ -105,12 +105,6 @@ export default function AdminDashboard() {
     queryFn: () => DashboardService.getTopProducts(5, 30),
   });
 
-  // Fetch revenue data
-  const { data: revenueData } = useQuery({
-    queryKey: ['dashboard', 'revenue', 'month'],
-    queryFn: () => DashboardService.getRevenueData('month'),
-  });
-
   const stats = dashboardData ?? emptyStats;
   const recentOrders = ordersData ?? [];
   const topProducts = productsData ?? [];
@@ -124,8 +118,6 @@ export default function AdminDashboard() {
     if (s === 'cancelled') return t('orders.status.cancelled', locale === 'zh' ? '已取消' : 'Cancelled');
     return status;
   };
-
-  const dashboardCards = DashboardService.getDashboardCards(stats);
 
   if (isStatsLoading) {
     return (
@@ -291,9 +283,9 @@ export default function AdminDashboard() {
               )}
             </div>
             <div className="px-6 py-3 border-t border-gray-200">
-              <a href="/admin/orders" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+              <Link href="/admin/orders" className="text-sm font-medium text-blue-600 hover:text-blue-500">
                 {t('dashboard.viewAllOrders', locale === 'zh' ? '查看全部订单 →' : 'View all orders →')}
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -348,9 +340,9 @@ export default function AdminDashboard() {
               )}
             </div>
             <div className="px-6 py-3 border-t border-gray-200">
-              <a href="/admin/products" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+              <Link href="/admin/products" className="text-sm font-medium text-blue-600 hover:text-blue-500">
                 {t('dashboard.viewAllProducts', locale === 'zh' ? '查看全部产品 →' : 'View all products →')}
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -362,7 +354,7 @@ export default function AdminDashboard() {
           </div>
           <div className="p-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <a
+              <Link
                 href="/admin/products/new"
                 className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500 border border-gray-200 rounded-lg hover:border-gray-300"
               >
@@ -380,9 +372,9 @@ export default function AdminDashboard() {
                     {t('dashboard.quick.addProduct', locale === 'zh' ? '新增一个 FANUC 产品到库存' : 'Add a new FANUC product to your inventory')}
                   </p>
                 </div>
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/admin/orders"
                 className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500 border border-gray-200 rounded-lg hover:border-gray-300"
               >
@@ -400,9 +392,9 @@ export default function AdminDashboard() {
                     {t('dashboard.quick.manageOrders', locale === 'zh' ? '查看并管理客户订单' : 'View and manage customer orders')}
                   </p>
                 </div>
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/admin/media"
                 className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500 border border-gray-200 rounded-lg hover:border-gray-300"
               >
@@ -423,9 +415,9 @@ export default function AdminDashboard() {
                     )}
                   </p>
                 </div>
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/admin/users"
                 className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500 border border-gray-200 rounded-lg hover:border-gray-300"
               >
@@ -443,7 +435,7 @@ export default function AdminDashboard() {
                     {t('dashboard.quick.users', locale === 'zh' ? '管理后台用户与权限' : 'Manage admin users and permissions')}
                   </p>
                 </div>
-              </a>
+              </Link>
             </div>
           </div>
         </div>

@@ -75,7 +75,7 @@ export default function AdminUsersPage() {
       );
 
       setAllUsers(combined);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load users:', error);
 	  toast.error(t('users.toast.loadFailed', locale === 'zh' ? '加载用户失败' : 'Failed to load users'));
     } finally {
@@ -103,7 +103,7 @@ export default function AdminUsersPage() {
       }
 	  toast.success(t('users.toast.deleted', locale === 'zh' ? '用户已删除' : 'User deleted successfully'));
       loadAllUsers();
-    } catch (error: any) {
+    } catch {
 	  toast.error(t('users.toast.deleteFailed', locale === 'zh' ? '删除用户失败' : 'Failed to delete user'));
     }
   };
@@ -125,7 +125,7 @@ export default function AdminUsersPage() {
       }
 	  toast.success(t('users.toast.statusUpdated', locale === 'zh' ? '用户状态已更新' : 'User status updated successfully'));
       loadAllUsers();
-    } catch (error: any) {
+    } catch {
 	  toast.error(t('users.toast.statusUpdateFailed', locale === 'zh' ? '更新用户状态失败' : 'Failed to update user status'));
     }
   };

@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api';
-import { APIResponse } from '@/types';
+import { APIResponse, Order } from '@/types';
 
 export interface Customer {
   id: number;
@@ -123,9 +123,9 @@ export class CustomerService {
   }
 
   // 获取我的订单
-  static async getMyOrders(params?: { status?: string }): Promise<any[]> {
+  static async getMyOrders(params?: { status?: string }): Promise<Order[]> {
     try {
-      const response = await apiClient.get<APIResponse<any[]>>(
+      const response = await apiClient.get<APIResponse<Order[]>>(
         '/customer/orders',
         { params }
       );
@@ -135,10 +135,10 @@ export class CustomerService {
       }
 
       return [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch customer orders:', error);
       // 如果是401未授权错误，返回空数组（用户未登录）
-      if (error?.response?.status === 401) {
+      if (typeof error === 'object' && error !== null && 'response' in error && (error as { response?: { status?: number } }).response?.status === 401) {
         return [];
       }
       throw error;
@@ -146,9 +146,9 @@ export class CustomerService {
   }
 
   // 获取订单详情
-  static async getOrderDetails(orderId: number): Promise<any> {
+  static async getOrderDetails(orderId: number): Promise<Order> {
     try {
-      const response = await apiClient.get<APIResponse<any>>(
+      const response = await apiClient.get<APIResponse<Order>>(
         `/customer/orders/${orderId}`
       );
 
@@ -157,7 +157,7 @@ export class CustomerService {
       }
 
       throw new Error('Order not found');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch order details:', error);
       throw error;
     }

@@ -3,7 +3,6 @@ import {
   APIResponse, 
   PaginationResponse, 
   Order, 
-  OrderItem 
 } from '@/types';
 
 export interface OrderCreateRequest {
@@ -36,7 +35,7 @@ export interface OrderFilters {
 
 export interface PaymentRequest {
   payment_method: string;
-  payment_data?: any;
+  payment_data?: Record<string, unknown>;
 }
 
 export interface Refund {

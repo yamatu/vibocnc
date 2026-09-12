@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,10 @@ type ProductWebEvidence struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Snippet string `json:"snippet"`
+	// SourceType distinguishes manufacturer pages from distributor pages and
+	// search-engine summaries so callers can require stronger evidence.
+	SourceType    string `json:"source_type,omitempty"`
+	EvidenceLevel string `json:"evidence_level,omitempty"`
 }
 
 type productWebSearchCacheEntry struct {
@@ -247,6 +252,8 @@ func searchProductEvidenceUncached(ctx context.Context, brand, model string) ([]
 	searchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var lastErr error
+	allResults := make([]ProductWebEvidence, 0, 12)
+	seen := map[string]bool{}
 	for _, endpoint := range endpoints {
 		parsed, err := validatePublicHTTPURL(endpoint.URL)
 		if err != nil {
@@ -260,7 +267,30 @@ func searchProductEvidenceUncached(ctx context.Context, brand, model string) ([]
 		}
 		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; VIBOCNCBot/1.0; +https://vibocnc.com)")
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-		resp, err := NewPublicHTTPClient(9 * time.Second).Do(req)
+		var resp *http.Response
+		for attempt := 0; attempt < 3; attempt++ {
+			resp, err = NewPublicHTTPClient(9 * time.Second).Do(req)
+			if err == nil && resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < 500 {
+				break
+			}
+			if resp != nil {
+				resp.Body.Close()
+			}
+			if attempt < 2 {
+				select {
+				case <-time.After(time.Duration(150*(1<<attempt)) * time.Millisecond):
+				case <-searchCtx.Done():
+					break
+				}
+			}
+		}
+		if resp == nil || resp.StatusCode < 200 || resp.StatusCode >= 400 {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			lastErr = fmt.Errorf("search provider unavailable")
+			continue
+		}
 		if err != nil {
 			lastErr = err
 			continue
@@ -281,15 +311,96 @@ func searchProductEvidenceUncached(ctx context.Context, brand, model string) ([]
 		} else {
 			results = parseProductWebEvidence(string(body), endpoint.URL)
 		}
-		if len(results) > 0 {
-			return results, nil
+		for i := range results {
+			results[i].SourceType, results[i].EvidenceLevel = classifyEvidenceSource(results[i].URL, endpoint.SiemensOfficial)
+			key := strings.ToLower(strings.TrimSpace(results[i].URL + "|" + results[i].Title + "|" + results[i].Snippet))
+			if key != "" && !seen[key] {
+				seen[key] = true
+				allResults = append(allResults, results[i])
+			}
 		}
 		lastErr = fmt.Errorf("search provider returned no usable product results")
+	}
+	if len(allResults) > 0 {
+		allResults = append(allResults, fetchManufacturerPageEvidence(searchCtx, allResults, model)...)
+		return rankProductEvidence(allResults), nil
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no product search results")
 	}
 	return nil, lastErr
+}
+
+func fetchManufacturerPageEvidence(ctx context.Context, results []ProductWebEvidence, model string) []ProductWebEvidence {
+	seen := map[string]bool{}
+	for _, result := range results {
+		seen[result.URL] = true
+	}
+	verified := make([]ProductWebEvidence, 0, 3)
+	for _, result := range results {
+		if (result.SourceType != "search-result" && result.SourceType != "manufacturer") || result.URL == "" || len(verified) >= 3 {
+			continue
+		}
+		parsed, err := validatePublicHTTPURL(result.URL)
+		if err != nil {
+			continue
+		}
+		if _, level := classifyEvidenceSource(parsed.String(), false); level != "manufacturer" {
+			continue
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+		if err != nil {
+			continue
+		}
+		resp, err := NewPublicHTTPClient(6 * time.Second).Do(req)
+		if err != nil {
+			continue
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if readErr != nil || resp.StatusCode < 200 || resp.StatusCode >= 400 {
+			continue
+		}
+		text := strings.Join(strings.Fields(string(body)), " ")
+		if !containsExactProductIdentifier(text, model) {
+			continue
+		}
+		if seen[parsed.String()+"#manufacturer"] {
+			continue
+		}
+		seen[parsed.String()+"#manufacturer"] = true
+		verified = append(verified, ProductWebEvidence{Title: result.Title, URL: parsed.String(), Snippet: limitLen(text, 700), SourceType: "manufacturer", EvidenceLevel: "manufacturer"})
+	}
+	return verified
+}
+
+func classifyEvidenceSource(rawURL string, official bool) (string, string) {
+	if official {
+		return "manufacturer", "manufacturer"
+	}
+	lower := strings.ToLower(rawURL)
+	for _, marker := range []string{"fanuc.com", "abb.com", "siemens.com", "rockwellautomation.com", "mitsubishielectric.com", "omron.com", "sick.com", "tamagawa-seiki.com", "fluke.com"} {
+		if strings.Contains(lower, marker) {
+			return "manufacturer", "manufacturer"
+		}
+	}
+	for _, marker := range []string{"duckduckgo.com", "bing.com", "google.com"} {
+		if strings.Contains(lower, marker) {
+			return "search-result", "search-result"
+		}
+	}
+	for _, marker := range []string{"distributor", "automation24", "radwell", "galco", "ebay", "amazon"} {
+		if strings.Contains(lower, marker) {
+			return "distributor", "distributor"
+		}
+	}
+	return "web-page", "distributor"
+}
+
+func rankProductEvidence(results []ProductWebEvidence) []ProductWebEvidence {
+	weight := map[string]int{"manufacturer": 3, "distributor": 2, "search-result": 1}
+	sort.SliceStable(results, func(i, j int) bool { return weight[results[i].EvidenceLevel] > weight[results[j].EvidenceLevel] })
+	return results
 }
 
 func productEvidenceEndpoints(brand, model string) []productEvidenceEndpoint {
@@ -316,11 +427,38 @@ func productEvidenceEndpoints(brand, model string) []productEvidenceEndpoint {
 			productEvidenceEndpoint{URL: "https://www.bing.com/search?q=" + url.QueryEscape(officialQuery)},
 		)
 	}
+	if domain := manufacturerDomain(brand); domain != "" {
+		officialQuery := fmt.Sprintf("\"%s\" site:%s", model, domain)
+		endpoints = append(endpoints, productEvidenceEndpoint{URL: "https://www.bing.com/search?q=" + url.QueryEscape(officialQuery)})
+	}
 	endpoints = append(endpoints,
 		productEvidenceEndpoint{URL: "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)},
 		productEvidenceEndpoint{URL: "https://www.bing.com/search?q=" + url.QueryEscape(query)},
 	)
 	return endpoints
+}
+
+func manufacturerDomain(brand string) string {
+	switch NormalizeBrandKey(brand) {
+	case "fanuc":
+		return "fanuc.com"
+	case "abb":
+		return "abb.com"
+	case "siemens":
+		return "siemens.com"
+	case "allen-bradley":
+		return "rockwellautomation.com"
+	case "mitsubishi":
+		return "mitsubishielectric.com"
+	case "omron":
+		return "omron.com"
+	case "sick":
+		return "sick.com"
+	case "fluke":
+		return "fluke.com"
+	default:
+		return ""
+	}
 }
 
 func parseSiemensOfficialProductEvidence(html, sourceURL, model string) []ProductWebEvidence {

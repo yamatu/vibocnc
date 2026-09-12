@@ -321,7 +321,7 @@ export default function MediaPickerModal({ open, onClose, onSelect, multiple = f
                     >
                       <button type="button" onClick={() => toggle(asset)} className="block w-full text-left">
                       <div className="aspect-square bg-gray-50 p-1">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        { }
                         <img src={asset.thumbnail_url || asset.url} alt={asset.alt_text || asset.original_name} className="h-full w-full object-contain" loading="lazy" decoding="async" />
                       </div>
                       <div className="p-2">
@@ -398,7 +398,7 @@ export default function MediaPickerModal({ open, onClose, onSelect, multiple = f
           {previewAsset ? (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4" onClick={() => setPreviewAsset(null)}>
               <button type="button" onClick={() => setPreviewAsset(null)} className="absolute right-5 top-5 rounded-full bg-white/90 p-2 text-gray-800"><XMarkIcon className="h-6 w-6" /></button>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img src={previewAsset.url} alt={previewAsset.alt_text || previewAsset.original_name} className="max-h-[90vh] max-w-[94vw] object-contain" onClick={(event) => event.stopPropagation()} />
             </div>
           ) : null}

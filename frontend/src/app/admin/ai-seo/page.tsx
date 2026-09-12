@@ -52,6 +52,7 @@ function itemStatusLabel(status: AIAgentSEOJobItemsPage['items'][number]['status
   if (categoryJob) {
     const labels = {
       optimized: ['已分类', 'Classified'],
+      unresolved: ['待核实', 'Unresolved'],
       failed: ['待确认 / 失败', 'Needs review / failed'],
       queued: ['排队中', 'Queued'],
       running: ['分类中', 'Classifying'],
@@ -61,6 +62,7 @@ function itemStatusLabel(status: AIAgentSEOJobItemsPage['items'][number]['status
   }
   const labels = {
     optimized: ['已优化', 'Optimized'],
+    unresolved: ['待核实', 'Unresolved'],
     failed: ['失败', 'Failed'],
     queued: ['排队中', 'Queued'],
     running: ['处理中', 'Processing'],
@@ -115,7 +117,7 @@ export default function AISEORecordsPage() {
         setLoadingJobID(null);
         setLoadingItems(false);
       });
-  }, []);
+  }, [itemFilter]);
 
   useEffect(() => {
     if (!expandedJobID || !expandedJobStatus || ['completed', 'completed_with_errors', 'failed', 'cancelled'].includes(expandedJobStatus)) return;

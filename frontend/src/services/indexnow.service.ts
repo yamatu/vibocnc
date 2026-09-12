@@ -1,21 +1,25 @@
 import { apiClient } from '@/lib/api';
 import type { APIResponse } from '@/types';
 
-function extractApiError(error: any, fallback: string): Error {
-  const responseData = error?.response?.data;
-  const responseStatus = error?.response?.status;
-  const rawMessage = error?.message;
+interface ApiError extends Error { status?: number; details?: unknown }
+function extractApiError(error: unknown, fallback: string): ApiError {
+  const value = error as { response?: { data?: unknown; status?: number }; message?: unknown } | null;
+  const responseData = value?.response?.data;
+  const responseStatus = value?.response?.status;
+  const rawMessage = value?.message;
+
+  const data = responseData as { error?: unknown; message?: unknown } | null;
   const message =
-    responseData?.error ||
-    responseData?.message ||
+    (typeof data?.error === 'string' ? data.error : '') ||
+    (typeof data?.message === 'string' ? data.message : '') ||
     (typeof rawMessage === 'string' && !rawMessage.startsWith('Request failed with status code')
       ? rawMessage
       : '') ||
     fallback;
 
-  const wrapped = new Error(responseStatus ? `${message} (HTTP ${responseStatus})` : message);
-  (wrapped as any).status = responseStatus;
-  (wrapped as any).details = responseData;
+  const wrapped: ApiError = new Error(responseStatus ? `${message} (HTTP ${responseStatus})` : message);
+  wrapped.status = responseStatus;
+  wrapped.details = responseData;
   return wrapped;
 }
 

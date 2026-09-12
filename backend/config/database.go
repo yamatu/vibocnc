@@ -161,6 +161,7 @@ func ConnectDatabase() {
 			&models.AIAgentSetting{},
 			&models.AIAgentSEOJob{},
 			&models.AIAgentSEOJobItem{},
+			&models.ProductClassificationAudit{},
 			&models.HotlinkProtectionSetting{},
 			&models.PayPalSetting{},
 			&models.EmailSetting{},

@@ -11,8 +11,12 @@ import {
 
 import AdminLayout from '@/components/admin/AdminLayout';
 import { queryKeys } from '@/lib/react-query';
-import { ShippingRateService, ShippingFreeSetting } from '@/services/shipping-rate.service';
+import { ShippingRateService, ShippingFreeSetting, ShippingMutationResult, ShippingRate, ShippingAllowedCountry, ShippingRateImportResult } from '@/services/shipping-rate.service';
 import { useAdminI18n } from '@/lib/admin-i18n';
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export default function AdminShippingRatesPage() {
   const { locale, t } = useAdminI18n();
@@ -38,11 +42,11 @@ export default function AdminShippingRatesPage() {
   const freeShippingMutation = useMutation({
     mutationFn: (countries: Array<{ country_code: string; country_name?: string; free_shipping_enabled: boolean }>) =>
       ShippingRateService.setFreeShippingCountries(countries),
-    onSuccess: (res: any) => {
+    onSuccess: (res: ShippingMutationResult) => {
       toast.success(locale === 'zh' ? `免运费设置已更新（${res?.count || 0} 个国家）` : `Free shipping settings updated (${res?.count || 0})`);
       queryClient.invalidateQueries({ queryKey: [...queryKeys.shippingRates.admin(), 'free-shipping'] });
     },
-    onError: (e: any) => toast.error(e.message || (locale === 'zh' ? '更新免运费设置失败' : 'Failed to update free shipping settings')),
+    onError: (e: unknown) => toast.error(errorMessage(e, locale === 'zh' ? '更新免运费设置失败' : 'Failed to update free shipping settings')),
   });
 
   const { data: allowedCountries = [], isLoading: allowedLoading } = useQuery({
@@ -65,10 +69,10 @@ export default function AdminShippingRatesPage() {
   const rows = useMemo(() => templates || [], [templates]);
   const codeToName = useMemo<Record<string, string>>(() => {
     const m: Record<string, string> = {};
-    for (const r of rows as any[]) {
+    for (const r of rows as ShippingRate[]) {
       if (r?.country_code && r?.country_name) m[String(r.country_code).toUpperCase()] = String(r.country_name);
     }
-    for (const a of allowedCountries as any[]) {
+    for (const a of allowedCountries as ShippingAllowedCountry[]) {
       if (a?.country_code && a?.country_name) m[String(a.country_code).toUpperCase()] = String(a.country_name);
     }
     return m;
@@ -103,11 +107,11 @@ export default function AdminShippingRatesPage() {
   const whitelistMutation = useMutation({
     mutationFn: (countries: Array<{ country_code: string; country_name?: string; sort_order?: number }>) =>
       ShippingRateService.bulkSetAllowedCountries(countries),
-    onSuccess: (res: any) => {
+    onSuccess: (res: ShippingMutationResult) => {
       toast.success(t('shipping.whitelist.updated', locale === 'zh' ? `白名单已更新（${res?.count || 0} 个国家）` : `Whitelist updated (${res?.count || 0})`));
       queryClient.invalidateQueries({ queryKey: [...queryKeys.shippingRates.admin(), 'allowed-countries'] });
     },
-    onError: (e: any) => toast.error(e.message || t('shipping.whitelist.updateFailed', locale === 'zh' ? '更新白名单失败' : 'Failed to update whitelist')),
+    onError: (e: unknown) => toast.error(errorMessage(e, t('shipping.whitelist.updateFailed', locale === 'zh' ? '更新白名单失败' : 'Failed to update whitelist'))),
   });
 
   const removeAllowedMutation = useMutation({
@@ -115,7 +119,7 @@ export default function AdminShippingRatesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [...queryKeys.shippingRates.admin(), 'allowed-countries'] });
     },
-    onError: (e: any) => toast.error(e.message || t('shipping.whitelist.removeFailed', locale === 'zh' ? '移除失败' : 'Remove failed')),
+    onError: (e: unknown) => toast.error(errorMessage(e, t('shipping.whitelist.removeFailed', locale === 'zh' ? '移除失败' : 'Remove failed'))),
   });
 
   const downloadTemplate = async () => {
@@ -137,8 +141,8 @@ export default function AdminShippingRatesPage() {
       a.remove();
       window.URL.revokeObjectURL(url);
       toast.success(t('shipping.toast.templateDownloaded', '模板已下载'));
-    } catch (e: any) {
-      toast.error(e.message || t('shipping.downloadTemplate', '下载 XLSX 模板') + '失败');
+    } catch (e: unknown) {
+      toast.error(errorMessage(e, t('shipping.downloadTemplate', '下载 XLSX 模板') + '失败'));
     }
   };
 
@@ -153,7 +157,7 @@ export default function AdminShippingRatesPage() {
         currency: mode === 'carrier' ? currency : undefined,
       });
     },
-    onSuccess: (res: any) => {
+    onSuccess: (res: ShippingRateImportResult) => {
       toast.success(t('shipping.toast.imported', '已导入国家：{countries}（新增 {created}，更新 {updated}）', {
         countries: res.countries || 0,
         created: res.created || 0,
@@ -162,7 +166,7 @@ export default function AdminShippingRatesPage() {
       setImportFile(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.shippingRates.admin() });
     },
-    onError: (e: any) => toast.error(e.message || t('shipping.import', '导入') + '失败'),
+    onError: (e: unknown) => toast.error(errorMessage(e, t('shipping.import', '导入') + '失败')),
   });
 
   const bulkDeleteMutation = useMutation({
@@ -172,12 +176,12 @@ export default function AdminShippingRatesPage() {
         carrier: mode === 'carrier' ? carrier : undefined,
         service: mode === 'carrier' ? serviceCode : undefined,
       }),
-    onSuccess: (res: any) => {
+    onSuccess: (res: ShippingMutationResult) => {
       toast.success(t('shipping.toast.deleted', '已删除 {deleted} 个国家模板', { deleted: res.deleted || 0 }));
       setSelectedCodes([]);
       queryClient.invalidateQueries({ queryKey: queryKeys.shippingRates.admin() });
     },
-    onError: (e: any) => toast.error(e.message || t('common.delete', '删除') + '失败'),
+    onError: (e: unknown) => toast.error(errorMessage(e, t('common.delete', '删除') + '失败')),
   });
 
   const toggleSelected = (code: string) => {
@@ -385,7 +389,7 @@ export default function AdminShippingRatesPage() {
                     <div className="text-sm text-gray-500">{t('shipping.whitelist.empty', locale === 'zh' ? '（空）' : '(empty)')}</div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {allowedCountries.map((c: any) => (
+                      {allowedCountries.map((c) => (
                         <span key={c.country_code} className="inline-flex items-center gap-2 px-2 py-1 rounded-full border border-gray-200 text-sm">
                           <span className="font-mono text-gray-900">{c.country_code}</span>
                           <span className="text-gray-700">{c.country_name}</span>
@@ -569,7 +573,7 @@ export default function AdminShippingRatesPage() {
                 ) : rows.length === 0 ? (
                   <tr><td colSpan={mode === 'carrier' ? 6 : 5} className="px-3 py-10 text-center text-gray-500">{t('shipping.empty', '暂无模板')}</td></tr>
                 ) : (
-                  rows.map((r: any) => (
+                  rows.map((r) => (
                     <tr key={(mode === 'carrier' ? `${r.carrier || carrier}:${r.service_code || serviceCode}:` : '') + r.country_code} className="border-t">
                       <td className="px-3 py-2">
                         <input

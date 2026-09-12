@@ -21,7 +21,6 @@ import { Order } from '@/types';
 import {
   CreditCardIcon,
   ShoppingBagIcon,
-  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 // Validation schema
@@ -55,7 +54,6 @@ export default function CheckoutPage() {
     register,
     handleSubmit,
     formState: { errors },
-    getValues,
     watch,
     setValue
   } = useForm<CheckoutFormData>({

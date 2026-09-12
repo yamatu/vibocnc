@@ -19,13 +19,13 @@ const API_V1_URL = resolveApiBaseUrl();
 // Log API base once in dev to avoid noise in SSR/CSR
 try {
   if (process.env.NODE_ENV !== 'production') {
-    const g: any = globalThis as any;
+    const g = globalThis as typeof globalThis & { __API_BASE_URL_LOGGED?: boolean };
     if (!g.__API_BASE_URL_LOGGED) {
       g.__API_BASE_URL_LOGGED = true;
       console.log('🔧 API Base URL:', API_V1_URL);
     }
   }
-} catch (_) {
+} catch {
   // ignore logging errors
 }
 
@@ -48,7 +48,7 @@ api.interceptors.request.use(
       try {
         adminToken = Cookies.get('auth_token');
         customerToken = Cookies.get('customer_token');
-      } catch (_) {
+      } catch {
         // In case js-cookie throws in unusual environments, ignore and proceed without tokens
       }
     }
@@ -89,7 +89,7 @@ api.interceptors.response.use(
   },
   (error) => {
     // Only log meaningful error information
-    const errorInfo: Record<string, any> = {};
+    const errorInfo: Record<string, unknown> = {};
 
     if (error?.message && error.message !== 'Error') {
       errorInfo.message = error.message;
@@ -115,11 +115,12 @@ api.interceptors.response.use(
     if (error?.response?.data && typeof error.response.data === 'object') {
       errorInfo.data = error.response.data;
       // Also surface server-side `error` field as message fallback
-      if (!errorInfo.message && (error.response.data as any).error) {
-        errorInfo.message = (error.response.data as any).error;
+      const responseData = error.response.data as Record<string, unknown>;
+      if (!errorInfo.message && typeof responseData.error === 'string') {
+        errorInfo.message = responseData.error;
       }
-      if (!errorInfo.message && (error.response.data as any).message) {
-        errorInfo.message = (error.response.data as any).message;
+      if (!errorInfo.message && typeof responseData.message === 'string') {
+        errorInfo.message = responseData.message;
       }
     }
     // If server responded with non-JSON (e.g., HTML error page), capture a short preview
@@ -161,7 +162,7 @@ api.interceptors.response.use(
             Cookies.remove('auth_token');
             Cookies.remove('auth_token_expires');
           }
-        } catch (_) {
+        } catch {
           // ignore cookie cleanup errors in non-browser contexts
         }
 
@@ -176,7 +177,7 @@ api.interceptors.response.use(
           try {
             // Drop the persisted auth store so the login page starts clean.
             window.localStorage.removeItem('auth-storage');
-          } catch (_) {
+          } catch {
             // ignore storage errors
           }
           const redirect = encodeURIComponent(window.location.pathname + window.location.search);
@@ -210,16 +211,16 @@ export const apiClient = {
   get: <T>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
     api.get(url, config),
   
-  post: <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
+  post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
     api.post(url, data, config),
   
-  put: <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
+  put: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
     api.put(url, data, config),
   
   delete: <T>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
     api.delete(url, config),
   
-  patch: <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
+  patch: <T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<AxiosResponse<T>> =>
     api.patch(url, data, config),
 };
 
@@ -282,7 +283,7 @@ async function maybeRefreshAdminToken(): Promise<void> {
     if (data?.token) {
       authUtils.setToken(data.token, data.expires_at);
     }
-  } catch (_) {
+  } catch {
     // A dead session is handled by the regular 401 flow.
   } finally {
     refreshingAdminToken = false;

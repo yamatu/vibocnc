@@ -316,7 +316,7 @@ export default function ProductImageManager({ images, onChange, sku }: Props) {
               className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
             >
               <button type="button" onClick={() => setPreviewIndex(index)} className="relative block h-44 w-full bg-gray-100 p-2" title={locale === 'zh' ? '点击放大预览' : 'Click to preview'}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                { }
                 <img src={image.url} alt={image.alt_text || sku || `Image ${index + 1}`} className="h-full w-full object-contain" />
                 <span className="absolute bottom-2 right-2 rounded bg-black/60 p-1 text-white"><EyeIcon className="h-4 w-4" /></span>
                 {index === 0 ? <span className="absolute left-2 top-2 inline-flex items-center rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800"><StarIcon className="mr-1 h-3 w-3" />{locale === 'zh' ? '主图' : 'Main'}</span> : null}
@@ -360,7 +360,7 @@ export default function ProductImageManager({ images, onChange, sku }: Props) {
       {previewIndex !== null && images[previewIndex] ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4" onClick={() => setPreviewIndex(null)}>
           <button type="button" onClick={() => setPreviewIndex(null)} className="absolute right-5 top-5 rounded-full bg-white/90 p-2 text-gray-800"><XMarkIcon className="h-6 w-6" /></button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          { }
           <img src={images[previewIndex].url} alt={images[previewIndex].alt_text || sku || 'Preview'} className="max-h-[90vh] max-w-[94vw] object-contain" onClick={(event) => event.stopPropagation()} />
         </div>
       ) : null}

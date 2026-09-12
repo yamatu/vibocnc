@@ -22,7 +22,7 @@ interface AuthActions {
 
 export const useAuthStore = create<AuthState & AuthActions>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // State
       user: null,
       isAuthenticated: false,
@@ -39,9 +39,10 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             isAuthenticated: true, 
             isLoading: false 
           });
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Login failed';
           set({ 
-            error: error.message || 'Login failed', 
+            error: message,
             isLoading: false 
           });
           throw error;
@@ -90,7 +91,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
                 isAuthenticated: true,
                 isLoading: false
               });
-            } catch (error) {
+            } catch {
               // Token is invalid, clear auth state
               AuthService.logout();
               set({
@@ -106,7 +107,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
               isLoading: false
             });
           }
-        } catch (error) {
+        } catch {
           set({
             user: null,
             isAuthenticated: false,

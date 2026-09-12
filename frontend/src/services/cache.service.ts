@@ -47,13 +47,13 @@ export class CacheService {
   }
 
   static async test(): Promise<void> {
-    const res = await apiClient.post<APIResponse<any>>('/admin/cache/test', {});
+    const res = await apiClient.post<APIResponse<unknown>>('/admin/cache/test', {});
     if (res.data.success) return;
     throw new Error(res.data.message || res.data.error || 'Cloudflare test failed');
   }
 
   static async purgeNow(payload: PurgeCacheRequest): Promise<void> {
-    const res = await apiClient.post<APIResponse<any>>('/admin/cache/purge', payload || {});
+    const res = await apiClient.post<APIResponse<unknown>>('/admin/cache/purge', payload || {});
     if (res.data.success) return;
     throw new Error(res.data.message || res.data.error || 'Purge failed');
   }

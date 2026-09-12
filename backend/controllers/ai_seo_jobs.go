@@ -597,6 +597,7 @@ func (ac *AIAgentController) GetSEOStats(c *gin.Context) {
 	db.Model(&models.Product{}).Where("ai_seo_status = ?", "optimized").Count(&stats.Optimized)
 	db.Model(&models.Product{}).Where("ai_seo_status = ?", "failed").Count(&stats.Failed)
 	db.Model(&models.Product{}).Where("ai_seo_status = ?", "running").Count(&stats.Running)
+	db.Model(&models.AIAgentSEOJobItem{}).Where("status = ?", "unresolved").Count(&stats.Unresolved)
 	db.Model(&models.Product{}).Where("ai_seo_status IS NULL OR ai_seo_status = ''").Count(&stats.NotOptimized)
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: stats})
 }
@@ -718,13 +719,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	}
 	wasActive := product.IsActive
 	originalBrand := strings.TrimSpace(product.Brand)
-	modelForClassification := services.NormalizeProductModel(product.Model)
-	if modelForClassification == "" {
-		modelForClassification = services.NormalizeProductModel(product.PartNumber)
-	}
-	if modelForClassification == "" {
-		modelForClassification = services.NormalizeProductModel(product.SKU)
-	}
+	modelForClassification := services.ClassificationModel(product)
 	classificationReference := services.InferProductCategory(strings.TrimSpace(product.Brand), modelForClassification)
 	setAISEOItemProgress(db, item.ID, "核验品牌、型号与证据 / Verifying identity and evidence")
 	var webEvidence []services.ProductWebEvidence
@@ -736,15 +731,20 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 		product.Brand = services.CanonicalBrandName(classificationReference.BrandKey)
 	}
 	requestedScope := aiSEOScopeFromPrompt(job.Prompt)
-	if requestedScope["all"] || requestedScope["category"] {
+	if (requestedScope["all"] || requestedScope["category"]) && !services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
 		setAISEOItemProgress(db, item.ID, "AI 核验分类，无法判断则保留 / AI classification verification")
 		verified, err := classifyProductCategoryWithLLM(ctx, setting, apiKey, product, modelForClassification)
 		if err != nil {
-			failAIAgentSEOItem(jobID, workerToken, item, fmt.Errorf("Review required; product unchanged: %w", err))
+			markAIAgentSEOItemUnresolved(jobID, workerToken, item, fmt.Errorf("Review required; product unchanged: %w", err))
 			return
 		}
 		classificationReference = verified
 	}
+	auditStatus := "unresolved"
+	if services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
+		auditStatus = "completed"
+	}
+	_ = services.RecordClassificationAudit(db, product, classificationReference, modelForClassification, webEvidence, auditStatus, services.ClassificationFailureReason(classificationReference, modelForClassification), jobID)
 	classificationCategoryID := uint(0)
 	classificationCategoryErr := error(nil)
 	if services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
@@ -756,6 +756,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 		failAIAgentSEOItem(jobID, workerToken, item, err)
 		return
 	}
+	availableCategories = filterAISEOCategoryReferences(availableCategories, classificationReference)
 	productContext, _ := json.Marshal(map[string]any{
 		"sku":                      product.SKU,
 		"name":                     product.Name,
@@ -850,6 +851,25 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	}
 	db.Model(&models.AIAgentSEOJobItem{}).Where("id = ?", item.ID).Updates(map[string]interface{}{"status": "optimized", "error": strings.Join(changes, "; ")})
 	incrementAIAgentSEOJob(jobID, true)
+}
+
+func filterAISEOCategoryReferences(all []aiSEOCategoryReference, inference services.ProductCategoryInference) []aiSEOCategoryReference {
+	if !services.IsConfirmedProductCategory(inference, "verified-model") {
+		return all
+	}
+	filtered := make([]aiSEOCategoryReference, 0, 24)
+	for _, category := range all {
+		if services.CategoryPathMatchScore(category.Path, inference) > 0 {
+			filtered = append(filtered, category)
+		}
+	}
+	if len(filtered) == 0 {
+		return all
+	}
+	if len(filtered) > 40 {
+		return filtered[:40]
+	}
+	return filtered
 }
 
 func isAISEOJobRunning(db *gorm.DB, jobID, workerToken string) bool {
@@ -999,13 +1019,7 @@ func resolveAISEOCategory(tx *gorm.DB, currentCategoryID uint, proposal aiSEOCat
 // boundary. The provider may suggest an existing category, but it cannot move a
 // product into a generic or unrelated node and it cannot create a new node.
 func resolveAISEOCategoryForProduct(tx *gorm.DB, product models.Product, proposal aiSEOCategory) (uint, error) {
-	model := services.NormalizeProductModel(product.Model)
-	if model == "" {
-		model = services.NormalizeProductModel(product.PartNumber)
-	}
-	if model == "" {
-		model = services.NormalizeProductModel(product.SKU)
-	}
+	model := services.ClassificationModel(product)
 	inference := services.InferProductCategory(strings.TrimSpace(product.Brand), model)
 	if !services.IsConfirmedProductCategory(inference, model) {
 		inference, _, _ = services.ResolveProductCategoryWithWebEvidence(context.Background(), product.Brand, model)
@@ -1017,13 +1031,7 @@ func resolveAISEOCategoryForProduct(tx *gorm.DB, product models.Product, proposa
 }
 
 func resolveAISEOCategoryForProductWithInference(tx *gorm.DB, product models.Product, proposal aiSEOCategory, inference services.ProductCategoryInference) (uint, error) {
-	model := services.NormalizeProductModel(product.Model)
-	if model == "" {
-		model = services.NormalizeProductModel(product.PartNumber)
-	}
-	if model == "" {
-		model = services.NormalizeProductModel(product.SKU)
-	}
+	model := services.ClassificationModel(product)
 	if !services.IsConfirmedProductCategory(inference, model) {
 		return 0, errors.New("AI SEO classification unresolved: brand or product type could not be verified")
 	}
@@ -1308,6 +1316,18 @@ func failAIAgentSEOItem(jobID, workerToken string, item models.AIAgentSEOJobItem
 		incrementAIAgentSEOJob(jobID, false)
 	}
 
+}
+
+func markAIAgentSEOItemUnresolved(jobID, workerToken string, item models.AIAgentSEOJobItem, err error) {
+	if isAISEOJobCancelled(config.GetDB(), jobID) {
+		return
+	}
+	message := truncateRunes(err.Error(), 1000)
+	db := config.GetDB()
+	result := db.Model(&models.AIAgentSEOJobItem{}).Where("id = ? AND status = ?", item.ID, "running").Where("EXISTS (SELECT 1 FROM ai_agent_seo_jobs WHERE id = ? AND status IN ? AND worker_token = ?)", jobID, []string{"running", "paused"}, workerToken).Updates(map[string]interface{}{"status": "unresolved", "error": message})
+	if result.Error == nil && result.RowsAffected > 0 {
+		_ = db.Model(&models.AIAgentSEOJob{}).Where("id = ?", jobID).Updates(map[string]interface{}{"processed": gorm.Expr("processed + 1"), "unresolved": gorm.Expr("unresolved + 1")})
+	}
 }
 
 func failQueuedAIAgentSEOItems(jobID, message string) {

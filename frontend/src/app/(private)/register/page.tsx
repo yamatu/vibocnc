@@ -82,6 +82,7 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterFormData) => {
     try {
       const { confirmPassword, ...registerData } = data;
+      void confirmPassword;
 
       if (verificationRequired && !String((registerData as any).email_code || '').trim()) {
         toast.error('Email verification code is required');

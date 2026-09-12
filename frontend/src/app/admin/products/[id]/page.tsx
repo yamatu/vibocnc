@@ -17,7 +17,7 @@ import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { ProductService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
-import { formatCurrency, getImageUrl, toProductPathId } from '@/lib/utils';
+import { formatCurrency, toProductPathId } from '@/lib/utils';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
 export default function ProductDetailPage() {

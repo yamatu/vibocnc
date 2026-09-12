@@ -18,8 +18,8 @@ export interface Ticket {
   created_at: string;
   updated_at: string;
   replies?: TicketReply[];
-  customer?: any;
-  assigned_to?: any;
+  customer?: Record<string, unknown>;
+  assigned_to?: Record<string, unknown>;
 }
 
 export interface TicketReply {
@@ -31,8 +31,8 @@ export interface TicketReply {
   is_internal: boolean;
   created_at: string;
   updated_at: string;
-  customer?: any;
-  admin_user?: any;
+  customer?: Record<string, unknown>;
+  admin_user?: Record<string, unknown>;
 }
 
 export interface CreateTicketRequest {

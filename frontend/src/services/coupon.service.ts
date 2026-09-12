@@ -60,6 +60,14 @@ export interface CouponFilters {
   status?: 'active' | 'inactive' | 'expired';
 }
 
+export interface CouponUsageRecord {
+  id: number;
+  order_id: number;
+  customer_email: string;
+  discount_amount: number;
+  created_at: string;
+}
+
 export class CouponService {
   // Validate coupon (public)
   static async validateCoupon(validateData: CouponValidateRequest): Promise<CouponValidateResponse> {
@@ -149,8 +157,8 @@ export class CouponService {
   }
 
   // Admin: Get coupon usage
-  static async getCouponUsage(id: number): Promise<any> {
-    const response = await apiClient.get<APIResponse<any>>(
+  static async getCouponUsage(id: number): Promise<{ usage_records: CouponUsageRecord[]; total_discount: number; total_uses: number }> {
+    const response = await apiClient.get<APIResponse<{ usage_records: CouponUsageRecord[]; total_discount: number; total_uses: number }>>(
       `/admin/coupons/${id}/usage`
     );
 

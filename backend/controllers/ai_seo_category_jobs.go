@@ -85,7 +85,7 @@ func (ac *AIAgentController) StartCategoryOptimizationJob(c *gin.Context) {
 		UseLLMFallback:          optionalBool(req.UseLLMFallback, true),
 		RepairContent:           optionalBool(req.RepairContent, req.ReworkOnly),
 	}
-	if opts.RepairContent || opts.UseLLMFallback {
+	if opts.RepairContent {
 		setting, _, apiKey, configErr := loadAIAgentConfigWithProfile()
 		if configErr != nil || !setting.Enabled || apiKey == "" {
 			message := "AI assistant must be configured and enabled before product descriptions can be repaired"
@@ -353,7 +353,7 @@ func processCategoryOptimizationJob(jobID, workerToken, prompt string) {
 	// verification when no AI profile is configured or the assistant is off.
 	var llmSetting *models.AIAgentSetting
 	llmAPIKey := ""
-	if opts.UseLLMFallback || opts.RepairContent {
+	if opts.RepairContent || opts.UseLLMFallback {
 		profileID, profileErr := loadAIAgentSEOJobProfileID(db, jobID)
 		if profileErr == nil {
 			if setting, _, apiKey, configErr := loadAIAgentConfigForProfile(profileID); configErr == nil && setting.Enabled && apiKey != "" {
@@ -362,7 +362,7 @@ func processCategoryOptimizationJob(jobID, workerToken, prompt string) {
 			}
 		}
 	}
-	if (opts.UseLLMFallback || opts.RepairContent) && llmSetting == nil {
+	if opts.RepairContent && llmSetting == nil {
 		finishAIAgentSEOJob(jobID, workerToken, "paused", "AI 配置不可用，请修复后继续 / AI configuration unavailable; fix and resume. Product data retained.")
 		return
 	}
@@ -435,6 +435,7 @@ func processCategoryOptimizationItem(ctx context.Context, jobID, workerToken str
 		UseWebSearch:            opts.UseWebSearch,
 		CreateMissingCategories: opts.CreateMissingCategories,
 		ActivateResolved:        opts.ActivateResolved,
+		AuditJobID:              jobID,
 		BeforeWrite: func(tx *gorm.DB) error {
 			var job models.AIAgentSEOJob
 			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("status", "worker_token").First(&job, "id = ?", jobID).Error; err != nil {
@@ -449,26 +450,21 @@ func processCategoryOptimizationItem(ctx context.Context, jobID, workerToken str
 	setAISEOItemProgress(db, item.ID, "调用 AI 核验品牌、型号与分类证据 / AI classification review")
 	var result services.ProductCategoryOptimizationResult
 	llmNote := ""
-	if llmSetting != nil && llmAPIKey != "" {
-		model := services.NormalizeProductModel(product.Model)
-		if model == "" {
-			model = services.NormalizeProductModel(product.PartNumber)
-		}
-		if model == "" {
-			model = services.NormalizeProductModel(product.SKU)
-		}
+	result = services.OptimizeProductCategory(ctx, db, product, serviceOpts)
+	if result.Status == "unresolved" && opts.UseLLMFallback && llmSetting != nil && llmAPIKey != "" {
+		model := services.ClassificationModel(product)
 		inference, err := classifyProductCategoryWithLLM(ctx, llmSetting, llmAPIKey, product, model)
-		if err != nil {
-			failCategoryOptimizationItem(jobID, workerToken, item, fmt.Errorf("待审核，保留原分类和内容 / Review required; original category and content retained: %w", err))
-			return nil
+		if err == nil {
+			setAISEOItemProgress(db, item.ID, "AI 核验通过，匹配现有分类 / Matching verified category")
+			result = services.ApplyProductCategoryInference(ctx, db, product, inference, serviceOpts)
+			llmNote = "AI verified: "
 		}
-		setAISEOItemProgress(db, item.ID, "AI 核验通过，匹配现有分类 / Matching verified category")
-		result = services.ApplyProductCategoryInference(ctx, db, product, inference, serviceOpts)
-		llmNote = "AI verified: "
-	} else {
-		result = services.OptimizeProductCategory(ctx, db, product, serviceOpts)
 	}
 	if isAISEOJobCancelled(db, jobID) {
+		return nil
+	}
+	if result.Status == "unresolved" {
+		markCategoryOptimizationItemUnresolved(jobID, workerToken, item, result)
 		return nil
 	}
 	if result.Status != "completed" {
@@ -494,10 +490,11 @@ func processCategoryOptimizationItem(ctx context.Context, jobID, workerToken str
 			detail += contentDetail
 		}
 	}
+	evidenceJSON, _ := json.Marshal(result.Evidence)
 	updated := db.Model(&models.AIAgentSEOJobItem{}).
 		Where("id = ? AND status = ?", item.ID, "running").
 		Where("EXISTS (SELECT 1 FROM ai_agent_seo_jobs WHERE id = ? AND status IN ? AND worker_token = ?)", jobID, []string{"running", "paused"}, workerToken).
-		Updates(map[string]any{"status": "optimized", "error": truncateRunes(detail, 1000)})
+		Updates(map[string]any{"status": "optimized", "classification_status": "completed", "classification_rule": truncateRunes(result.MatchRule, 160), "evidence_json": string(evidenceJSON), "error": truncateRunes(detail, 1000)})
 	if updated.Error == nil && updated.RowsAffected > 0 {
 		incrementAIAgentSEOJob(jobID, true)
 	}
@@ -619,6 +616,10 @@ func finalizeCategoryOptimizationJob(db *gorm.DB, jobID, workerToken string, wor
 		if err := tx.Model(&models.AIAgentSEOJobItem{}).Where("job_id = ? AND status = ?", jobID, "failed").Count(&failed).Error; err != nil {
 			return err
 		}
+		var unresolved int64
+		if err := tx.Model(&models.AIAgentSEOJobItem{}).Where("job_id = ? AND status = ?", jobID, "unresolved").Count(&unresolved).Error; err != nil {
+			return err
+		}
 		status := "completed"
 		jobError := ""
 		if failed > 0 {
@@ -633,9 +634,10 @@ func finalizeCategoryOptimizationJob(db *gorm.DB, jobID, workerToken string, wor
 			Updates(map[string]any{
 				"status":       status,
 				"error":        jobError,
-				"processed":    succeeded + failed,
+				"processed":    succeeded + failed + unresolved,
 				"succeeded":    succeeded,
 				"failed":       failed,
+				"unresolved":   unresolved,
 				"completed_at": &completedAt,
 			})
 		if result.Error != nil {
@@ -645,6 +647,18 @@ func finalizeCategoryOptimizationJob(db *gorm.DB, jobID, workerToken string, wor
 		return nil
 	})
 	return finished, err
+}
+
+func markCategoryOptimizationItemUnresolved(jobID, workerToken string, item models.AIAgentSEOJobItem, result services.ProductCategoryOptimizationResult) {
+	db := config.GetDB()
+	evidenceJSON, _ := json.Marshal(result.Evidence)
+	dbResult := db.Model(&models.AIAgentSEOJobItem{}).
+		Where("id = ? AND status = ?", item.ID, "running").
+		Where("EXISTS (SELECT 1 FROM ai_agent_seo_jobs WHERE id = ? AND status IN ? AND worker_token = ?)", jobID, []string{"running", "paused"}, workerToken).
+		Updates(map[string]any{"status": "unresolved", "classification_status": "unresolved", "classification_rule": truncateRunes(result.MatchRule, 160), "evidence_json": string(evidenceJSON), "error": truncateRunes(result.Message, 1000)})
+	if dbResult.Error == nil && dbResult.RowsAffected > 0 {
+		config.GetDB().Model(&models.AIAgentSEOJob{}).Where("id = ?", jobID).Updates(map[string]any{"processed": gorm.Expr("processed + 1"), "unresolved": gorm.Expr("unresolved + 1")})
+	}
 }
 
 func failCategoryOptimizationItem(jobID, workerToken string, item models.AIAgentSEOJobItem, err error) {

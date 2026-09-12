@@ -11,7 +11,7 @@ import RepairCapabilitiesSection from '@/components/home/RepairCapabilitiesSecti
 import HomeBlogSection from '@/components/home/HomeBlogSection';
 import HomeBrandAuthoritySection, { HOMEPAGE_BRAND_FAQS } from '@/components/home/HomeBrandAuthoritySection';
 import { generateOrganizationSchema, generateWebsiteSchema } from '@/lib/structured-data';
-import type { Article, HomepageContent, Product } from '@/types';
+import type { Article, HomepageContent } from '@/types';
 import type { Metadata } from 'next';
 import { getSiteUrl } from '@/lib/url';
 import { DEFAULT_HERO_DATA } from '@/lib/homepage-defaults';
@@ -21,8 +21,8 @@ import { getPublicSocialMediaSettings } from '@/services/social-media.server';
 import { getLocalizedMetadataPaths, getRequestPublicLocale } from '@/lib/i18n/server';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 import { getLocaleConfig, localizePublicPath } from '@/lib/i18n/config';
-import { localizeArticleOrDefault, localizeProductContent } from '@/lib/i18n/content';
-import { getHomepageFeaturedArticles, getHomepageFeaturedProducts } from '@/services/homepage.server';
+import { localizeArticleOrDefault } from '@/lib/i18n/content';
+import { getHomepageFeaturedArticles } from '@/services/homepage.server';
 import HomepagePreviewMarker from '@/components/admin/homepage/HomepagePreviewMarker';
 
 export const revalidate = 300;
@@ -115,44 +115,6 @@ function isLegacyDisabledBrandsSection(content?: HomepageContent): boolean {
   // Older deployments shipped a blank, disabled placeholder. Restore only
   // that placeholder so an intentionally configured section can stay hidden.
   return !hasText && !hasData;
-}
-
-function compactHomepageProduct(product: Product): Product {
-  const summary = compactText(product.short_description || product.meta_description || product.description, 240);
-  const category = product.category ? {
-    ...product.category,
-    children: undefined,
-    products: undefined,
-    translations: undefined,
-  } : product.category;
-  return {
-    id: product.id,
-    sku: product.sku,
-    name: product.name,
-    slug: product.slug,
-    short_description: summary,
-    description: summary,
-    price: product.price,
-    compare_price: product.compare_price,
-    stock_quantity: product.stock_quantity,
-    min_stock_level: product.min_stock_level,
-    dimensions: product.dimensions,
-    brand: product.brand,
-    model: product.model,
-    part_number: product.part_number,
-    category_id: product.category_id,
-    category,
-    is_active: product.is_active,
-    is_featured: product.is_featured,
-    meta_title: product.meta_title,
-    meta_description: compactText(product.meta_description, 180),
-    meta_keywords: '',
-    image_urls: product.image_urls || [],
-    created_at: product.created_at,
-    updated_at: product.updated_at,
-    images: product.images?.slice(0, 1),
-    attributes: product.attributes?.slice(0, 2),
-  };
 }
 
 function compactHomepageArticle(article: Article): Article {
@@ -275,12 +237,6 @@ async function getHomepageContentList(options?: { fresh?: boolean }): Promise<Ho
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-async function DeferredFeaturedProducts({ content, locale }: { content?: HomepageContent | null; locale: Parameters<typeof localizeProductContent>[1] }) {
-  const products = (await getHomepageFeaturedProducts())
-    .map((product) => compactHomepageProduct(localizeProductContent(product, locale)));
-  return <FeaturedProducts content={content} initialProducts={products} />;
 }
 
 async function DeferredHomeBlog({ content, locale }: { content?: HomepageContent | null; locale: Parameters<typeof localizeArticleOrDefault>[1] }) {

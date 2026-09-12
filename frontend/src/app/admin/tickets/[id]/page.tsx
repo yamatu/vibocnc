@@ -74,7 +74,7 @@ export default function AdminTicketDetailPage() {
           setStatus(result.status);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load ticket:', error);
       toast.error(t('tickets.toast.detailLoadFailed', locale === 'zh' ? '加载工单详情失败' : 'Failed to load ticket details'));
     } finally {
@@ -97,7 +97,7 @@ export default function AdminTicketDetailPage() {
         setReplyMessage('');
         loadTicket();
       }
-    } catch (error: any) {
+    } catch {
       toast.error(t('tickets.toast.replySendFailed', locale === 'zh' ? '发送回复失败' : 'Failed to send reply'));
     } finally {
       setSubmitting(false);
@@ -115,7 +115,7 @@ export default function AdminTicketDetailPage() {
         setStatus(newStatus);
         loadTicket();
       }
-    } catch (error: any) {
+    } catch {
       toast.error(t('tickets.toast.statusUpdateFailed', locale === 'zh' ? '更新工单状态失败' : 'Failed to update status'));
     }
   };

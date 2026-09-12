@@ -477,7 +477,6 @@ function AdminProductsContent() {
     }
     const hasExplicitSelection = !selectAllResults && selectedCurrentPageIds.length > 0;
     const nextScope = hasExplicitSelection ? 'selected' : 'filtered';
-    const available = nextScope === 'selected' ? selectedCurrentPageIds.length : totalProducts;
     setCategoryOptimizationScope(nextScope);
     // Zero queues the full filtered scope; processing is batched on the server.
     setCategoryOptimizationLimit("0");

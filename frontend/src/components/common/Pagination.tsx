@@ -29,8 +29,6 @@ export default function Pagination({
   showJump = false,
   className = ''
 }: PaginationProps) {
-  if (totalPages <= 1) return null;
-
   const [jumpValue, setJumpValue] = useState(String(currentPage));
 
   useEffect(() => {
@@ -48,7 +46,7 @@ export default function Pagination({
     } else {
       // Calculate start and end pages
       let start = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-      let end = Math.min(totalPages, start + maxVisiblePages - 1);
+      const end = Math.min(totalPages, start + maxVisiblePages - 1);
       
       // Adjust start if we're near the end
       if (end - start + 1 < maxVisiblePages) {
@@ -90,6 +88,8 @@ export default function Pagination({
 
   const canGoPrevious = currentPage > 1;
   const canGoNext = currentPage < totalPages;
+
+  if (totalPages <= 1) return null;
 
   return (
     <nav className={`flex items-center justify-between ${className}`} aria-label="Pagination">

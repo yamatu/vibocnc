@@ -181,7 +181,7 @@ export interface AIAgentPricePreview {
 }
 
 export type AIAgentSEOJobStatus = 'queued' | 'running' | 'paused' | 'cancelled' | 'completed' | 'completed_with_errors' | 'failed';
-export type AIAgentSEOItemStatus = 'queued' | 'running' | 'optimized' | 'failed' | 'cancelled';
+export type AIAgentSEOItemStatus = 'queued' | 'running' | 'optimized' | 'unresolved' | 'failed' | 'cancelled';
 
 export interface AIAgentSEOJobItem {
   id: number;
@@ -208,6 +208,7 @@ export interface AIAgentSEOJob {
   processed: number;
   succeeded: number;
   failed: number;
+  unresolved?: number;
   created_by_id: number;
   error?: string;
   created_at: string;
@@ -221,6 +222,7 @@ export interface AIAgentSEOStats {
   optimized: number;
   not_optimized: number;
   failed: number;
+  unresolved?: number;
   running: number;
 }
 

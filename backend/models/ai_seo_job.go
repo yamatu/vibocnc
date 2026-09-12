@@ -24,6 +24,7 @@ type AIAgentSEOJob struct {
 	Processed   int                 `json:"processed"`
 	Succeeded   int                 `json:"succeeded"`
 	Failed      int                 `json:"failed"`
+	Unresolved  int                 `json:"unresolved"`
 	CreatedByID uint                `json:"created_by_id;index"`
 	Error       string              `json:"error" gorm:"type:text"`
 	CreatedAt   time.Time           `json:"created_at"`
@@ -33,14 +34,17 @@ type AIAgentSEOJob struct {
 }
 
 type AIAgentSEOJobItem struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	JobID     string    `json:"job_id" gorm:"size:36;index;not null"`
-	ProductID uint      `json:"product_id" gorm:"index;not null"`
-	SKU       string    `json:"sku" gorm:"size:100"`
-	Status    string    `json:"status" gorm:"size:20;index;not null"` // queued, running, optimized, failed, cancelled
-	Error     string    `json:"error" gorm:"type:text"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID                   uint      `json:"id" gorm:"primaryKey"`
+	JobID                string    `json:"job_id" gorm:"size:36;index;not null"`
+	ProductID            uint      `json:"product_id" gorm:"index;not null"`
+	SKU                  string    `json:"sku" gorm:"size:100"`
+	Status               string    `json:"status" gorm:"size:20;index;not null"` // queued, running, optimized, unresolved, failed, cancelled
+	Error                string    `json:"error" gorm:"type:text"`
+	ClassificationStatus string    `json:"classification_status,omitempty" gorm:"size:24;index"`
+	ClassificationRule   string    `json:"classification_rule,omitempty" gorm:"size:160"`
+	EvidenceJSON         string    `json:"evidence_json,omitempty" gorm:"type:text"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type AIAgentSEOStats struct {
@@ -48,5 +52,6 @@ type AIAgentSEOStats struct {
 	Optimized    int64 `json:"optimized"`
 	NotOptimized int64 `json:"not_optimized"`
 	Failed       int64 `json:"failed"`
+	Unresolved   int64 `json:"unresolved"`
 	Running      int64 `json:"running"`
 }

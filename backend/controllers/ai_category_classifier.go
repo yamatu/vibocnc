@@ -89,14 +89,15 @@ func classifyProductCategoryWithLLM(ctx context.Context, setting *models.AIAgent
 	if !services.IsConfirmedProductCategory(corroboration, model) {
 		corroboration = services.InferProductCategoryFromEvidence(product.Brand, model, services.ProductWebEvidenceText(evidence))
 	}
-	if !services.IsConfirmedProductCategory(corroboration, model) {
-		return services.ProductCategoryInference{}, errors.New("AI proposal has no corroborating model rule or external evidence; review required")
-	}
+	// Deterministic rules remain a conflict check when available, but an
+	// administrator-approved LLM result with exact evidence may extend the
+	// vocabulary to new brands/series instead of being rejected by the old
+	// hard-coded classifier.
 	normalizeType := func(value string) string { return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), "s") }
-	if corroboration.BrandKey != inference.BrandKey || normalizeType(corroboration.CategorySlug) != normalizeType(inference.CategorySlug) {
+	if services.IsConfirmedProductCategory(corroboration, model) && (corroboration.BrandKey != inference.BrandKey || normalizeType(corroboration.CategorySlug) != normalizeType(inference.CategorySlug)) {
 		return services.ProductCategoryInference{}, errors.New("AI proposal conflicts with verified product type; review required")
 	}
-	return corroboration, nil
+	return inference, nil
 }
 
 func parseAICategoryClassification(raw string) (aiCategoryClassification, error) {

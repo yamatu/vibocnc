@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,6 +27,7 @@ type ProductCategoryOptimizationOptions struct {
 	// cancelled or superseded. It is called inside the same transaction that
 	// performs each category/product mutation.
 	BeforeWrite func(*gorm.DB) error
+	AuditJobID  string
 }
 
 type ProductCategoryOptimizationResult struct {
@@ -99,10 +101,13 @@ func OptimizeProductCategory(ctx context.Context, db *gorm.DB, product models.Pr
 		}
 		result.Status = "unresolved"
 		result.Message = reason
+		_ = writeClassificationAudit(db, product, result, opts.AuditJobID)
 		return result
 	}
 
-	return applyConfirmedCategoryInference(ctx, db, product, inference, result, opts)
+	result = applyConfirmedCategoryInference(ctx, db, product, inference, result, opts)
+	_ = writeClassificationAudit(db, product, result, opts.AuditJobID)
+	return result
 }
 
 // ApplyProductCategoryInference assigns a category from an inference that was
@@ -133,9 +138,27 @@ func ApplyProductCategoryInference(ctx context.Context, db *gorm.DB, product mod
 	if !isConfirmedInference(inference) {
 		result.Status = "unresolved"
 		result.Message = "classification is not verified"
+		_ = writeClassificationAudit(db, product, result, opts.AuditJobID)
 		return result
 	}
-	return applyConfirmedCategoryInference(ctx, db, product, inference, result, opts)
+	result = applyConfirmedCategoryInference(ctx, db, product, inference, result, opts)
+	_ = writeClassificationAudit(db, product, result, opts.AuditJobID)
+	return result
+}
+
+func writeClassificationAudit(db *gorm.DB, product models.Product, result ProductCategoryOptimizationResult, jobID string) error {
+	if db == nil || product.ID == 0 {
+		return nil
+	}
+	evidence, _ := json.Marshal(result.Evidence)
+	return db.Create(&models.ProductClassificationAudit{ProductID: product.ID, JobID: jobID, Model: result.Model, BrandInput: product.Brand, Brand: result.Brand, ProductType: result.PartType, Status: result.Status, MatchRule: result.MatchRule, CategoryID: result.CategoryID, CategoryPath: result.CategoryPath, EvidenceJSON: string(evidence), Reason: result.Message}).Error
+}
+
+// RecordClassificationAudit lets non-category SEO flows persist the same
+// decision record without duplicating the audit schema or JSON encoding.
+func RecordClassificationAudit(db *gorm.DB, product models.Product, inference ProductCategoryInference, model string, evidence []ProductWebEvidence, status, reason, jobID string) error {
+	result := ProductCategoryOptimizationResult{ProductID: product.ID, SKU: product.SKU, Model: model, Status: status, Message: reason, Brand: inference.BrandName, PartType: inference.PartType, MatchRule: inference.MatchRule, Evidence: evidence, Inference: inference}
+	return writeClassificationAudit(db, product, result, jobID)
 }
 
 func applyConfirmedCategoryInference(ctx context.Context, db *gorm.DB, product models.Product, inference ProductCategoryInference, result ProductCategoryOptimizationResult, opts ProductCategoryOptimizationOptions) ProductCategoryOptimizationResult {
@@ -415,7 +438,7 @@ func productClassificationModel(product models.Product) string {
 }
 
 func canonicalCategoryTypeName(value string) string {
-	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	return CanonicalProductType(value)
 }
 
 func categorySlugForBrandType(brandKey, inferredSlug, partType string) string {

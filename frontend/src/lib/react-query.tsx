@@ -11,9 +11,10 @@ function makeQueryClient() {
         // With SSR, we usually want to set some default staleTime
         // above 0 to avoid refetching immediately on the client
         staleTime: 60 * 1000, // 1 minute
-        retry: (failureCount, error: any) => {
+        retry: (failureCount, error: unknown) => {
           // Don't retry on 4xx errors
-          if (error?.response?.status >= 400 && error?.response?.status < 500) {
+          const status = (error as { response?: { status?: number } })?.response?.status;
+          if (status !== undefined && status >= 400 && status < 500) {
             return false;
           }
           // Retry up to 3 times for other errors
@@ -70,7 +71,7 @@ export const queryKeys = {
   products: {
     all: () => ['products'] as const,
     lists: () => [...queryKeys.products.all(), 'list'] as const,
-    list: (filters: any) => [...queryKeys.products.lists(), filters] as const,
+    list: (filters: unknown) => [...queryKeys.products.lists(), filters] as const,
     details: () => [...queryKeys.products.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.products.details(), id] as const,
     detailBySku: (sku: string) => [...queryKeys.products.details(), 'sku', sku] as const,
@@ -82,7 +83,7 @@ export const queryKeys = {
   ebayImportDrafts: {
     all: () => ['ebayImportDrafts'] as const,
     lists: () => [...queryKeys.ebayImportDrafts.all(), 'list'] as const,
-    list: (filters: any) => [...queryKeys.ebayImportDrafts.lists(), filters] as const,
+    list: (filters: unknown) => [...queryKeys.ebayImportDrafts.lists(), filters] as const,
     details: () => [...queryKeys.ebayImportDrafts.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.ebayImportDrafts.details(), id] as const,
   },
@@ -101,7 +102,7 @@ export const queryKeys = {
   orders: {
     all: () => ['orders'] as const,
     lists: () => [...queryKeys.orders.all(), 'list'] as const,
-    list: (filters: any) => [...queryKeys.orders.lists(), filters] as const,
+    list: (filters: unknown) => [...queryKeys.orders.lists(), filters] as const,
     details: () => [...queryKeys.orders.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.orders.details(), id] as const,
     recent: () => [...queryKeys.orders.all(), 'recent'] as const,
@@ -111,7 +112,7 @@ export const queryKeys = {
   users: {
     all: () => ['users'] as const,
     lists: () => [...queryKeys.users.all(), 'list'] as const,
-    list: (filters: any) => [...queryKeys.users.lists(), filters] as const,
+    list: (filters: unknown) => [...queryKeys.users.lists(), filters] as const,
     details: () => [...queryKeys.users.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.users.details(), id] as const,
   },
@@ -152,14 +153,14 @@ export const queryKeys = {
   // Analytics
   analytics: {
     all: () => ['analytics'] as const,
-    overview: (filters: any) => [...queryKeys.analytics.all(), 'overview', filters] as const,
-    visitors: (filters: any) => [...queryKeys.analytics.all(), 'visitors', filters] as const,
-    countries: (filters: any) => [...queryKeys.analytics.all(), 'countries', filters] as const,
-    pages: (filters: any) => [...queryKeys.analytics.all(), 'pages', filters] as const,
-    trends: (filters: any) => [...queryKeys.analytics.all(), 'trends', filters] as const,
-    countryVisitors: (filters: any) => [...queryKeys.analytics.all(), 'country-visitors', filters] as const,
-    productSKUs: (filters: any) => [...queryKeys.analytics.all(), 'product-skus', filters] as const,
-    countrySKUs: (filters: any) => [...queryKeys.analytics.all(), 'country-skus', filters] as const,
+    overview: (filters: unknown) => [...queryKeys.analytics.all(), 'overview', filters] as const,
+    visitors: (filters: unknown) => [...queryKeys.analytics.all(), 'visitors', filters] as const,
+    countries: (filters: unknown) => [...queryKeys.analytics.all(), 'countries', filters] as const,
+    pages: (filters: unknown) => [...queryKeys.analytics.all(), 'pages', filters] as const,
+    trends: (filters: unknown) => [...queryKeys.analytics.all(), 'trends', filters] as const,
+    countryVisitors: (filters: unknown) => [...queryKeys.analytics.all(), 'country-visitors', filters] as const,
+    productSKUs: (filters: unknown) => [...queryKeys.analytics.all(), 'product-skus', filters] as const,
+    countrySKUs: (filters: unknown) => [...queryKeys.analytics.all(), 'country-skus', filters] as const,
     settings: () => [...queryKeys.analytics.all(), 'settings'] as const,
   },
 
@@ -167,7 +168,7 @@ export const queryKeys = {
   contacts: {
     all: () => ['contacts'] as const,
     lists: () => [...queryKeys.contacts.all(), 'list'] as const,
-    list: (filters: any) => [...queryKeys.contacts.lists(), filters] as const,
+    list: (filters: unknown) => [...queryKeys.contacts.lists(), filters] as const,
     details: () => [...queryKeys.contacts.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.contacts.details(), id] as const,
     stats: () => [...queryKeys.contacts.all(), 'stats'] as const,
@@ -177,7 +178,7 @@ export const queryKeys = {
   media: {
     all: () => ['media'] as const,
     lists: () => [...queryKeys.media.all(), 'list'] as const,
-    list: (filters: any) => [...queryKeys.media.lists(), filters] as const,
+    list: (filters: unknown) => [...queryKeys.media.lists(), filters] as const,
     details: () => [...queryKeys.media.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.media.details(), id] as const,
     watermarkSettings: () => [...queryKeys.media.all(), 'watermark', 'settings'] as const,
@@ -194,7 +195,7 @@ export const queryKeys = {
   news: {
     all: () => ['news'] as const,
     lists: () => [...queryKeys.news.all(), 'list'] as const,
-    list: (filters: any) => [...queryKeys.news.lists(), filters] as const,
+    list: (filters: unknown) => [...queryKeys.news.lists(), filters] as const,
     details: () => [...queryKeys.news.all(), 'detail'] as const,
     detail: (id: number) => [...queryKeys.news.details(), id] as const,
     detailBySlug: (slug: string) => [...queryKeys.news.details(), 'slug', slug] as const,

@@ -73,7 +73,7 @@ class ContactService {
     try {
       const response = await api.post('/public/contact', data);
       return response.data;
-    } catch (error: any) {
+    } catch {
       // 如果 axios 失败，使用 fetch 作为备选（浏览器端使用相对路径，通过 Nginx 代理）
       const fetchResponse = await fetch(`/api/v1/public/contact`, {
         method: 'POST',
@@ -136,4 +136,5 @@ class ContactService {
   }
 }
 
-export default new ContactService();
+const contactService = new ContactService();
+export default contactService;

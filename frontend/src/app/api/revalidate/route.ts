@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     if (tag) revalidateTag(tag);
 
     return NextResponse.json({ revalidated: true, path, tag });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Invalid request body' },
       { status: 400 }

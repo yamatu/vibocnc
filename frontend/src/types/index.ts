@@ -521,7 +521,7 @@ export interface HomepageContent {
   button_text: string;
   button_url: string;
   // Optional structured config (slides/stats/services/etc)
-  data?: any;
+  data?: unknown;
   sort_order: number;
   is_active: boolean;
   created_at: string;

@@ -132,7 +132,7 @@ export default function SimpleSectionEditor({
           </div>
           {imageUrl ? (
               <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                { }
                 <img src={imageUrl} alt={t('common.preview', locale === 'zh' ? '预览' : 'Preview')} className="w-full h-auto" />
               </div>
             ) : null}

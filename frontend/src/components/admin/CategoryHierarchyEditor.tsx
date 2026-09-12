@@ -1,7 +1,7 @@
 'use client';
 
 import { DndContext, DragEndEvent, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { toast } from 'react-hot-toast';
 import { ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import type { Category } from '@/types';
@@ -18,7 +18,8 @@ type TreeNode = Omit<Category, 'children'> & { children: TreeNode[] };
 function buildTree(list: Category[]): TreeNode[] {
   const byId = new Map<number, TreeNode>();
   for (const c of list) {
-    const { children: _children, ...category } = c;
+    const category = { ...c };
+    delete category.children;
     byId.set(c.id, { ...category, children: [] });
   }
 
@@ -54,7 +55,7 @@ function DraggableRow({ node, depth }: { node: TreeNode; depth: number }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: rowId });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: rowId });
 
-  const style: any = {
+  const style: CSSProperties = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.6 : 1,
   };
@@ -193,8 +194,8 @@ export default function CategoryHierarchyEditor({ categories, onUpdated }: Props
       const sibs = siblingsSorted(draggedOldParentId);
       const base = sibs.map((c) => c.id).filter((id) => id !== dragged.id);
 
-      const overRect = (e.over as any)?.rect;
-      const activeRect = (e.active as any)?.rect?.current?.translated || (e.active as any)?.rect?.current?.initial;
+      const overRect = e.over?.rect;
+      const activeRect = e.active?.rect?.current?.translated || e.active?.rect?.current?.initial;
       let after = false;
       if (overRect && activeRect && typeof overRect.top === 'number' && typeof overRect.height === 'number') {
         const overMid = overRect.top + overRect.height / 2;
@@ -213,8 +214,8 @@ export default function CategoryHierarchyEditor({ categories, onUpdated }: Props
         await CategoryService.reorderCategories(updates);
         toast.success(t('categories.hierarchy.sortUpdated', locale === 'zh' ? '排序已更新' : 'Sort order updated'));
         onUpdated?.();
-      } catch (err: any) {
-        toast.error(err?.message || t('categories.hierarchy.sortUpdateFailed', locale === 'zh' ? '更新排序失败' : 'Failed to update sort order'));
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : t('categories.hierarchy.sortUpdateFailed', locale === 'zh' ? '更新排序失败' : 'Failed to update sort order'));
       }
       return;
     }
@@ -253,8 +254,8 @@ export default function CategoryHierarchyEditor({ categories, onUpdated }: Props
       await CategoryService.reorderCategories(updates);
       toast.success(t('categories.hierarchy.updated', locale === 'zh' ? '层级已更新' : 'Hierarchy updated'));
       onUpdated?.();
-    } catch (err: any) {
-      toast.error(err?.message || t('categories.hierarchy.updateFailed', locale === 'zh' ? '更新分类层级失败' : 'Failed to update category hierarchy'));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : t('categories.hierarchy.updateFailed', locale === 'zh' ? '更新分类层级失败' : 'Failed to update category hierarchy'));
     }
   };
 

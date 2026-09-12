@@ -6,8 +6,6 @@ import AdminLayout from '@/components/admin/AdminLayout';
 import {
   MagnifyingGlassIcon,
   UserGroupIcon,
-  CheckCircleIcon,
-  XCircleIcon,
 } from '@heroicons/react/24/outline';
 import { apiClient } from '@/lib/api';
 import { useAdminI18n } from '@/lib/admin-i18n';
@@ -51,7 +49,7 @@ export default function CustomersPage() {
         setCustomers(result?.data || []);
         setTotalPages(result?.total_pages || 1);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load customers:', error);
 	  toast.error(t('customers.toast.loadFailed', locale === 'zh' ? '加载客户失败' : 'Failed to load customers'));
     } finally {
@@ -76,7 +74,7 @@ export default function CustomersPage() {
 		);
         loadCustomers();
       }
-    } catch (error: any) {
+    } catch {
 	  toast.error(t('customers.toast.statusUpdateFailed', locale === 'zh' ? '更新客户状态失败' : 'Failed to update customer status'));
     }
   };
@@ -88,7 +86,7 @@ export default function CustomersPage() {
       await apiClient.delete(`/admin/customers/${customerId}`);
 	  toast.success(t('customers.toast.deleted', locale === 'zh' ? '客户已删除' : 'Customer deleted successfully'));
       loadCustomers();
-    } catch (error: any) {
+    } catch {
 	  toast.error(t('customers.toast.deleteFailed', locale === 'zh' ? '删除客户失败' : 'Failed to delete customer'));
     }
   };

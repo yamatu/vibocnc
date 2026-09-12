@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentType, type SVGProps } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toast } from 'react-hot-toast';
 import { useCustomer } from '@/store/customer.store';
 import { CustomerService } from '@/services/customer.service';
+import type { Order } from '@/types';
 import { getDefaultProductImageWithSku, getProductImageUrl } from '@/lib/utils';
 import Layout from '@/components/layout/Layout';
 import {
@@ -17,46 +18,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 
-interface OrderItem {
-  id: number;
-  product_id: number;
-  quantity: number;
-  unit_price: number;
-  total_price: number;
-  product?: {
-    id: number;
-    name: string;
-    sku: string;
-    images?: string[];
-  };
-}
-
-interface Order {
-  id: number;
-  order_number: string;
-  customer_name: string;
-  customer_email: string;
-  customer_phone: string;
-  shipping_address: string;
-  billing_address: string;
-  subtotal_amount: number;
-  discount_amount: number;
-  total_amount: number;
-  payment_status: string;
-  payment_method: string;
-  payment_id?: string;
-  tracking_number?: string;
-  shipping_carrier?: string;
-  shipped_at?: string;
-  status: string;
-  notes?: string;
-  coupon_code?: string;
-  created_at: string;
-  updated_at: string;
-  items: OrderItem[];
-}
-
-const statusConfig: Record<string, { color: string; icon: any; label: string }> = {
+const statusConfig: Record<string, { color: string; icon: ComponentType<SVGProps<SVGSVGElement>>; label: string }> = {
   pending: {
     color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
     icon: ClockIcon,
@@ -113,7 +75,7 @@ export default function OrderDetailPage() {
       setLoading(true);
       const data = await CustomerService.getOrderDetails(parseInt(orderId));
       setOrder(data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load order:', error);
       toast.error('Failed to load order details');
       router.push('/account/orders');
@@ -182,13 +144,13 @@ export default function OrderDetailPage() {
                 <div className="px-4 py-5 sm:p-6">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Order Items</h3>
                   <div className="space-y-4">
-                    {order.items.map((item) => (
+                    {(order.items || []).map((item) => (
                       <div key={item.id} className="flex items-start space-x-4 py-4 border-b border-gray-200 last:border-0">
                         {(() => {
-                          const sku = (item.product as any)?.sku;
+                          const sku = item.product?.sku;
                           const img = item.product
                             ? getProductImageUrl(
-                                (item.product as any).image_urls || (item.product as any).images || [],
+                                item.product.image_urls || item.product.images || [],
                                 getDefaultProductImageWithSku(sku)
                               )
                             : '';

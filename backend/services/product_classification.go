@@ -548,7 +548,7 @@ func categoryTypeMatchScore(pathNorm string, pathTokens []string, partType strin
 				matched++
 			}
 		}
-		if matched >= 2 || (len(typeSet) == 1 && len(typeNorm) >= 5 && pathSet[typeNorm]) {
+		if matched >= 2 {
 			return 20
 		}
 	}
@@ -986,6 +986,7 @@ func inferGenericCategoryInference(brand string, model string) ProductCategoryIn
 }
 
 func confirmedInference(brandKey, partType, categorySlug, matchRule, family string) ProductCategoryInference {
+	partType = CanonicalProductType(partType)
 	return ProductCategoryInference{
 		BrandKey:     brandKey,
 		BrandName:    CanonicalBrandName(brandKey),

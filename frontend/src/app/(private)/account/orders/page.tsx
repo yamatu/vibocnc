@@ -46,7 +46,7 @@ const paymentStatusColors: Record<string, string> = {
 
 export default function OrdersPage() {
   const router = useRouter();
-  const { isAuthenticated, customer } = useCustomer();
+  const { isAuthenticated } = useCustomer();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');

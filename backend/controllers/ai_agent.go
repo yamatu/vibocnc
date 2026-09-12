@@ -929,7 +929,26 @@ func requestAIAgentCompletion(ctx context.Context, setting *models.AIAgentSettin
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 	client := services.NewPublicHTTPClient(time.Duration(setting.TimeoutSeconds) * time.Second)
-	resp, err := client.Do(httpReq)
+	var resp *http.Response
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			httpReq.Body = io.NopCloser(bytes.NewReader(payload))
+		}
+		resp, err = client.Do(httpReq)
+		if err == nil && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			break
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if attempt < 2 {
+			select {
+			case <-time.After(time.Duration(200*(1<<attempt)) * time.Millisecond):
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+	}
 	if err != nil {
 		return "", err
 	}

@@ -124,7 +124,10 @@ export function getImageUrl(imagePath: string, fallback: string = '/images/place
 }
 
 // Get product primary image URL from image_urls array
-export function getProductImageUrl(imageUrls: string[] | any[] | any, fallback: string = '/images/placeholder.svg'): string {
+type ImageRecord = { url?: unknown; is_primary?: unknown };
+type ImageInput = string | ImageRecord | Array<string | ImageRecord> | null | undefined;
+
+export function getProductImageUrl(imageUrls: ImageInput, fallback: string = '/images/placeholder.svg'): string {
   // Handle null, undefined, or non-array values
   if (!imageUrls) return fallback;
 
@@ -161,8 +164,9 @@ export function getProductImageUrl(imageUrls: string[] | any[] | any, fallback: 
   }
 
   // If it's an array of objects (ProductImage[]), find primary image first
-  const primaryImage = imageUrls.find(img => img && img.is_primary);
-  const imageToUse = primaryImage || imageUrls[0];
+  const objectImages = imageUrls.filter((img): img is ImageRecord => typeof img === 'object' && img !== null);
+  const primaryImage = objectImages.find(img => Boolean(img.is_primary));
+  const imageToUse = primaryImage || objectImages[0];
 
   if (!imageToUse) return fallback;
 
@@ -179,7 +183,7 @@ export function getDefaultProductImageWithSku(sku?: string, fallback: string = '
 }
 
 // Get specific product image URL by index
-export function getProductImageUrlByIndex(imageUrls: string[] | any[] | any, index: number, fallback: string = '/images/placeholder.svg'): string {
+export function getProductImageUrlByIndex(imageUrls: ImageInput, index: number, fallback: string = '/images/placeholder.svg'): string {
   // Handle null, undefined, or non-array values
   if (!imageUrls) return fallback;
 
@@ -223,12 +227,12 @@ export function getProductImageUrlByIndex(imageUrls: string[] | any[] | any, ind
 }
 
 // Debounce function
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
+export function debounce<Args extends unknown[], Result>(
+  func: (...args: Args) => Result,
   wait: number
-): (...args: Parameters<T>) => void {
+): (...args: Args) => void {
   let timeout: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
+  return (...args: Args) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };
@@ -237,16 +241,16 @@ export function debounce<T extends (...args: any[]) => any>(
 // Deep clone object
 export function deepClone<T>(obj: T): T {
   if (obj === null || typeof obj !== 'object') return obj;
-  if (obj instanceof Date) return new Date(obj.getTime()) as any;
-  if (obj instanceof Array) return obj.map(item => deepClone(item)) as any;
+  if (obj instanceof Date) return new Date(obj.getTime()) as T;
+  if (obj instanceof Array) return obj.map(item => deepClone(item)) as T;
   if (typeof obj === 'object') {
-    const clonedObj = {} as any;
+    const clonedObj = {} as Record<string, unknown>;
     for (const key in obj) {
       if (obj.hasOwnProperty(key)) {
-        clonedObj[key] = deepClone(obj[key]);
+        clonedObj[key] = deepClone((obj as Record<string, unknown>)[key]);
       }
     }
-    return clonedObj;
+    return clonedObj as T;
   }
   return obj;
 }
