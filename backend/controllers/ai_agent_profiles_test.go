@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fanuc-backend/models"
 	"fanuc-backend/utils"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -182,6 +185,64 @@ func TestIsMissingAIAgentProfileIDError(t *testing.T) {
 	}
 	if isMissingAIAgentProfileIDError(nil) {
 		t.Fatal("nil error was treated as a missing column")
+	}
+}
+
+type flakyAIResponseBody struct {
+	readCount int
+}
+
+func (b *flakyAIResponseBody) Read(_ []byte) (int, error) {
+	b.readCount++
+	return 0, errors.New("http2: response body closed")
+}
+
+func (b *flakyAIResponseBody) Close() error { return nil }
+
+type flakyAITransport struct {
+	calls int
+}
+
+func (t *flakyAITransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.calls++
+	if t.calls == 1 {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       &flakyAIResponseBody{},
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"OK"}}]}`)),
+		Header:     make(http.Header),
+		Request:    req,
+	}, nil
+}
+
+func TestRequestAIAgentCompletionRetriesResponseBodyReadFailure(t *testing.T) {
+	transport := &flakyAITransport{}
+	client := &http.Client{Transport: transport}
+	setting := &models.AIAgentSetting{
+		BaseURL:        "https://provider.example/v1",
+		Model:          "test-model",
+		APIMode:        aiAgentAPIModeStandard,
+		TimeoutSeconds: 5,
+	}
+
+	reply, err := requestAIAgentCompletionWithClient(
+		context.Background(), setting, "test-key",
+		[]aiChatMessage{{Role: "user", Content: "ping"}}, 128, client,
+	)
+	if err != nil {
+		t.Fatalf("response body read failure should be retried: %v", err)
+	}
+	if reply != "OK" {
+		t.Fatalf("reply = %q, want OK", reply)
+	}
+	if transport.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2", transport.calls)
 	}
 }
 

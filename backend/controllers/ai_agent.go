@@ -914,6 +914,11 @@ func buildAIPricePreview(rows []aiPriceImportRow, products []models.Product) aiP
 }
 
 func requestAIAgentCompletion(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int) (string, error) {
+	client := services.NewPublicHTTPClient(time.Duration(setting.TimeoutSeconds) * time.Second)
+	return requestAIAgentCompletionWithClient(ctx, setting, apiKey, messages, maxTokens, client)
+}
+
+func requestAIAgentCompletionWithClient(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int, client *http.Client) (string, error) {
 	payload, err := json.Marshal(buildOpenAIChatRequest(setting, messages, maxTokens))
 	if err != nil {
 		return "", err
@@ -922,42 +927,52 @@ func requestAIAgentCompletion(ctx context.Context, setting *models.AIAgentSettin
 	if !strings.HasSuffix(endpoint, "/chat/completions") {
 		endpoint += "/chat/completions"
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("invalid AI provider URL: %w", err)
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-	client := services.NewPublicHTTPClient(time.Duration(setting.TimeoutSeconds) * time.Second)
-	var resp *http.Response
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			httpReq.Body = io.NopCloser(bytes.NewReader(payload))
+	const maxAttempts = 3
+	var body []byte
+	var statusCode int
+	var lastErr error
+
+	// Create and fully consume a fresh request on every attempt. A response body
+	// can be closed by an HTTP/2 peer or proxy after headers have arrived (for
+	// example, when a stream is reset). The old implementation only retried the
+	// request itself, so that transient read failure was returned immediately as
+	// "http2: response body closed". Retrying the complete request also avoids
+	// reusing a request body that net/http has already closed.
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		httpReq, requestErr := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+		if requestErr != nil {
+			return "", fmt.Errorf("invalid AI provider URL: %w", requestErr)
 		}
-		resp, err = client.Do(httpReq)
-		if err == nil && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		if attempt < 2 {
-			select {
-			case <-time.After(time.Duration(200*(1<<attempt)) * time.Millisecond):
-			case <-ctx.Done():
-				return "", ctx.Err()
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, requestErr := client.Do(httpReq)
+		if requestErr != nil {
+			lastErr = requestErr
+		} else {
+			statusCode = resp.StatusCode
+			body, lastErr = io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			// A complete response, including a normal 4xx response, is final.
+			// Only retry provider/server failures or a failed body read.
+			if lastErr == nil && statusCode < 500 && statusCode != http.StatusTooManyRequests {
+				break
 			}
 		}
+
+		if attempt == maxAttempts-1 {
+			break
+		}
+		select {
+		case <-time.After(time.Duration(200*(1<<attempt)) * time.Millisecond):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
-	if err != nil {
-		return "", err
+	if lastErr != nil {
+		return "", fmt.Errorf("could not read AI provider response: %w", lastErr)
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return "", fmt.Errorf("could not read AI provider response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if statusCode < 200 || statusCode >= 300 {
 		return "", fmt.Errorf("AI provider returned an error: %s", truncateRunes(string(body), 900))
 	}
 	var providerResponse openAIChatResponse
