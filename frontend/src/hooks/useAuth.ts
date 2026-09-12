@@ -6,6 +6,7 @@ import { AuthService } from '@/services';
 import { useAuthStore } from '@/store/auth.store';
 import { queryKeys } from '@/lib/react-query';
 import { AdminUser, LoginRequest } from '@/types';
+import { getErrorMessage } from '@/lib/errors';
 
 // Hook for getting current user profile
 export function useProfile() {
@@ -46,8 +47,8 @@ export function useLogin() {
       const redirect = searchParams.get('redirect') || '/admin';
       router.push(redirect);
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.message || error.message || 'Login failed';
+    onError: (error: unknown) => {
+      const message = getErrorMessage(error, 'Login failed');
       setError(message);
       setLoading(false);
       toast.error(message);
@@ -91,8 +92,8 @@ export function useUpdateProfile() {
       
       toast.success('Profile updated successfully');
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.message || 'Failed to update profile';
+    onError: (error: unknown) => {
+      const message = getErrorMessage(error, 'Failed to update profile');
       toast.error(message);
     },
   });
@@ -109,8 +110,8 @@ export function useChangePassword() {
     onSuccess: () => {
       toast.success('Password changed successfully');
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.message || 'Failed to change password';
+    onError: (error: unknown) => {
+      const message = getErrorMessage(error, 'Failed to change password');
       toast.error(message);
     },
   });

@@ -137,19 +137,21 @@ export default function AdminLoginPage() {
               {isSubmitting || loginMutation.isPending ? (
                 <div className="flex items-center">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  {t('admin.login.signingIn', 'Signing in...')}
+                  {String(t('admin.login.signingIn', 'Signing in...'))}
                 </div>
               ) : (
-                t('admin.login.signIn', 'Sign in')
+                String(t('admin.login.signIn', 'Sign in'))
               )}
             </button>
           </form>
 
           {/* Error Message */}
-          {loginMutation.error && (
+          {Boolean(loginMutation.error) && (
             <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-600">
-                {loginMutation.error.message || t('admin.login.failed', 'Login failed. Please try again.')}
+                {loginMutation.error instanceof Error
+                  ? String(loginMutation.error.message)
+                  : String(t('admin.login.failed', 'Login failed. Please try again.'))}
               </p>
             </div>
           )}

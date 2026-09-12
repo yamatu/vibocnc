@@ -24,6 +24,8 @@ import { queryKeys } from '@/lib/react-query';
 import { useAdminI18n } from '@/lib/admin-i18n';
 import { useAuth } from '@/hooks/useAuth';
 import type { CategoryDeletionImpact } from '@/services/category.service';
+import type { Category, CategoryCreateRequest } from '@/types';
+import { getErrorMessage } from '@/lib/errors';
 
 // Categories data now comes from API only
 
@@ -33,9 +35,9 @@ export default function AdminCategoriesPage() {
   const isAdmin = user?.role === 'admin';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [deletionCategory, setDeletionCategory] = useState<any>(null);
+  const [deletionCategory, setDeletionCategory] = useState<Category | null>(null);
   const [deletionTargetId, setDeletionTargetId] = useState('');
   const [seoJobCategoryId, setSeoJobCategoryId] = useState<number | null>(null);
   const [titleJobCategoryId, setTitleJobCategoryId] = useState<number | null>(null);
@@ -63,7 +65,7 @@ export default function AdminCategoriesPage() {
 
   // Create category mutation
   const createCategoryMutation = useMutation({
-    mutationFn: (data: any) => CategoryService.createCategory(data),
+    mutationFn: (data: CategoryCreateRequest) => CategoryService.createCategory(data),
     onSuccess: () => {
       toast.success(t('categories.toast.created', 'Category created successfully!'));
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.lists() });
@@ -71,14 +73,14 @@ export default function AdminCategoriesPage() {
       closeDrawer();
       setFormData({ name: '', description: '', parent_id: '', sort_order: 0, is_active: true });
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('categories.toast.createFailed', 'Failed to create category'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('categories.toast.createFailed', 'Failed to create category')));
     },
   });
 
   // Update category mutation
   const updateCategoryMutation = useMutation({
-    mutationFn: (payload: { id: number; data: any }) => CategoryService.updateCategory(payload.id, payload.data),
+    mutationFn: (payload: { id: number; data: Partial<CategoryCreateRequest> }) => CategoryService.updateCategory(payload.id, payload.data),
     onSuccess: () => {
       toast.success(t('categories.toast.updated', 'Category updated successfully!'));
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.lists() });
@@ -86,8 +88,8 @@ export default function AdminCategoriesPage() {
       closeDrawer();
       setFormData({ name: '', description: '', parent_id: '', sort_order: 0, is_active: true });
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('categories.toast.updateFailed', 'Failed to update category'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('categories.toast.updateFailed', 'Failed to update category')));
     },
   });
 
@@ -103,14 +105,14 @@ export default function AdminCategoriesPage() {
       setDeletionCategory(null);
       setDeletionTargetId('');
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('categories.toast.deleteFailed', 'Failed to delete category'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('categories.toast.deleteFailed', 'Failed to delete category')));
     },
   });
 
   const deletionImpactQuery = useQuery<CategoryDeletionImpact>({
     queryKey: ['categories', 'deletion-impact', deletionCategory?.id],
-    queryFn: () => CategoryService.getDeletionImpact(Number(deletionCategory.id)),
+    queryFn: () => CategoryService.getDeletionImpact(Number(deletionCategory?.id)),
     enabled: Boolean(deletionCategory?.id),
     retry: 1,
   });
@@ -133,7 +135,7 @@ export default function AdminCategoriesPage() {
     setDrawerOpen(true);
   };
 
-  const openEdit = (category: any) => {
+  const openEdit = (category: Category) => {
     setEditingCategory(category);
     setDrawerOpen(true);
   };
@@ -144,14 +146,14 @@ export default function AdminCategoriesPage() {
   };
 
   const categoryById = useMemo(() => {
-    const m = new Map<number, any>();
-    for (const c of categoriesData as any[]) m.set(Number(c.id), c);
+    const m = new Map<number, Category>();
+    for (const c of categoriesData) m.set(Number(c.id), c);
     return m;
   }, [categoriesData]);
 
   const sortedCategories = useMemo(() => {
     const list = Array.isArray(categoriesData) ? [...categoriesData] : [];
-    list.sort((a: any, b: any) => {
+    list.sort((a: Category, b: Category) => {
       const ao = Number(a.sort_order ?? 0);
       const bo = Number(b.sort_order ?? 0);
       if (ao !== bo) return ao - bo;
@@ -162,7 +164,7 @@ export default function AdminCategoriesPage() {
 
   const filteredCategories = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return sortedCategories.filter((category: any) => {
+    return sortedCategories.filter((category: Category) => {
       const matchesSearch =
         !q ||
         category.name?.toLowerCase().includes(q) ||
@@ -178,14 +180,14 @@ export default function AdminCategoriesPage() {
   const parentOptions = useMemo(() => {
     const list = Array.isArray(categoriesData) ? [...categoriesData] : [];
     // Build tree for select labels
-    const byParent = new Map<number | null, any[]>();
+    const byParent = new Map<number | null, Category[]>();
     for (const c of list) {
-      const pid = (c as any).parent_id ?? null;
+      const pid = c.parent_id ?? null;
       if (!byParent.has(pid)) byParent.set(pid, []);
       byParent.get(pid)!.push(c);
     }
 
-    const sort = (a: any, b: any) => {
+    const sort = (a: Category, b: Category) => {
       const ao = Number(a.sort_order ?? 0);
       const bo = Number(b.sort_order ?? 0);
       if (ao !== bo) return ao - bo;
@@ -214,11 +216,10 @@ export default function AdminCategoriesPage() {
   const normalizeSortMutation = useMutation({
     mutationFn: async () => {
       for (let i = 0; i < sortedCategories.length; i++) {
-        const c: any = sortedCategories[i];
+        const c = sortedCategories[i];
         const desired = i + 1;
         if (Number(c.sort_order ?? 0) === desired) continue;
-        // eslint-disable-next-line no-await-in-loop
-        await CategoryService.updateCategory(c.id, { sort_order: desired } as any);
+        await CategoryService.updateCategory(c.id, { sort_order: desired });
       }
     },
     onSuccess: () => {
@@ -231,14 +232,14 @@ export default function AdminCategoriesPage() {
     },
   });
 
-  const handleDelete = (category: any) => {
+  const handleDelete = (category: Category) => {
     setDeletionCategory(category);
     setDeletionTargetId('');
   };
 
   // Per-category AI SEO run: focuses on titles/meta and re-optimizes already
   // optimized products so a category can be polished after reclassification.
-  const startCategorySEOJob = async (category: any) => {
+  const startCategorySEOJob = async (category: Category) => {
     const message = locale === 'zh'
       ? `对「${category.name}」分类（含子分类）启动 AI SEO 优化任务？将优化产品标题和 SEO 元信息，已优化过的产品也会重新处理。`
       : `Start an AI SEO job for "${category.name}" (including subcategories)? Product titles and SEO metadata are optimized; already-optimized products are re-processed.`;
@@ -257,8 +258,8 @@ export default function AdminCategoriesPage() {
       toast.success(locale === 'zh'
         ? `已为「${category.name}」启动 SEO 任务（${job.total} 个产品），可到 AI SEO 页面查看进度`
         : `SEO job started for "${category.name}" (${job.total} products) — track it on the AI SEO page`);
-    } catch (error: any) {
-      toast.error(error?.message || (locale === 'zh' ? '启动 SEO 任务失败' : 'Failed to start the SEO job'));
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '启动 SEO 任务失败' : 'Failed to start the SEO job'));
     } finally {
       setSeoJobCategoryId(null);
     }
@@ -266,7 +267,7 @@ export default function AdminCategoriesPage() {
 
   // Per-category title standardization: renames verified products in this
   // subtree to "Brand Model Type" in paged batches.
-  const standardizeCategoryTitles = async (category: any) => {
+  const standardizeCategoryTitles = async (category: Category) => {
     const message = locale === 'zh'
       ? `将「${category.name}」分类（含子分类）下可核验产品的标题统一为「品牌 型号 类型」？URL 不受影响。`
       : `Rename verifiable products under "${category.name}" (including subcategories) to "Brand Model Type"? URLs are unchanged.`;
@@ -294,8 +295,8 @@ export default function AdminCategoriesPage() {
       toast.success(locale === 'zh'
         ? `「${category.name}」标题规范化完成：检查 ${processed} 个产品，重命名 ${updated} 个`
         : `Titles standardized for "${category.name}": ${processed} checked, ${updated} renamed`);
-    } catch (error: any) {
-      toast.error(error?.message || (locale === 'zh' ? '标题规范化失败' : 'Title standardization failed'));
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '标题规范化失败' : 'Title standardization failed'));
     } finally {
       setTitleJobCategoryId(null);
     }
@@ -340,7 +341,8 @@ export default function AdminCategoriesPage() {
         parent_id: formData.parent_id ? Number(formData.parent_id) : null,
         sort_order: Number(formData.sort_order) || 0,
         is_active: formData.is_active,
-      } as any);
+        image_url: '',
+      });
     }
   };
 
@@ -791,7 +793,15 @@ export default function AdminCategoriesPage() {
                         <h3 className="text-sm font-semibold text-gray-900">{locale === 'zh' ? '子分类' : 'Child categories'}</h3>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {deletionImpactQuery.data.direct_children.map((child) => (
-                            <button key={child.id} type="button" onClick={() => { setDeletionCategory(null); openEdit(categoryById.get(child.id) || child); }} className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{child.name}</button>
+                            <button key={child.id} type="button" onClick={() => { setDeletionCategory(null); openEdit(categoryById.get(child.id) || {
+                            ...child,
+                            description: '',
+                            image_url: '',
+                            sort_order: 0,
+                            is_active: true,
+                            created_at: '',
+                            updated_at: '',
+                          } as Category); }} className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{child.name}</button>
                           ))}
                         </div>
                       </div>

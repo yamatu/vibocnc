@@ -2,15 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
+import type { PayPalScriptOptions } from '@paypal/paypal-js';
 import { toast } from 'react-hot-toast';
 import { PayPalService } from '@/services';
 
 interface PayPalCheckoutProps {
   amount: number;
   currency?: string;
-  onSuccess: (details: any) => void;
-  onError: (error: any) => void;
+  onSuccess: (details: PayPalPaymentDetails) => void;
+  onError: (error: unknown) => void;
   disabled?: boolean;
+}
+
+export interface PayPalPaymentDetails {
+  orderID: string;
+  payerID?: string;
+  details: unknown;
 }
 
 type PayPalPublicConfig = {
@@ -61,8 +68,8 @@ function PayPalButtonsWrapper({ amount, currency = 'USD', onSuccess, onError, di
 
           // Call success handler with PayPal order details
           onSuccess({
-            orderID: data.orderID,
-            payerID: data.payerID,
+            orderID: data.orderID || '',
+            payerID: data.payerID || undefined,
             details: orderDetails,
           });
         } catch (error) {
@@ -106,8 +113,8 @@ export default function PayPalCheckout(props: PayPalCheckoutProps) {
       try {
         const cfg = await PayPalService.getPublicConfig();
         if (!alive) return;
-        setConfig(cfg as any);
-      } catch (e: any) {
+        setConfig(cfg);
+      } catch (e: unknown) {
         if (!alive) return;
         console.error('Failed to load PayPal config:', e);
         setConfig({ enabled: false, mode: 'sandbox', client_id: '', currency: 'USD' });
@@ -121,16 +128,17 @@ export default function PayPalCheckout(props: PayPalCheckoutProps) {
   }, []);
 
   const options = useMemo(() => {
-    const clientId = config?.client_id || '';
+      const clientId = config?.client_id || '';
     const cur = (currency || config?.currency || 'USD').toUpperCase();
-    return {
-      'client-id': clientId,
+    const options: PayPalScriptOptions = {
+      clientId,
       currency: cur,
       intent: 'capture',
       components: 'buttons',
-      'enable-funding': 'venmo,paylater',
-      'disable-funding': 'credit,card',
-    } as any;
+      enableFunding: 'venmo,paylater',
+      disableFunding: 'credit,card',
+    };
+    return options;
   }, [config?.client_id, config?.currency, currency]);
 
   // Keep hooks unconditional when the amount changes during checkout.

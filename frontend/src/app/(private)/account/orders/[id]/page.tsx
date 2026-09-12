@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ComponentType, type SVGProps } from 'react';
+import { useCallback, useEffect, useState, type ComponentType, type SVGProps } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -59,18 +59,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login?returnUrl=/account/orders');
-      return;
-    }
-
-    if (orderId) {
-      loadOrder();
-    }
-  }, [isAuthenticated, orderId, router]);
-
-  const loadOrder = async () => {
+  const loadOrder = useCallback(async () => {
     try {
       setLoading(true);
       const data = await CustomerService.getOrderDetails(parseInt(orderId));
@@ -82,7 +71,18 @@ export default function OrderDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [orderId, router]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/login?returnUrl=/account/orders');
+      return;
+    }
+
+    if (orderId) {
+      void loadOrder();
+    }
+  }, [isAuthenticated, orderId, router, loadOrder]);
 
   if (!isAuthenticated) {
     return null;

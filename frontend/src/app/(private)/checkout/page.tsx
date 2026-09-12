@@ -17,6 +17,8 @@ import PayPalCheckout from '@/components/checkout/PayPalCheckout';
 import OrderSummary from '@/components/checkout/OrderSummary';
 import CheckoutForm from '@/components/checkout/CheckoutForm';
 import { Order } from '@/types';
+import type { PayPalPaymentDetails } from '@/components/checkout/PayPalCheckout';
+import { getErrorMessage } from '@/lib/errors';
 
 import {
   CreditCardIcon,
@@ -74,7 +76,7 @@ export default function CheckoutPage() {
   const shippingCountry = watch('shipping_country');
   const [sameAsShipping, setSameAsShipping] = useState(false);
 
-  const totalWeightKg = items.reduce((sum, it) => sum + (Number((it.product as any).weight || 0) * Number(it.quantity || 0)), 0);
+  const totalWeightKg = items.reduce((sum, it) => sum + (Number(it.product.weight || 0) * Number(it.quantity || 0)), 0);
 
   // Check authentication - redirect to login if not authenticated
   useEffect(() => {
@@ -105,7 +107,7 @@ export default function CheckoutPage() {
           ShippingRateService.publicFreeShippingCountries().catch(() => []),
         ]);
         if (!alive) return;
-        setShippingCountries(countries as any);
+        setShippingCountries(countries);
         setFreeShippingCountryCodes(freeCountries.map((c) => c.country_code));
       } catch {
         if (!alive) return;
@@ -188,14 +190,14 @@ export default function CheckoutPage() {
       setCurrentOrder(order);
       setStep('payment');
       toast.success('Order created successfully! Please complete payment.');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to create order');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to create order'));
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handlePaymentSuccess = async (paymentData: any) => {
+  const handlePaymentSuccess = async (paymentData: PayPalPaymentDetails) => {
     if (!currentOrder) return;
 
     setIsProcessing(true);
@@ -203,7 +205,7 @@ export default function CheckoutPage() {
     try {
       await OrderService.processPayment(currentOrder.id, {
         payment_method: 'paypal',
-        payment_data: paymentData,
+        payment_data: { ...paymentData },
       });
 
       // Mark success first to avoid empty-cart redirect effect.
@@ -212,14 +214,14 @@ export default function CheckoutPage() {
 
       toast.success('Payment completed. Redirecting to your orders...');
       router.replace('/account/orders');
-    } catch (error: any) {
-      toast.error(error.message || 'Payment processing failed');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Payment processing failed'));
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handlePaymentError = (error: any) => {
+  const handlePaymentError = (error: unknown) => {
     console.error('Payment error:', error);
     toast.error('Payment failed. Please try again.');
   };

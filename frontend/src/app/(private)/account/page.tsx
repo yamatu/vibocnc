@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'react-hot-toast';
@@ -18,8 +18,20 @@ import {
 export default function AccountPage() {
   const router = useRouter();
   const { customer, isAuthenticated, logout, checkAuth } = useCustomer();
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Awaited<ReturnType<typeof CustomerService.getMyOrders>>>([]);
   const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    try {
+      const ordersData = await CustomerService.getMyOrders();
+      setOrders(ordersData || []);
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      // Don't show error toast, just log it
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -33,20 +45,8 @@ export default function AccountPage() {
       await loadData();
     };
 
-    initialize();
-  }, [isAuthenticated, router]);
-
-  const loadData = async () => {
-    try {
-      const ordersData = await CustomerService.getMyOrders();
-      setOrders(ordersData || []);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-      // Don't show error toast, just log it
-    } finally {
-      setLoading(false);
-    }
-  };
+    void initialize();
+  }, [checkAuth, isAuthenticated, loadData, router]);
 
   const handleLogout = () => {
     logout();

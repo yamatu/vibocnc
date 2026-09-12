@@ -17,7 +17,8 @@ import ShippingQuoteCalculator from '@/components/admin/ShippingQuoteCalculator'
 import TranslationEditor from '@/components/admin/TranslationEditor';
 import { ProductService, CategoryService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
-import { ProductCreateRequest } from '@/types';
+import { ProductCreateRequest, type Product, type Category } from '@/types';
+import { getErrorMessage } from '@/lib/errors';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
 interface ProductFormData extends Omit<ProductCreateRequest, 'images'> {
@@ -144,8 +145,8 @@ export default function EditProductPage() {
         router.push(returnTo);
       }
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('products.toast.updateFailed', 'Failed to update product'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.toast.updateFailed', 'Failed to update product')));
     },
   });
 
@@ -155,21 +156,21 @@ export default function EditProductPage() {
       setValue('name', product.name);
       setValue('sku', product.sku);
       setValue('description', product.description || '');
-      setValue('meta_title', (product as any).meta_title || '');
-      setValue('meta_description', (product as any).meta_description || '');
-      setValue('meta_keywords', (product as any).meta_keywords || '');
-      setValue('disable_auto_seo', toBooleanFlag((product as any).disable_auto_seo));
+      setValue('meta_title', product.meta_title || '');
+      setValue('meta_description', product.meta_description || '');
+      setValue('meta_keywords', product.meta_keywords || '');
+      setValue('disable_auto_seo', toBooleanFlag(product.disable_auto_seo));
       setValue('price', product.price);
       setValue('category_id', product.category_id);
       setValue('is_active', product.is_active);
       setValue('is_featured', product.is_featured);
       setValue('stock_quantity', product.stock_quantity);
-      setValue('weight', (product as any).weight ?? undefined);
-      setValue('brand' as any, (product as any).brand || '');
+      setValue('weight', product.weight ?? undefined);
+      setValue('brand', product.brand || '');
       setValue('model', product.model || product.sku);
-      setValue('part_number' as any, (product as any).part_number || product.sku);
-      setValue('warranty_period' as any, (product as any).warranty_period || '12 months');
-      setValue('lead_time' as any, (product as any).lead_time || '3-7 days');
+      setValue('part_number', product.part_number || product.sku);
+      setValue('warranty_period', product.warranty_period || '12 months');
+      setValue('lead_time', product.lead_time || '3-7 days');
 	  setValue('translations', (product.translations || []).map((translation) => ({
 		language_code: translation.language_code,
 		name: translation.name,
@@ -184,10 +185,10 @@ export default function EditProductPage() {
       try {
         let urls: string[] = [];
         if (product.image_urls && Array.isArray(product.image_urls)) {
-          urls = product.image_urls as any;
-        } else if (product.image_urls && typeof (product as any).image_urls === 'string') {
+          urls = product.image_urls;
+        } else if (product.image_urls && typeof product.image_urls === 'string') {
           // Some admin endpoints may return JSON string; parse it
-          const parsed = JSON.parse((product as any).image_urls || '[]');
+          const parsed = JSON.parse(product.image_urls || '[]');
           if (Array.isArray(parsed)) urls = parsed;
         }
 
@@ -199,9 +200,9 @@ export default function EditProductPage() {
             sort_order: index,
           }));
           setImages(imageObjects);
-        } else if ((product as any).images) {
+        } else if (product.images) {
           // Fallback: old API shape
-          setImages((product as any).images || []);
+          setImages(product.images);
         } else {
           setImages([]);
         }
@@ -221,7 +222,7 @@ export default function EditProductPage() {
         // Try backend images list (reads JSON image_urls and maps to array)
         const list = await ProductService.getProductImages(productId);
         if (Array.isArray(list) && list.length > 0) {
-          const normalized = list.map((img: any, i: number) => ({
+          const normalized = list.map((img, i: number) => ({
             url: img.url,
             alt_text: img.alt_text || '',
             is_primary: !!img.is_primary || i === 0,
@@ -235,13 +236,13 @@ export default function EditProductPage() {
       }
     };
     fetchImagesIfMissing();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [productId, product]);
   const onSubmit = async (data: ProductFormData) => {
     try {
       // Validate category matches one from server
       const catId = Number(data.category_id);
-      const hasValidCategory = Array.isArray(categories) && categories.some((c: any) => Number(c.id) === catId);
+      const hasValidCategory = Array.isArray(categories) && categories.some((c: Category) => Number(c.id) === catId);
       if (!catId || !hasValidCategory) {
         toast.error(t('products.toast.categoryInvalid', locale === 'zh' ? '请选择有效的分类' : 'Please select a valid category'));
         return;
@@ -260,10 +261,10 @@ export default function EditProductPage() {
       }));
 
       const weightNum = data.weight ? Number(data.weight) : undefined;
-		const existing = product as any;
+		const existing: Product = product;
 
 		const attrs = Array.isArray(existing.attributes)
-			? existing.attributes.map((a: any, i: number) => ({
+			? existing.attributes.map((a, i: number) => ({
 				attribute_name: a.attribute_name,
 				attribute_value: a.attribute_value,
 				sort_order: typeof a.sort_order === 'number' ? a.sort_order : i,
@@ -283,18 +284,18 @@ export default function EditProductPage() {
 			stock_quantity: Number(data.stock_quantity),
 			weight: weightNum,
 			dimensions: existing.dimensions || '',
-			brand: ((data as any).brand || '').trim(),
+			brand: (data.brand || '').trim(),
 			model: (data.model || data.sku).trim(),
-			part_number: ((data as any).part_number || data.sku).trim(),
-			warranty_period: ((data as any).warranty_period || '12 months').trim(),
-			lead_time: ((data as any).lead_time || '3-7 days').trim(),
+			part_number: (data.part_number || data.sku).trim(),
+			warranty_period: (data.warranty_period || '12 months').trim(),
+			lead_time: (data.lead_time || '3-7 days').trim(),
 			category_id: catId,
 			is_active: data.is_active,
 			is_featured: data.is_featured,
 			meta_title: data.meta_title || '',
 			meta_description: data.meta_description || '',
 			meta_keywords: data.meta_keywords || '',
-			disable_auto_seo: toBooleanFlag((data as any).disable_auto_seo),
+			disable_auto_seo: toBooleanFlag(data.disable_auto_seo),
 			images: imageReqs,
 			attributes: attrs,
 			translations: trans,
@@ -340,14 +341,14 @@ export default function EditProductPage() {
 
   const handleResetSeoToDefault = () => {
     const categoryName =
-      categories.find((item: any) => Number(item.id) === Number(watch('category_id')))?.name ||
+      categories.find((item: Category) => Number(item.id) === Number(watch('category_id')))?.name ||
       product.category?.name ||
       '';
     const defaults = buildDefaultSeoValues({
       name: watch('name') || product.name,
       sku: watch('sku') || product.sku,
-      brand: (watch('brand' as any) as string) || (product as any).brand,
-      partNumber: (watch('part_number' as any) as string) || (product as any).part_number,
+      brand: watch('brand') || product.brand,
+      partNumber: watch('part_number') || product.part_number,
       categoryName,
     });
 
@@ -456,9 +457,9 @@ export default function EditProductPage() {
 					/>
 					<CategoryCombobox
 						categories={Array.isArray(categories) ? categories : []}
-						value={watch('category_id') as any}
+						value={watch('category_id')}
 						onChange={(categoryId) =>
-							setValue('category_id', categoryId as any, { shouldDirty: true, shouldValidate: true })
+							setValue('category_id', categoryId, { shouldDirty: true, shouldValidate: true })
 						}
 						placeholder={t('products.placeholder.category', locale === 'zh' ? '输入搜索分类（名称 / 路径 / slug）' : 'Type to search categories (name / path / slug)')}
 					/>
@@ -505,7 +506,7 @@ export default function EditProductPage() {
 						{locale === 'zh' ? '品牌' : 'Brand'}
 					</label>
 					<input
-						{...register('brand' as any)}
+						{...register('brand')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
 						placeholder={locale === 'zh' ? '例如：FANUC、Allen-Bradley、Siemens' : 'e.g., FANUC, Allen-Bradley, Siemens'}
@@ -529,7 +530,7 @@ export default function EditProductPage() {
 						{locale === 'zh' ? '零件号' : 'Part Number'}
 					</label>
 					<input
-						{...register('part_number' as any)}
+						{...register('part_number')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
 						placeholder={locale === 'zh' ? '例如：A02B-0120-C041' : 'e.g., A02B-0120-C041'}
@@ -541,7 +542,7 @@ export default function EditProductPage() {
 						{locale === 'zh' ? '质保期' : 'Warranty Period'}
 					</label>
 					<input
-						{...register('warranty_period' as any)}
+						{...register('warranty_period')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
 						placeholder={locale === 'zh' ? '例如：12 months' : 'e.g., 12 months'}
@@ -553,7 +554,7 @@ export default function EditProductPage() {
 						{locale === 'zh' ? '交货期' : 'Lead Time'}
 					</label>
 					<input
-						{...register('lead_time' as any)}
+						{...register('lead_time')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
 						placeholder={locale === 'zh' ? '例如：3-7 days' : 'e.g., 3-7 days'}
@@ -577,7 +578,7 @@ export default function EditProductPage() {
 		  <ShippingQuoteCalculator
 			weightKg={watchedWeight}
 			price={watchedPrice}
-			onSetPrice={(nextPrice) => setValue('price', nextPrice as any, { shouldDirty: true, shouldValidate: true })}
+			onSetPrice={(nextPrice) => setValue('price', nextPrice, { shouldDirty: true, shouldValidate: true })}
 		  />
 
           {/* SEO Basic Information */}

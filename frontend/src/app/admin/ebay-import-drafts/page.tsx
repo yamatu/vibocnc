@@ -161,7 +161,7 @@ function EbayImportDraftsContent() {
         }
       }, 1500);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [locale, stopPolling]
   );
 

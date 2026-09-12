@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { getErrorMessage } from '@/lib/errors';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -68,7 +69,7 @@ export default function AccountProfilePage() {
 
   useEffect(() => {
     profileForm.reset(defaults);
-  }, [defaults]);
+  }, [defaults, profileForm]);
 
   const passwordForm = useForm<PasswordForm>({
     resolver: yupResolver(passwordSchema),
@@ -93,10 +94,10 @@ export default function AccountProfilePage() {
     setSavingProfile(true);
     try {
       const updated = await CustomerService.updateProfile(data);
-      updateCustomer(updated as any);
+      updateCustomer(updated);
       toast.success('Profile updated');
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to update profile');
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, 'Failed to update profile'));
     } finally {
       setSavingProfile(false);
     }
@@ -111,8 +112,8 @@ export default function AccountProfilePage() {
       });
       passwordForm.reset({ old_password: '', new_password: '', confirm_password: '' });
       toast.success('Password updated');
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to change password');
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e, 'Failed to change password'));
     } finally {
       setSavingPassword(false);
     }

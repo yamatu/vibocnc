@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { Combobox } from '@headlessui/react';
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid';
@@ -137,20 +137,20 @@ export default function ShippingQuoteCalculator(props: {
 		return () => {
 			alive = false;
 		};
-	}, [countryCode, w, carrier, serviceCode]);
+	}, [countryCode, w, carrier, serviceCode, locale, t]);
 
 	const shippingFee = Number(quote?.shipping_fee || 0);
 	const billingWeightKg = Number((quote as any)?.billing_weight_kg || (quote as any)?.billingWeight || 0);
 
-	const calcNextPrice = (nextFee: number) => {
+	const calcNextPrice = useCallback((nextFee: number) => {
 		const base = Number(price || 0) - Number(appliedFee || 0);
 		return Number((base + Number(nextFee || 0)).toFixed(2));
-	};
+	}, [appliedFee, price]);
 
 	const nextPriceWithShipping = useMemo(() => {
 		return calcNextPrice(shippingFee);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [shippingFee, appliedFee, price]);
+		 
+	}, [calcNextPrice, shippingFee]);
 
 	useEffect(() => {
 		if (!autoApply) return;
@@ -161,7 +161,7 @@ export default function ShippingQuoteCalculator(props: {
 		const nextPrice = calcNextPrice(shippingFee);
 		onSetPrice(nextPrice);
 		setAppliedFee(shippingFee);
-	}, [autoApply, quote, shippingFee, onSetPrice, price, appliedFee, countryCode, w]);
+	}, [autoApply, quote, shippingFee, onSetPrice, price, appliedFee, countryCode, w, calcNextPrice]);
 
 	return (
 		<div className="bg-white shadow rounded-lg p-6">

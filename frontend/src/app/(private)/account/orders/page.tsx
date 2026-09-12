@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'react-hot-toast';
@@ -25,7 +25,7 @@ interface Order {
   tracking_number?: string;
   shipping_carrier?: string;
   created_at: string;
-  items?: any[];
+  items?: Array<{ id: number; product_id: number; quantity: number; unit_price: number; total_price: number }>;
 }
 
 const statusColors: Record<string, string> = {
@@ -52,27 +52,27 @@ export default function OrdersPage() {
   const [filter, setFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
+  const loadOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await CustomerService.getMyOrders();
+      setOrders(data || []);
+    } catch (error: unknown) {
+      console.error('Failed to load orders:', error);
+      toast.error('Failed to load orders');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/login?returnUrl=/account/orders');
       return;
     }
 
-    loadOrders();
-  }, [isAuthenticated, router]);
-
-  const loadOrders = async () => {
-    try {
-      setLoading(true);
-      const data = await CustomerService.getMyOrders();
-      setOrders(data || []);
-    } catch (error: any) {
-      console.error('Failed to load orders:', error);
-      toast.error('Failed to load orders');
-    } finally {
-      setLoading(false);
-    }
-  };
+    void loadOrders();
+  }, [isAuthenticated, router, loadOrders]);
 
   const filteredOrders = orders.filter(order => {
     const matchesFilter = filter === 'all' || order.status === filter;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import AdminLayout from '@/components/admin/AdminLayout';
 import {
@@ -32,14 +32,10 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  useEffect(() => {
-    loadCustomers();
-  }, [page, searchTerm, statusFilter]);
-
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     try {
       setLoading(true);
-      const params: any = { page, page_size: 20 };
+      const params: Record<string, string | number> = { page, page_size: 20 };
       if (searchTerm) params.search = searchTerm;
       if (statusFilter !== 'all') params.status = statusFilter;
 
@@ -55,7 +51,11 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [locale, page, searchTerm, statusFilter, t]);
+
+  useEffect(() => {
+    void loadCustomers();
+  }, [loadCustomers]);
 
   const toggleCustomerStatus = async (customerId: number, currentStatus: boolean) => {
     try {

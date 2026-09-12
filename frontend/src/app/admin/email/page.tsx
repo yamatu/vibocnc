@@ -8,7 +8,8 @@ import { toast } from 'react-hot-toast';
 import { buildEmailHtml, defaultModule, type EmailModule, type EmailModuleType } from '@/lib/email-templates';
 import { useAdminI18n } from '@/lib/admin-i18n';
 import { useAuth } from '@/hooks/useAuth';
-import type { EmailSettings } from '@/services/email.service';
+import type { EmailSettings, ResendWebhook } from '@/services/email.service';
+import { getErrorMessage } from '@/lib/errors';
 
 type Tab = 'mailbox' | 'settings' | 'send' | 'marketing' | 'webhooks';
 
@@ -85,7 +86,7 @@ export default function AdminEmailPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload: any = {
+      const payload: Partial<EmailSettings> & Record<string, unknown> = {
         enabled: Boolean(form.enabled),
         provider: form.provider || 'smtp',
         from_name: String(form.from_name || ''),
@@ -133,9 +134,9 @@ export default function AdminEmailPage() {
       await qc.invalidateQueries({ queryKey: ['email'] });
       await qc.invalidateQueries({ queryKey: ['public', 'email'] });
       refetch();
-      setForm((p: any) => ({ ...p, smtp_password: '', resend_api_key: '', resend_webhook_secret: '', alimail_client_secret: '' }));
+      setForm((p) => ({ ...p, smtp_password: '', resend_api_key: '', resend_webhook_secret: '', alimail_client_secret: '' }));
     },
-    onError: (e: any) => toast.error(e?.message || t('common.saveFailed', locale === 'zh' ? '保存失败' : 'Failed to save')),
+    onError: (e: unknown) => toast.error(getErrorMessage(e, t('common.saveFailed', locale === 'zh' ? '保存失败' : 'Failed to save'))),
   });
 
   const [testTo, setTestTo] = useState('');
@@ -154,19 +155,13 @@ export default function AdminEmailPage() {
   const [mk, setMk] = useState({ subject: '', html: '', text: '', test_to: '', limit: 100 });
   const [single, setSingle] = useState({ to: '', subject: '', html: '', text: '' });
 
-  useEffect(() => {
-    const subject = mk.subject || 'Vibocnc Updates';
-    const built = buildEmailHtml(subject, modules);
-    setMk((p) => ({ ...p, html: built.html, text: built.text }));
-    setSingle((p) => ({ ...p, html: built.html, text: built.text }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
 
   useEffect(() => {
     const subject = mk.subject || 'Vibocnc Updates';
     const built = buildEmailHtml(subject, modules);
     setMk((p) => ({ ...p, html: built.html, text: p.text ? p.text : built.text }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [modules, mk.subject]);
 
   const singleSendMutation = useMutation({
@@ -942,7 +937,7 @@ export default function AdminEmailPage() {
                 </button>
               </div>
               <div className="mt-3 space-y-2">
-                {(webhooksQuery.data?.data || webhooksQuery.data || []).map((wh: any) => (
+                {(Array.isArray(webhooksQuery.data) ? webhooksQuery.data : (webhooksQuery.data?.data || webhooksQuery.data?.webhooks || [])).map((wh: ResendWebhook) => (
                   <div key={wh.id} className="rounded-md border border-gray-200 p-3 text-sm">
                     <div className="font-mono text-xs text-gray-700">{wh.id}</div>
                     <div className="mt-1 text-gray-800">{wh.endpoint}</div>
@@ -957,8 +952,8 @@ export default function AdminEmailPage() {
                             await EmailService.resendWebhooksRemove(wh.id);
                             toast.success(t('common.deleted', locale === 'zh' ? '已删除' : 'Deleted'));
                             webhooksQuery.refetch();
-                          } catch (e: any) {
-                            toast.error(e?.message || t('common.failed', locale === 'zh' ? '失败' : 'Failed'));
+                          } catch (e: unknown) {
+                            toast.error(getErrorMessage(e, t('common.failed', locale === 'zh' ? '失败' : 'Failed')));
                           }
                         }}
                         className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-gray-50"
@@ -968,9 +963,14 @@ export default function AdminEmailPage() {
                     </div>
                   </div>
                 ))}
-                {Array.isArray(webhooksQuery.data?.data || webhooksQuery.data) && (webhooksQuery.data?.data || webhooksQuery.data).length === 0 ? (
-                  <div className="text-sm text-gray-500">{t('email.webhooks.empty', locale === 'zh' ? '暂无 Webhooks' : 'No webhooks')}</div>
-                ) : null}
+                {(() => {
+                  const webhookList = Array.isArray(webhooksQuery.data)
+                    ? webhooksQuery.data
+                    : (webhooksQuery.data?.data || webhooksQuery.data?.webhooks || []);
+                  return webhookList.length === 0 ? (
+                    <div className="text-sm text-gray-500">{t('email.webhooks.empty', locale === 'zh' ? '暂无 Webhooks' : 'No webhooks')}</div>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>

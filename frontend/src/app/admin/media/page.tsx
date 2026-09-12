@@ -525,7 +525,7 @@ export default function AdminMediaPage() {
             <div className="flex items-center gap-3">
               <div className="h-16 w-16 rounded-md border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
                 {watermarkSettings?.base_media_asset?.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+                   
                   <img src={watermarkSettings.base_media_asset.url} alt="Base" className="h-full w-full object-cover" />
                 ) : (
                   <PhotoIcon className="h-8 w-8 text-gray-300" />
@@ -1009,7 +1009,7 @@ export default function AdminMediaPage() {
                         className="relative block aspect-square w-full bg-gray-50 p-2"
                         aria-label={t('media.preview', locale === 'zh' ? '放大预览' : 'Preview')}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        { }
                         <img
                           src={asset.thumbnail_url || asset.url}
                           alt={asset.alt_text || asset.original_name}
@@ -1451,7 +1451,7 @@ export default function AdminMediaPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <button type="button" onClick={() => setPreviewAsset(editingAsset)} className="relative border rounded-lg overflow-hidden bg-gray-50 p-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  { }
                   <img src={editingAsset.url} alt={editingAsset.alt_text || editingAsset.original_name} className="h-80 w-full object-contain" />
                   <span className="absolute bottom-3 right-3 rounded bg-black/60 p-1.5 text-white"><EyeIcon className="h-5 w-5" /></span>
                 </button>
@@ -1577,7 +1577,7 @@ export default function AdminMediaPage() {
           <button type="button" onClick={() => setPreviewAsset(null)} className="absolute right-5 top-5 rounded-full bg-white/90 p-2 text-gray-800">
             <XMarkIcon className="h-6 w-6" />
           </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          { }
           <img src={previewAsset.url} alt={previewAsset.alt_text || previewAsset.original_name} className="max-h-[90vh] max-w-[94vw] object-contain" onClick={(event) => event.stopPropagation()} />
         </div>
       )}

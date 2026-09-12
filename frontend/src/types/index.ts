@@ -376,7 +376,7 @@ export interface Category {
   path?: string;
   description: string;
   image_url: string;
-  parent_id?: number;
+  parent_id?: number | null;
   parent?: Category;
   children?: Category[];
   sort_order: number;
@@ -632,7 +632,7 @@ export interface CategoryCreateRequest {
   name: string;
   description: string;
   image_url: string;
-  parent_id?: number;
+  parent_id?: number | null;
   sort_order: number;
   is_active: boolean;
 }

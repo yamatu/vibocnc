@@ -64,6 +64,63 @@ export interface MailboxConfig {
   can_read: boolean;
 }
 
+export interface MailboxMessage {
+  id?: string;
+  messageId?: string;
+  mailId?: string;
+  subject?: string;
+  title?: string;
+  from?: string | { email?: string; name?: string };
+  sender?: string | { email?: string; name?: string };
+  senderEmail?: string;
+  fromEmail?: string;
+  sentDateTime?: string;
+  receivedDateTime?: string;
+  createdDateTime?: string;
+  date?: string;
+  hasAttachments?: boolean;
+  attachments?: MailboxAttachment[];
+  body?: { bodyHtml?: string; bodyText?: string };
+  bodyHtml?: string;
+  html?: string;
+  bodyText?: string;
+  text?: string;
+  summary?: string;
+  [key: string]: unknown;
+}
+
+export interface MailboxAttachment {
+  id?: string;
+  name?: string;
+  filename?: string;
+  contentType?: string;
+  size?: number;
+  [key: string]: unknown;
+}
+
+export interface MailboxMessagesResponse {
+  messages?: MailboxMessage[];
+  items?: MailboxMessage[];
+  data?: { messages?: MailboxMessage[] };
+  nextCursor?: string;
+  hasMore?: boolean;
+}
+
+export interface MailboxMessageResponse {
+  message?: MailboxMessage;
+  data?: { message?: MailboxMessage };
+}
+
+export interface ResendWebhook {
+  id: string;
+  endpoint?: string;
+  events?: string[];
+  status?: string;
+  [key: string]: unknown;
+}
+
+export type ResendWebhooksResponse = { data?: ResendWebhook[]; webhooks?: ResendWebhook[] } | ResendWebhook[];
+
 export class EmailService {
   static async getPublicConfig(): Promise<EmailPublicConfig> {
     const res = await apiClient.get<APIResponse<EmailPublicConfig>>('/public/email/config');
@@ -115,20 +172,20 @@ export class EmailService {
     throw new Error(res.data.message || res.data.error || 'Failed to load mailbox config');
   }
 
-  static async mailboxMessages(folderId: string, params?: { cursor?: string; size?: number }): Promise<any> {
-    const res = await apiClient.get<APIResponse<any>>(`/admin/email/mailbox/folders/${encodeURIComponent(folderId)}/messages`, { params });
+  static async mailboxMessages(folderId: string, params?: { cursor?: string; size?: number }): Promise<MailboxMessagesResponse> {
+    const res = await apiClient.get<APIResponse<MailboxMessagesResponse>>(`/admin/email/mailbox/folders/${encodeURIComponent(folderId)}/messages`, { params });
     if (res.data.success) return res.data.data || {};
     throw new Error(res.data.message || res.data.error || 'Failed to load messages');
   }
 
-  static async mailboxMessage(messageId: string): Promise<any> {
-    const res = await apiClient.get<APIResponse<any>>(`/admin/email/mailbox/messages/${encodeURIComponent(messageId)}`);
+  static async mailboxMessage(messageId: string): Promise<MailboxMessageResponse> {
+    const res = await apiClient.get<APIResponse<MailboxMessageResponse>>(`/admin/email/mailbox/messages/${encodeURIComponent(messageId)}`);
     if (res.data.success) return res.data.data || {};
     throw new Error(res.data.message || res.data.error || 'Failed to load message');
   }
 
-  static async mailboxAttachments(messageId: string): Promise<any> {
-    const res = await apiClient.get<APIResponse<any>>(`/admin/email/mailbox/messages/${encodeURIComponent(messageId)}/attachments`);
+  static async mailboxAttachments(messageId: string): Promise<{ attachments?: MailboxAttachment[]; data?: { attachments?: MailboxAttachment[] } }> {
+    const res = await apiClient.get<APIResponse<{ attachments?: MailboxAttachment[]; data?: { attachments?: MailboxAttachment[] } }>>(`/admin/email/mailbox/messages/${encodeURIComponent(messageId)}/attachments`);
     if (res.data.success) return res.data.data || {};
     throw new Error(res.data.message || res.data.error || 'Failed to load attachments');
   }
@@ -142,26 +199,26 @@ export class EmailService {
     return { blob: res.data, filename: match?.[1] || 'attachment' };
   }
 
-  static async resendWebhooksList(): Promise<any> {
-    const res = await apiClient.get<APIResponse<any>>('/admin/email/resend/webhooks');
-    if (res.data.success) return res.data.data;
+  static async resendWebhooksList(): Promise<ResendWebhooksResponse> {
+    const res = await apiClient.get<APIResponse<ResendWebhooksResponse>>('/admin/email/resend/webhooks');
+    if (res.data.success && res.data.data !== undefined) return res.data.data;
     throw new Error(res.data.message || res.data.error || 'Failed to list webhooks');
   }
 
-  static async resendWebhooksCreate(payload: { endpoint: string; events: string[] }): Promise<any> {
-    const res = await apiClient.post<APIResponse<any>>('/admin/email/resend/webhooks', payload);
-    if (res.data.success) return res.data.data;
+  static async resendWebhooksCreate(payload: { endpoint: string; events: string[] }): Promise<ResendWebhook> {
+    const res = await apiClient.post<APIResponse<ResendWebhook>>('/admin/email/resend/webhooks', payload);
+    if (res.data.success && res.data.data !== undefined) return res.data.data;
     throw new Error(res.data.message || res.data.error || 'Failed to create webhook');
   }
 
-  static async resendWebhooksUpdate(id: string, payload: { endpoint?: string; events?: string[]; status?: string }): Promise<any> {
-    const res = await apiClient.put<APIResponse<any>>(`/admin/email/resend/webhooks/${id}`, payload);
-    if (res.data.success) return res.data.data;
+  static async resendWebhooksUpdate(id: string, payload: { endpoint?: string; events?: string[]; status?: string }): Promise<ResendWebhook> {
+    const res = await apiClient.put<APIResponse<ResendWebhook>>(`/admin/email/resend/webhooks/${id}`, payload);
+    if (res.data.success && res.data.data !== undefined) return res.data.data;
     throw new Error(res.data.message || res.data.error || 'Failed to update webhook');
   }
 
-  static async resendWebhooksRemove(id: string): Promise<any> {
-    const res = await apiClient.delete<APIResponse<any>>(`/admin/email/resend/webhooks/${id}`);
+  static async resendWebhooksRemove(id: string): Promise<unknown> {
+    const res = await apiClient.delete<APIResponse<unknown>>(`/admin/email/resend/webhooks/${id}`);
     if (res.data.success) return res.data.data;
     throw new Error(res.data.message || res.data.error || 'Failed to delete webhook');
   }
@@ -173,7 +230,7 @@ export class EmailService {
     test_to?: string;
     limit?: number;
   }): Promise<{ sent?: number; failed?: number; total?: number; skipped?: number }> {
-    const res = await apiClient.post<APIResponse<any>>('/admin/email/broadcast', payload);
+    const res = await apiClient.post<APIResponse<{ sent?: number; failed?: number; total?: number; skipped?: number }>>('/admin/email/broadcast', payload);
     if (res.data.success) return res.data.data || {};
     throw new Error(res.data.message || res.data.error || 'Failed to send broadcast');
   }

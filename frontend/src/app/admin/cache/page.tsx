@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import AdminLayout from '@/components/admin/AdminLayout';
@@ -43,7 +43,7 @@ export default function AdminCachePage() {
   const [hotlinkAllowSameHost, setHotlinkAllowSameHost] = useState(true);
   const [customUrls, setCustomUrls] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       const s = await CacheService.getSettings();
@@ -68,12 +68,11 @@ export default function AdminCachePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void load();
+  }, [load]);
 
   const saveMutation = useMutation({
     mutationFn: () =>

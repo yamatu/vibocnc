@@ -16,7 +16,8 @@ import CategoryCombobox from '@/components/admin/CategoryCombobox';
 import ShippingQuoteCalculator from '@/components/admin/ShippingQuoteCalculator';
 import TranslationEditor from '@/components/admin/TranslationEditor';
 import { ProductService, CategoryService } from '@/services';
-import { ProductCreateRequest } from '@/types';
+import { ProductCreateRequest, type Category } from '@/types';
+import { getErrorMessage } from '@/lib/errors';
 import { queryKeys } from '@/lib/react-query';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
@@ -139,8 +140,8 @@ export default function NewProductPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
       router.push('/admin/products');
     },
-    onError: (error: any) => {
-      toast.error(error.message || t('products.toast.createFailed', 'Failed to create product'));
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, t('products.toast.createFailed', 'Failed to create product')));
     },
   });
 
@@ -148,7 +149,7 @@ export default function NewProductPage() {
     try {
       // Validate category selection against fetched categories
       const catId = Number(data.category_id);
-      const hasValidCategory = Array.isArray(categories) && categories.some((c: any) => Number(c.id) === catId);
+      const hasValidCategory = Array.isArray(categories) && categories.some((c: Category) => Number(c.id) === catId);
       if (!catId || !hasValidCategory) {
         toast.error(t('products.toast.categoryInvalid', 'Please select a valid category'));
         return;
@@ -175,7 +176,7 @@ export default function NewProductPage() {
         meta_title: data.meta_title || '',
         meta_description: data.meta_description || '',
         meta_keywords: data.meta_keywords || '',
-        disable_auto_seo: toBooleanFlag((data as any).disable_auto_seo),
+        disable_auto_seo: toBooleanFlag(data.disable_auto_seo),
         images: images.map((image, index) => ({
           url: image.url,
           alt_text: image.alt_text || '',
@@ -194,7 +195,7 @@ export default function NewProductPage() {
   };
 
   const handleResetSeoToDefault = () => {
-    const categoryName = categories.find((item: any) => Number(item.id) === Number(watch('category_id')))?.name || '';
+    const categoryName = categories.find((item: Category) => Number(item.id) === Number(watch('category_id')))?.name || '';
     const defaults = buildDefaultSeoValues({
       name: watch('name'),
       sku: watch('sku'),
@@ -308,9 +309,9 @@ export default function NewProductPage() {
 					/>
 					<CategoryCombobox
 						categories={Array.isArray(categories) ? categories : []}
-						value={watch('category_id') as any}
+						value={watch('category_id')}
 						onChange={(categoryId) =>
-							setValue('category_id', categoryId as any, { shouldDirty: true, shouldValidate: true })
+							setValue('category_id', categoryId, { shouldDirty: true, shouldValidate: true })
 						}
 						placeholder={t('products.placeholder.category', locale === 'zh' ? '输入搜索分类（名称 / 路径 / slug）' : 'Type to search categories (name / path / slug)')}
 					/>
@@ -429,7 +430,7 @@ export default function NewProductPage() {
 			  <ShippingQuoteCalculator
 				weightKg={watchedWeight}
 				price={watchedPrice}
-				onSetPrice={(nextPrice) => setValue('price', nextPrice as any, { shouldDirty: true, shouldValidate: true })}
+				onSetPrice={(nextPrice) => setValue('price', nextPrice, { shouldDirty: true, shouldValidate: true })}
 			  />
 
               {/* SEO Basic Information */}
