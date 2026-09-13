@@ -69,6 +69,31 @@ type WatermarkResult struct {
 	SHA256     string
 }
 
+// RenderWatermarkedImage renders a watermark in memory and never creates a
+// MediaAsset row or a file on disk. Shared base images can therefore serve
+// unlimited SKUs without per-SKU storage growth.
+func RenderWatermarkedImage(db *gorm.DB, req WatermarkRequest) ([]byte, string, string, error) {
+	if db == nil { return nil, "", "", errors.New("db is nil") }
+	text := strings.TrimSpace(req.Text)
+	if text == "" { return nil, "", "", errors.New("watermark text is empty") }
+	if len(text) > 80 { text = text[:80] }
+	text = strings.ToUpper(text)
+	var baseImg image.Image
+	if req.BaseAssetID != nil && *req.BaseAssetID > 0 {
+		var base models.MediaAsset
+		if err := db.First(&base, *req.BaseAssetID).Error; err != nil { return nil, "", "", err }
+		img, err := loadMediaAssetImage(&base)
+		if err != nil { return nil, "", "", err }
+		baseImg = img
+	}
+	if baseImg == nil { baseImg = generateDefaultBaseImage(1000, 1000) }
+	baseImg = prepareWatermarkBaseImage(baseImg)
+	outBytes, err := renderWatermarkJPEG(baseImg, text, normalizeWatermarkPosition(req.Position))
+	if err != nil { return nil, "", "", err }
+	h := sha256.Sum256(outBytes)
+	return outBytes, "image/jpeg", hex.EncodeToString(h[:]), nil
+}
+
 func GenerateWatermarkedMediaAsset(db *gorm.DB, req WatermarkRequest) (*WatermarkResult, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
