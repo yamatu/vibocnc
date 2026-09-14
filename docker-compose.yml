@@ -97,6 +97,12 @@ services:
       # FULLTEXT index from backend/migrations/20260910_add_product_search_fulltext.sql)
       PRODUCT_SEARCH_MODE: ${PRODUCT_SEARCH_MODE:-like}
 
+      # Admin AI assistant tool calling. On by default: the assistant inspects
+      # the catalogue with read-only tools instead of a pre-guessed context
+      # blob. A provider that rejects the tools field is downgraded automatically;
+      # set false to always use the single-shot request.
+      AI_AGENT_TOOLS: ${AI_AGENT_TOOLS:-true}
+
       # API error detail: keep false in production.
       API_VERBOSE_ERRORS: ${API_VERBOSE_ERRORS:-false}
       # Auth cookie Secure flag (enable when the site is served over HTTPS).

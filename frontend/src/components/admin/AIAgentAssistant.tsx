@@ -39,6 +39,17 @@ const actionLabels: Record<string, { zh: string; en: string }> = {
   upsert_category_translation: { zh: '分类多语言 SEO', en: 'Category multilingual SEO' },
 };
 
+// Mirrors the read-only tools the Go backend exposes to the assistant. The
+// trace is shown so an administrator can see which catalogue data an answer was
+// actually based on instead of trusting an unattributed claim.
+const toolLabels: Record<string, { zh: string; en: string }> = {
+  search_products: { zh: '检索商品', en: 'Searched products' },
+  get_product: { zh: '读取商品', en: 'Read product' },
+  list_categories: { zh: '读取分类', en: 'Listed categories' },
+  count_products: { zh: '统计商品', en: 'Counted products' },
+  seo_gap_report: { zh: 'SEO 缺口统计', en: 'SEO gap report' },
+};
+
 function displayValue(value: unknown) {
   if (value === null || value === undefined || value === '') return '—';
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -201,7 +212,7 @@ export default function AIAgentAssistant() {
     setSending(true);
     try {
       const reply = await AIAgentService.chat(text, messages);
-      setMessages((previous) => [...previous, { role: 'assistant', content: reply.reply, suggestions: reply.suggestions || [] }]);
+      setMessages((previous) => [...previous, { role: 'assistant', content: reply.reply, suggestions: reply.suggestions || [], toolCalls: reply.tool_calls || [] }]);
     } catch (error: unknown) {
       const detail = errorMessage(error);
       toast.error(detail || (zh ? 'AI 暂时无法生成建议' : 'AI could not generate a proposal'));
@@ -305,6 +316,21 @@ export default function AIAgentAssistant() {
             {messages.map((message, messageIndex) => (
               <div key={`${message.role}-${messageIndex}`} className={message.role === 'user' ? 'ml-8' : 'mr-3'}>
                 <div className={`rounded-xl px-3 py-2 text-sm leading-6 ${message.role === 'user' ? 'bg-violet-600 text-white' : 'border border-gray-100 bg-white text-gray-800 shadow-sm'}`}>{message.content}</div>
+                {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
+                  <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label={zh ? '本次回答查询的目录数据' : 'Catalogue lookups behind this answer'}>
+                    {message.toolCalls.map((call, callIndex) => (
+                      <li
+                        key={`${call.tool}-${callIndex}`}
+                        className={`inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] leading-4 ${call.error ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}
+                        title={call.error || `${call.tool} ${call.detail}`.trim()}
+                      >
+                        <span className="font-medium">{toolLabels[call.tool]?.[zh ? 'zh' : 'en'] || call.tool}</span>
+                        {call.detail && <span className="truncate text-slate-500">{call.detail}</span>}
+                        {call.error && <span className="truncate">{zh ? '（无结果）' : '(no result)'}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {message.suggestions && message.suggestions.length > 0 && <div className="mt-2 space-y-2">
                   {message.suggestions.length > 1 && message.suggestions.some((action, actionIndex) => action.type !== 'create_category' && !appliedKeys.includes(`${messageIndex}-${actionIndex}`)) && (
                     <button
@@ -324,7 +350,7 @@ export default function AIAgentAssistant() {
                 </div>}
               </div>
             ))}
-            {sending && <div className="mr-8 rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm text-gray-500 shadow-sm">{zh ? '正在分析分类和 SEO…' : 'Analyzing categories and SEO…'}</div>}
+            {sending && <div className="mr-8 rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm text-gray-500 shadow-sm">{zh ? '正在检索目录并分析分类和 SEO…' : 'Checking the catalogue, then analyzing categories and SEO…'}</div>}
             <div ref={bottomRef} />
           </div>
 

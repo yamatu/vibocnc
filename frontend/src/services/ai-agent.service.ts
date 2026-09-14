@@ -19,6 +19,7 @@ export interface AIAgentMessage {
   role: 'user' | 'assistant';
   content: string;
   suggestions?: AIAgentAction[];
+  toolCalls?: AIAgentToolCall[];
 }
 
 export interface AIAgentStatus {
@@ -123,9 +124,16 @@ export interface AIAgentSettingsUpdate {
   default_lead_time?: string;
 }
 
+export interface AIAgentToolCall {
+  tool: string;
+  detail: string;
+  error?: string;
+}
+
 export interface AIAgentReply {
   reply: string;
   suggestions: AIAgentAction[];
+  tool_calls?: AIAgentToolCall[];
 }
 
 export interface AIAgentArticleDraftRequest {
