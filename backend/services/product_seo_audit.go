@@ -125,7 +125,6 @@ func AuditProductSEO(db *gorm.DB, maxProducts int) (*ProductSEOAuditResult, erro
 	if db == nil {
 		return nil, errors.New("database is nil")
 	}
-	
 
 	pending := map[uint]bool{}
 	var pendingIDs []uint

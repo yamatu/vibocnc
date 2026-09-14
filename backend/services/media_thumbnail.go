@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	_ "golang.org/x/image/webp"
 	"golang.org/x/image/draw"
+	_ "golang.org/x/image/webp"
 )
 
 // CachedMediaThumbnail creates a 480px JPEG derivative once and reuses it.
@@ -43,19 +43,29 @@ func CachedMediaThumbnail(root, relative, original string) (string, error) {
 		}
 	}
 	dw, dh := int(float64(b.Dx())*scale), int(float64(b.Dy())*scale)
-	if dw < 1 { dw = 1 }
-	if dh < 1 { dh = 1 }
+	if dw < 1 {
+		dw = 1
+	}
+	if dh < 1 {
+		dh = 1
+	}
 	dst := image.NewRGBA(image.Rect(0, 0, dw, dh))
 	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, b, draw.Over, nil)
 	var out bytes.Buffer
 	if err := jpeg.Encode(&out, dst, &jpeg.Options{Quality: 72}); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(thumbDir, 0o755); err != nil { return "", err }
+	if err := os.MkdirAll(thumbDir, 0o755); err != nil {
+		return "", err
+	}
 	tmp := thumbPath + ".tmp"
-	if err := os.WriteFile(tmp, out.Bytes(), 0o644); err != nil { return "", err }
+	if err := os.WriteFile(tmp, out.Bytes(), 0o644); err != nil {
+		return "", err
+	}
 	if err := os.Rename(tmp, thumbPath); err != nil {
-		if _, statErr := os.Stat(thumbPath); statErr == nil { return thumbPath, nil }
+		if _, statErr := os.Stat(thumbPath); statErr == nil {
+			return thumbPath, nil
+		}
 		return "", fmt.Errorf("store thumbnail: %w", err)
 	}
 	return thumbPath, nil

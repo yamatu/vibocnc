@@ -254,9 +254,7 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	}
 
 	if search != "" {
-		like := "%" + search + "%"
-		query = query.Where("sku LIKE ? OR name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?",
-			like, like, like, like, like)
+		query = applyProductSearchFilter(query, search)
 	}
 
 	if isActive != "" {
@@ -783,8 +781,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 			}
 		}
 		if req.Search != "" {
-			like := "%" + req.Search + "%"
-			tx = tx.Where("sku LIKE ? OR name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like, like)
+			tx = applyProductSearchFilter(tx, req.Search)
 		}
 		if req.Status == "active" {
 			tx = tx.Where("is_active = ?", true)
@@ -850,8 +847,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		}
 	}
 	if req.Search != "" {
-		like := "%" + req.Search + "%"
-		selector = selector.Where("sku LIKE ? OR name LIKE ? OR description LIKE ? OR part_number LIKE ? OR model LIKE ?", like, like, like, like, like)
+		selector = applyProductSearchFilter(selector, req.Search)
 	}
 	if req.Status == "active" {
 		selector = selector.Where("is_active = ?", true)

@@ -275,34 +275,34 @@ func (cc *CouponController) DeleteCoupon(c *gin.Context) {
 		return
 	}
 
-    // If the coupon has usage records or is referenced by orders,
-    // clean up dependent data before deleting the coupon.
-    // 1) Delete coupon usage records
-    if err := db.Where("coupon_id = ?", coupon.ID).Delete(&models.CouponUsage{}).Error; err != nil {
-        c.JSON(http.StatusInternalServerError, models.APIResponse{
-            Success: false,
-            Error:   "Failed to delete coupon usage records",
-        })
-        return
-    }
+	// If the coupon has usage records or is referenced by orders,
+	// clean up dependent data before deleting the coupon.
+	// 1) Delete coupon usage records
+	if err := db.Where("coupon_id = ?", coupon.ID).Delete(&models.CouponUsage{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Error:   "Failed to delete coupon usage records",
+		})
+		return
+	}
 
-    // 2) Nullify coupon references on orders to preserve history
-    if err := db.Model(&models.Order{}).Where("coupon_id = ?", coupon.ID).Update("coupon_id", nil).Error; err != nil {
-        c.JSON(http.StatusInternalServerError, models.APIResponse{
-            Success: false,
-            Error:   "Failed to update related orders",
-        })
-        return
-    }
+	// 2) Nullify coupon references on orders to preserve history
+	if err := db.Model(&models.Order{}).Where("coupon_id = ?", coupon.ID).Update("coupon_id", nil).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Error:   "Failed to update related orders",
+		})
+		return
+	}
 
-    // 3) Delete the coupon itself
-    if err := db.Delete(&coupon).Error; err != nil {
-        c.JSON(http.StatusInternalServerError, models.APIResponse{
-            Success: false,
-            Error:   "Failed to delete coupon",
-        })
-        return
-    }
+	// 3) Delete the coupon itself
+	if err := db.Delete(&coupon).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Error:   "Failed to delete coupon",
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -517,21 +517,11 @@ func (cc *CouponController) ConsumeCoupon(tx *gorm.DB, couponCode string, orderI
 	return &response, nil
 }
 
-// ApplyCoupon applies a coupon to an order (used during order creation).
-// Kept for compatibility: validates then consumes in one step.
-func (cc *CouponController) ApplyCoupon(db *gorm.DB, couponCode string, orderID uint, orderAmount float64, customerEmail string) (*models.CouponValidateResponse, error) {
-	if strings.TrimSpace(couponCode) == "" {
-		return nil, nil
-	}
-	validated, err := cc.ValidateCouponCode(db, couponCode, orderAmount, customerEmail)
-	if err != nil || validated == nil {
-		return validated, err
-	}
-	if !validated.Valid {
-		return validated, nil
-	}
-	return cc.ConsumeCoupon(db, couponCode, orderID, orderAmount, customerEmail)
-}
+// NOTE: there is deliberately no single-call "apply coupon" helper. Coupon
+// redemption must happen inside the order transaction (see CreateOrder), using
+// ValidateCouponCode for the read-only check and ConsumeCoupon for the atomic
+// claim. A convenience wrapper that validates and consumes outside a
+// transaction is what allowed the original double-spend race.
 
 // GetCouponUsage returns usage statistics for a coupon
 func (cc *CouponController) GetCouponUsage(c *gin.Context) {

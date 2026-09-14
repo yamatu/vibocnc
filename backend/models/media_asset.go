@@ -27,7 +27,7 @@ type MediaAssetResponse struct {
 	FileName     string    `json:"file_name"`
 	RelativePath string    `json:"relative_path"`
 	URL          string    `json:"url"`
-	ThumbnailURL  string    `json:"thumbnail_url"`
+	ThumbnailURL string    `json:"thumbnail_url"`
 	SHA256       string    `json:"sha256"`
 	MimeType     string    `json:"mime_type"`
 	SizeBytes    int64     `json:"size_bytes"`

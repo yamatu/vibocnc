@@ -156,9 +156,15 @@ func (wc *WatermarkController) GenerateFromMedia(c *gin.Context) {
 // Renders the fallback image in memory; no per-SKU file or media row is created.
 func (wc *WatermarkController) DefaultProductImage(c *gin.Context) {
 	sku := strings.TrimSpace(c.Param("sku"))
-	if sku == "" { sku = strings.TrimSpace(c.Query("sku")) }
-	if len(sku) > 80 { sku = sku[:80] }
-	if sku == "" { sku = "PRODUCT" }
+	if sku == "" {
+		sku = strings.TrimSpace(c.Query("sku"))
+	}
+	if len(sku) > 80 {
+		sku = sku[:80]
+	}
+	if sku == "" {
+		sku = "PRODUCT"
+	}
 	db := config.GetDB()
 	s, err := services.GetOrCreateWatermarkSetting(db)
 	if err != nil {
@@ -166,7 +172,9 @@ func (wc *WatermarkController) DefaultProductImage(c *gin.Context) {
 		return
 	}
 	var baseID *uint
-	if s.Enabled { baseID = s.BaseMediaAssetID }
+	if s.Enabled {
+		baseID = s.BaseMediaAssetID
+	}
 	imageBytes, mimeType, etag, err := services.RenderWatermarkedImage(db, services.WatermarkRequest{BaseAssetID: baseID, Text: sku, Position: s.WatermarkPosition})
 	if err != nil && baseID != nil {
 		imageBytes, mimeType, etag, err = services.RenderWatermarkedImage(db, services.WatermarkRequest{Text: sku, Position: s.WatermarkPosition})

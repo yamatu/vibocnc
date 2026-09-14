@@ -26,7 +26,7 @@ import (
 // 若未提供 DSN，则会使用 DB_* / PG_* 拼装连接串（见 buildMySQLDSN/buildPostgresDSN）
 
 type AdminUser struct {
-	ID           uint       `gorm:"primaryKey"`
+	ID           uint `gorm:"primaryKey"`
 	Username     string
 	Email        string
 	PasswordHash string
@@ -41,7 +41,7 @@ type AdminUser struct {
 func (AdminUser) TableName() string { return "admin_users" }
 
 type Category struct {
-	ID          uint      `gorm:"primaryKey"`
+	ID          uint `gorm:"primaryKey"`
 	Name        string
 	Slug        string
 	Description string
@@ -56,7 +56,7 @@ type Category struct {
 func (Category) TableName() string { return "categories" }
 
 type Product struct {
-	ID               uint      `gorm:"primaryKey"`
+	ID               uint `gorm:"primaryKey"`
 	SKU              string
 	Name             string
 	Slug             string
@@ -86,7 +86,7 @@ type Product struct {
 func (Product) TableName() string { return "products" }
 
 type ProductImage struct {
-	ID           uint      `gorm:"primaryKey"`
+	ID           uint `gorm:"primaryKey"`
 	ProductID    uint
 	URL          string
 	Filename     string
@@ -101,7 +101,7 @@ type ProductImage struct {
 func (ProductImage) TableName() string { return "product_images" }
 
 type ProductAttribute struct {
-	ID             uint      `gorm:"primaryKey"`
+	ID             uint `gorm:"primaryKey"`
 	ProductID      uint
 	AttributeName  string
 	AttributeValue string

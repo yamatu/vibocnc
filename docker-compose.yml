@@ -68,7 +68,10 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-https://vibocnc.com}
       # The eBay collector runs from a chrome-extension:// origin and still
       # requires the normal admin login + JWT authorization.
-      CORS_ALLOW_CHROME_EXTENSIONS: ${CORS_ALLOW_CHROME_EXTENSIONS:-true}
+      # Credentialed CORS is echoed back for any matching origin, so leave this
+      # false and pin the exact extension id via CORS_EXTENSION_ORIGINS.
+      CORS_ALLOW_CHROME_EXTENSIONS: ${CORS_ALLOW_CHROME_EXTENSIONS:-false}
+      CORS_EXTENSION_ORIGINS: ${CORS_EXTENSION_ORIGINS:-}
 
       # Redis (rate limit + cache)
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
@@ -89,6 +92,15 @@ services:
       CACHE_TTL_CATEGORIES_SECONDS: ${CACHE_TTL_CATEGORIES_SECONDS:-300}
       CACHE_TTL_HOMEPAGE_SECONDS: ${CACHE_TTL_HOMEPAGE_SECONDS:-120}
       CACHE_TTL_PRODUCTS_SECONDS: ${CACHE_TTL_PRODUCTS_SECONDS:-60}
+
+      # Product search strategy: like (default, substring) | fulltext (needs the
+      # FULLTEXT index from backend/migrations/20260910_add_product_search_fulltext.sql)
+      PRODUCT_SEARCH_MODE: ${PRODUCT_SEARCH_MODE:-like}
+
+      # API error detail: keep false in production.
+      API_VERBOSE_ERRORS: ${API_VERBOSE_ERRORS:-false}
+      # Auth cookie Secure flag (enable when the site is served over HTTPS).
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
 
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       JWT_EXPIRES_HOURS: ${JWT_EXPIRES_HOURS:-24}

@@ -170,7 +170,6 @@ func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bo
 	if db == nil {
 		return nil, errors.New("database is nil")
 	}
-	
 
 	var categories []models.Category
 	if err := db.Order("id ASC").Find(&categories).Error; err != nil {
