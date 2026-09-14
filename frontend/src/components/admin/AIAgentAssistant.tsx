@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
+  ArrowsPointingInIcon,
+  Bars3Icon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
   ChevronDownIcon,
@@ -21,7 +23,11 @@ import {
   AIAgentStatus,
 } from '@/services/ai-agent.service';
 import { useAdminI18n } from '@/lib/admin-i18n';
+import { useDraggableWidget } from '@/hooks/useDraggableWidget';
 import AIPriceSyncPanel from '@/components/admin/AIPriceSyncPanel';
+
+// Remembered per browser so the widget stays where the administrator parked it.
+const AI_AGENT_POSITION_STORAGE_KEY = 'vibocnc.ai-assistant.position';
 
 const SUGGESTED_PROMPTS = [
   'A06B-XXXX（如果不存在，创建未发布产品草稿；只能使用现有品牌和产品类型分类）',
@@ -181,6 +187,14 @@ export default function AIAgentAssistant() {
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [appliedKeys, setAppliedKeys] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggableWidget(AI_AGENT_POSITION_STORAGE_KEY);
+
+  // Opening the panel replaces the compact launcher with a much larger surface,
+  // so the stored spot has to be re-anchored and re-checked against the viewport.
+  // Switching tabs resizes the panel too, so it gets the same treatment.
+  useEffect(() => {
+    drag.reclamp();
+  }, [open, mode, drag.reclamp]);
 
   useEffect(() => {
     if (!open || status) return;
@@ -272,12 +286,50 @@ export default function AIAgentAssistant() {
     setInput('');
   };
 
+  // The launcher starts life bottom-right; `position` is null until it has been
+  // measured on the client, and the class fallback covers that first paint.
+  const positioned = drag.position !== null;
+
   return (
-    <div className="fixed bottom-5 right-5 z-[70] print:hidden">
+    <div
+      ref={drag.containerRef}
+      // No transition on left/top: a drag must track the cursor exactly, and an
+      // animated clamp would leave the panel hanging outside the viewport for the
+      // duration of the animation.
+      className={`fixed z-[70] print:hidden ${positioned ? '' : 'bottom-4 right-4'} ${drag.isDragging ? 'select-none' : ''}`}
+      style={positioned ? { left: drag.position?.x, top: drag.position?.y } : undefined}
+    >
       {open && (
-        <section className="mb-3 flex h-[min(700px,calc(100vh-7.5rem))] w-[calc(100vw-2.5rem)] max-w-[520px] flex-col overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl" aria-label={zh ? 'AI 商品优化助手' : 'AI catalog optimization assistant'}>
-          <header className="flex items-center justify-between bg-gradient-to-r from-violet-700 to-indigo-700 px-4 py-3 text-white">
+        <section
+          className="flex h-[min(720px,calc(100vh-2.5rem))] w-[min(560px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl"
+          aria-label={zh ? 'AI 商品优化助手' : 'AI catalog optimization assistant'}
+        >
+          <header
+            {...drag.handleProps()}
+            onDoubleClick={drag.resetPosition}
+            title={zh ? '拖动可移动窗口；双击归位' : 'Drag to move; double-click to reset'}
+            className={`flex touch-none cursor-move items-center justify-between bg-gradient-to-r from-violet-700 to-indigo-700 px-4 py-3 text-white select-none ${
+              drag.isDragging ? 'cursor-grabbing' : ''
+            }`}
+          >
             <div className="flex items-center gap-2">
+              {/*
+                Both the visual affordance for dragging and the keyboard handle:
+                arrow keys (with Shift for a bigger step) nudge the window, Home
+                sends it back to the bottom-right corner.
+              */}
+              <button
+                type="button"
+                {...drag.handleProps()}
+                onKeyDown={drag.onHandleKeyDown}
+                className={`-ml-1 shrink-0 cursor-grab rounded p-1 text-violet-200 hover:bg-white/15 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+                  drag.isDragging ? 'cursor-grabbing' : ''
+                }`}
+                title={zh ? '按住拖动窗口；方向键微调，Home 键归位' : 'Press and drag to move; arrow keys to nudge, Home to reset'}
+                aria-label={zh ? '移动 AI 助手窗口' : 'Move the AI assistant window'}
+              >
+                <Bars3Icon className="h-4 w-4" aria-hidden="true" />
+              </button>
               <SparklesIcon className="h-5 w-5" />
               <div>
                 <h2 className="text-sm font-semibold">{zh ? 'AI 商品优化助手' : 'AI Catalog Assistant'}</h2>
@@ -286,7 +338,8 @@ export default function AIAgentAssistant() {
             </div>
             <div className="flex items-center gap-1">
               {mode === 'assistant' && <button type="button" onClick={reset} className="rounded p-1.5 hover:bg-white/15" title={zh ? '新对话' : 'New conversation'} aria-label={zh ? '新对话' : 'New conversation'}><ArrowPathIcon className="h-4 w-4" /></button>}
-              <button type="button" onClick={() => setOpen(false)} className="rounded p-1.5 hover:bg-white/15" aria-label={zh ? '关闭' : 'Close'}><XMarkIcon className="h-5 w-5" /></button>
+              <button type="button" onClick={drag.resetPosition} className="rounded p-1.5 hover:bg-white/15" title={zh ? '窗口归位到右下角' : 'Reset window position'} aria-label={zh ? '窗口归位到右下角' : 'Reset window position'}><ArrowsPointingInIcon className="h-4 w-4" /></button>
+              <button type="button" onClick={() => { drag.captureAnchor(); setOpen(false); }} className="rounded p-1.5 hover:bg-white/15" aria-label={zh ? '关闭' : 'Close'}><XMarkIcon className="h-5 w-5" /></button>
             </div>
           </header>
 
@@ -364,10 +417,53 @@ export default function AIAgentAssistant() {
           </>}
         </section>
       )}
-      <button type="button" onClick={() => setOpen((current) => !current)} className="group flex h-14 items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-4 text-sm font-semibold text-white shadow-xl transition hover:scale-[1.02] hover:from-violet-700 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-violet-200" aria-expanded={open} aria-label={zh ? '打开 AI 商品优化助手' : 'Open AI catalog assistant'}>
-        <SparklesIcon className="h-5 w-5 transition-transform group-hover:rotate-12" />
-        <span>{zh ? 'AI 优化' : 'AI Optimize'}</span>
-      </button>
+      {/*
+        The launcher is hidden while the panel is open: the panel already has a
+        close button, and a second floating control next to it only covers more
+        of the page. When idle it is a small, semi-transparent circle rather than a
+        full pill, so it stops sitting on top of the table behind it, and the
+        label appears on hover instead of occupying space permanently.
+      */}
+      {!open && (
+        <button
+          type="button"
+          /*
+            Three ways in, because no single event covers every input device:
+            - pointerup: mouse and touch taps (a touch tap may never produce a click)
+            - click: Enter/Space on the focused button, which sends no pointer events
+            - shouldSuppressClick: a mouse drag ends with a click on this same
+              button, which must not be mistaken for a tap
+            Opening twice is harmless, so the overlap is left in place.
+          */
+          {...drag.handleProps({
+            onTap: () => {
+              drag.captureAnchor();
+              setOpen(true);
+            },
+          })}
+          onKeyDown={drag.onHandleKeyDown}
+          onClick={() => {
+            if (drag.shouldSuppressClick()) return;
+            drag.captureAnchor();
+            setOpen(true);
+          }}
+          className={`group relative flex h-12 w-12 touch-none items-center justify-center rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-xl transition hover:scale-105 hover:from-violet-700 hover:to-indigo-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-violet-200 ${
+            drag.isDragging ? 'cursor-grabbing opacity-100' : 'cursor-grab opacity-70 hover:opacity-100 focus-visible:opacity-100'
+          }`}
+          aria-haspopup="dialog"
+          aria-label={zh ? '打开 AI 商品优化助手（可拖动）' : 'Open AI catalog assistant (draggable)'}
+        >
+          <SparklesIcon className="h-5 w-5 transition-transform group-hover:rotate-12" />
+          <span
+            aria-hidden="true"
+            className={`pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-slate-900/90 px-2 py-1 text-xs font-medium text-white ${
+              drag.isDragging ? 'opacity-0' : 'opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100'
+            }`}
+          >
+            {zh ? 'AI 优化 · 可拖动' : 'AI Optimize · draggable'}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
