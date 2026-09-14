@@ -84,6 +84,35 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8080/api/v1
           NEXT_PUBLIC_SITE_URL: https://vibocnc.com
 
+  infra-lint:
+    name: Infra (nginx client-IP handling)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The backend trusts forwarding headers coming from RFC1918 peers, so the
+      # edge proxy must overwrite X-Forwarded-For with $remote_addr. Appending
+      # ($proxy_add_x_forwarded_for) lets a client smuggle an arbitrary IP into
+      # rate limiting and audit logs whenever the backend is reachable directly.
+      - name: Nginx must overwrite X-Forwarded-For
+        run: |
+          set -eu
+          files="nginx/sites-enabled/www.vibocnc.com.conf nginx.conf docker/nginx.conf frontend/nginx.conf nginx/conf.d/www.vibocnc.com.conf"
+
+          offenders="$(grep -n '\$proxy_add_x_forwarded_for' $files || true)"
+          if [ -n "$offenders" ]; then
+            echo "These configs append client supplied X-Forwarded-For:"
+            echo "$offenders"
+            exit 1
+          fi
+
+          for f in $files; do
+            if ! grep -q 'proxy_set_header X-Forwarded-For \$remote_addr;' "$f"; then
+              echo "$f does not overwrite X-Forwarded-For with \$remote_addr"
+              exit 1
+            fi
+          done
+
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
