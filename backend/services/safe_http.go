@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,7 +41,9 @@ func isPublicOutboundIP(ip net.IP) bool {
 	return true
 }
 
-func validatePublicHTTPURL(raw string) (*url.URL, error) {
+// validateOutboundURL guards provider URLs against SSRF. allowPrivate relaxes
+// the address range checks and is only ever set from AIProviderAllowPrivateAddresses.
+func validateOutboundURL(raw string, allowPrivate bool) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed == nil || parsed.Hostname() == "" {
 		return nil, fmt.Errorf("invalid outbound URL")
@@ -50,21 +54,30 @@ func validatePublicHTTPURL(raw string) (*url.URL, error) {
 	if parsed.User != nil {
 		return nil, fmt.Errorf("outbound URL userinfo is not allowed")
 	}
-	if port := parsed.Port(); port != "" && port != "80" && port != "443" {
-		return nil, fmt.Errorf("outbound URL port is not allowed")
+	if !allowPrivate {
+		if port := parsed.Port(); port != "" && port != "80" && port != "443" {
+			return nil, fmt.Errorf("outbound URL port is not allowed")
+		}
 	}
 
 	hostname := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
-	if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") ||
-		hostname == "local" || strings.HasSuffix(hostname, ".local") ||
-		strings.HasSuffix(hostname, ".internal") {
-		return nil, fmt.Errorf("private outbound hostname is not allowed")
+	if !allowPrivate {
+		if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") ||
+			hostname == "local" || strings.HasSuffix(hostname, ".local") ||
+			strings.HasSuffix(hostname, ".internal") {
+			return nil, fmt.Errorf("private outbound hostname is not allowed")
+		}
 	}
 
 	if ip := net.ParseIP(hostname); ip != nil {
-		if !isPublicOutboundIP(ip) {
+		if !allowPrivate && !isPublicOutboundIP(ip) {
 			return nil, fmt.Errorf("private outbound address is not allowed")
 		}
+		return parsed, nil
+	}
+	if allowPrivate {
+		// The dialer re-resolves and connects to whatever the name points at, so
+		// there is no point pre-resolving here.
 		return parsed, nil
 	}
 
@@ -80,6 +93,10 @@ func validatePublicHTTPURL(raw string) (*url.URL, error) {
 		}
 	}
 	return parsed, nil
+}
+
+func validatePublicHTTPURL(raw string) (*url.URL, error) {
+	return validateOutboundURL(raw, false)
 }
 
 func publicDialContext(ctx context.Context, network, address string) (net.Conn, error) {
@@ -101,6 +118,71 @@ func publicDialContext(ctx context.Context, network, address string) (net.Conn, 
 	}
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
+}
+
+// AIProviderAllowPrivateAddresses reports whether the operator explicitly allowed
+// AI provider URLs to point at private addresses (a self hosted model server, or
+// a hostname resolved through a local proxy / fake-IP DNS that answers with a
+// reserved range such as 198.18.0.0/15). It is off by default: the AI provider
+// URL is admin supplied, but relaxing the guard is still a deliberate decision
+// that must not happen silently.
+func AIProviderAllowPrivateAddresses() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER_ALLOW_PRIVATE_ADDRESSES"))) {
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// aiDialContext is the opt-in dialer. It keeps the resolved address so the
+// request cannot be redirected to a different host after the check, but it
+// accepts private and reserved ranges.
+func aiDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	return dialer.DialContext(ctx, network, address)
+}
+
+// aiProviderTransport is built once, on first use, so the default configuration
+// keeps sharing the hardened public transport.
+var (
+	aiProviderTransport     *http.Transport
+	aiProviderTransportOnce sync.Once
+)
+
+func newAIProviderTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = aiDialContext
+	transport.MaxIdleConnsPerHost = 8
+	transport.MaxIdleConns = 64
+	transport.IdleConnTimeout = 90 * time.Second
+	return transport
+}
+
+// NewAIProviderHTTPClient returns the client used for AI providers. By default
+// it is the hardened public client; setting AI_PROVIDER_ALLOW_PRIVATE_ADDRESSES=true
+// returns one that may reach private/self hosted endpoints instead.
+func NewAIProviderHTTPClient(timeout time.Duration) *http.Client {
+	if !AIProviderAllowPrivateAddresses() {
+		return newPublicHTTPClient(timeout)
+	}
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	aiProviderTransportOnce.Do(func() {
+		aiProviderTransport = newAIProviderTransport()
+	})
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: aiProviderTransport,
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			if _, err := validateOutboundURL(req.URL.String(), true); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
 }
 
 // publicTransport is the single connection pool shared by every safe outbound

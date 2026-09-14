@@ -103,6 +103,12 @@ services:
       # set false to always use the single-shot request.
       AI_AGENT_TOOLS: ${AI_AGENT_TOOLS:-true}
 
+      # Allow AI provider URLs to resolve to private/reserved addresses (self
+      # hosted models behind a public domain, or a host whose DNS answers with a
+      # fake-IP range such as 198.18.0.0/15). Off by default: the outbound guard
+      # is a deliberate protection, so relaxing it must be explicit.
+      AI_PROVIDER_ALLOW_PRIVATE_ADDRESSES: ${AI_PROVIDER_ALLOW_PRIVATE_ADDRESSES:-false}
+
       # Minimum confidence for an AI classification to be published. Lower
       # scores become review-queue candidates instead of being discarded.
       # Valid range (0,1]; an invalid value falls back to 0.9.

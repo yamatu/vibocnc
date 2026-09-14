@@ -100,6 +100,21 @@ export interface AIAgentConnectionTestResult {
   error?: string;
 }
 
+export interface AIAgentToolProbeResult {
+  ok: boolean;
+  agent_tools_enabled: boolean;
+  tools_supported: boolean;
+  tool_call_returned: boolean;
+  tools_called?: string[];
+  turns: number;
+  latency_ms: number;
+  model: string;
+  provider: string;
+  reply?: string;
+  hint?: string;
+  error?: string;
+}
+
 export const AI_AGENT_CONFIG_CHANGED_EVENT = 'ai-agent-config-changed';
 
 export function notifyAIAgentConfigChanged() {
@@ -452,6 +467,19 @@ export class AIAgentService {
     );
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Unable to test the AI connection');
+  }
+
+  // Verifies that the provider accepts the tools field the agent loop sends. A
+  // provider that rejects it is downgraded automatically, but knowing this up
+  // front avoids paying a failed request on the first real question.
+  static async testToolCalling(payload: AIAgentConnectionTestRequest): Promise<AIAgentToolProbeResult> {
+    const response = await apiClient.post<APIResponse<AIAgentToolProbeResult>>(
+      '/admin/ai-agent/test-tools',
+      payload,
+      { timeout: 90000 }
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to probe tool calling support');
   }
 
   static async chat(message: string, history: AIAgentMessage[]): Promise<AIAgentReply> {

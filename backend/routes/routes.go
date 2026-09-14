@@ -199,6 +199,9 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.DELETE("/profiles/:id", middleware.AdminOnly(), aiAgentController.DeleteProfile)
 				aiAgent.POST("/profiles/:id/activate", middleware.AdminOnly(), aiAgentController.ActivateProfile)
 				aiAgent.POST("/test-connection", middleware.AdminOnly(), aiAgentController.TestProfileConnection)
+				// Verifies that the configured provider accepts the tools field used by
+				// the agent loop, so a capability gap is found before production traffic.
+				aiAgent.POST("/test-tools", middleware.AdminOnly(), aiAgentController.TestToolCalling)
 			}
 
 			// Dashboard statistics (admin and editor access)

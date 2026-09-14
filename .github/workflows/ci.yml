@@ -113,6 +113,42 @@ jobs:
             fi
           done
 
+      # scripts/preflight-env.sh is the gate an operator runs before deploying.
+      # Lock its behaviour: a hardened env must pass, and the shipped template
+      # (placeholders) must fail, so the script never silently becomes a no-op.
+      - name: Production preflight must pass on a hardened env
+        run: |
+          set -eu
+          cat > /tmp/hardened.env <<'ENV'
+          MYSQL_ROOT_PASSWORD=s3cure-root-password-value
+          MYSQL_DATABASE=vibocnc_sales
+          MYSQL_USER=vibocnc
+          MYSQL_PASSWORD=s3cure-app-password-value
+          JWT_SECRET=0123456789abcdef0123456789abcdef0123456789
+          SETTINGS_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
+          REVALIDATE_SECRET=0123456789abcdef0123456789abcdef
+          CORS_ORIGINS=https://www.example.com
+          CORS_ALLOW_CHROME_EXTENSIONS=false
+          AUTH_COOKIE_SECURE=true
+          API_VERBOSE_ERRORS=false
+          SEED_DEFAULT_ADMIN=false
+          RESET_DEFAULT_ADMIN_PASSWORD=false
+          TRUSTED_PROXIES=127.0.0.1,::1
+          REDIS_ADDR=redis:6379
+          AI_CLASSIFICATION_MIN_CONFIDENCE=0.9
+          ENV
+          sed -i 's/^          //' /tmp/hardened.env
+          bash scripts/preflight-env.sh /tmp/hardened.env
+
+      - name: Production preflight must reject the placeholder template
+        run: |
+          set -eu
+          if bash scripts/preflight-env.sh .env.docker.example; then
+            echo "preflight accepted an env full of placeholders"
+            exit 1
+          fi
+          echo "preflight correctly rejected the template"
+
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest

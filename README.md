@@ -54,6 +54,14 @@ cp .env.docker.example .env
 ```
 
 然后按需修改 `.env`（至少把 `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD`、`JWT_SECRET` 改掉）。
+
+部署前务必执行一次自检（会拒绝弱密码 / 占位符 / 不安全的 Cookie 与 CORS 配置）：
+
+```bash
+bash scripts/preflight-env.sh .env
+```
+
+完整的部署、更新、回滚、备份与凭据修复流程见 `docs/DEPLOYMENT.md`。
 SEO 相关（canonical/sitemap/robots）依赖 `NEXT_PUBLIC_SITE_URL`，请确保它是你实际访问站点的完整地址（含协议与端口；例如本地 `http://localhost:3006`，生产 `https://your-domain.com`）。
 
 ### 2) 启动（包含 MySQL + 后端 + 前端 + Nginx）
@@ -103,6 +111,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - `docker/nginx.conf`：容器内反向代理（前端 + `/api/*` 转发到后端）
 - `backend/Dockerfile`：后端镜像构建
 - `frontend/Dockerfile`：前端 standalone 构建（通过 build args 注入必要环境变量）
+- `docs/DEPLOYMENT.md`：部署 / 更新 / 回滚 / 备份 / MySQL 凭据漂移修复
+- `scripts/preflight-env.sh`：部署前环境自检（CI 中同样运行）
+- `scripts/repair-mysql-credentials.sh`：不丢数据地重置 MySQL 卷凭据
 
 ## 📚 相关文档
 

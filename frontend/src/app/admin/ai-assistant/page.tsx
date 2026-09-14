@@ -23,6 +23,7 @@ import {
   AIAgentProfileWrite,
   AIAgentService,
   AIAgentSettings,
+  AIAgentToolProbeResult,
   notifyAIAgentConfigChanged,
 } from '@/services/ai-agent.service';
 import { useAdminI18n } from '@/lib/admin-i18n';
@@ -196,6 +197,8 @@ export default function AIAssistantSettingsPage() {
   const [deletingProfileID, setDeletingProfileID] = useState<number | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<AIAgentConnectionTestResult | null>(null);
+  const [probingTools, setProbingTools] = useState(false);
+  const [toolProbeResult, setToolProbeResult] = useState<AIAgentToolProbeResult | null>(null);
 
   const profileDirty = useMemo(
     () => profileFingerprint(profileForm) !== savedProfileFingerprint,
@@ -325,6 +328,49 @@ export default function AIAssistantSettingsPage() {
       toast.error(errorMessage(error) || (zh ? '无法测试 AI 连接' : 'Could not test the AI connection'));
     } finally {
       setTestingConnection(false);
+    }
+  };
+
+  // Asks the provider to call one read-only tool. The result tells the
+  // administrator up front whether the agent loop can inspect the catalogue,
+  // instead of discovering it when the first real question fails.
+  const probeToolCalling = async () => {
+    if (!profileForm) return;
+    const typedKey = profileForm.api_key.trim();
+    const reuseActiveID = profileForm.id === null && profileForm.reuse_active_api_key
+      ? settings?.active_profile_id
+      : undefined;
+    const profileID = typedKey ? undefined : (profileForm.id ?? reuseActiveID ?? undefined);
+    if (!typedKey && !profileID) {
+      toast.error(zh ? '请先输入 API Key 再检测' : 'Enter an API key before probing');
+      return;
+    }
+    setProbingTools(true);
+    setToolProbeResult(null);
+    try {
+      const result = await AIAgentService.testToolCalling({
+        profile_id: profileID,
+        base_url: profileForm.base_url.trim(),
+        api_key: typedKey || undefined,
+        model: profileForm.model.trim(),
+        api_mode: profileForm.api_mode,
+        reasoning_effort: profileForm.reasoning_effort.trim(),
+        timeout_seconds: Number(profileForm.timeout_seconds) || 75,
+      });
+      setToolProbeResult(result);
+      if (result.ok) {
+        toast.success(zh ? '支持工具调用，助手会实时查询商品库' : 'Tool calling works — the assistant can query the catalogue');
+      } else if (result.tools_supported) {
+        toast(zh ? '接口接受 tools，但模型没有主动调用' : 'The provider accepted tools but the model answered in text');
+      } else if (!result.agent_tools_enabled) {
+        toast(zh ? '当前部署已关闭工具调用' : 'Tool calling is disabled for this deployment');
+      } else {
+        toast(zh ? '该接口不支持 tools，会自动降级' : 'This provider rejects tools and will be downgraded automatically');
+      }
+    } catch (error: unknown) {
+      toast.error(errorMessage(error) || (zh ? '无法检测工具调用' : 'Could not probe tool calling support'));
+    } finally {
+      setProbingTools(false);
     }
   };
 
@@ -604,7 +650,32 @@ export default function AIAssistantSettingsPage() {
                       </span>
                     </div>
                   )}
+                  {toolProbeResult && (
+                    <div className={`mb-3 flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm ${toolProbeResult.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : toolProbeResult.tools_supported ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-700'}`}>
+                      {toolProbeResult.ok ? <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" /> : <InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />}
+                      <span className="min-w-0 break-words">
+                        {toolProbeResult.ok
+                          ? (zh
+                            ? `工具调用正常：${toolProbeResult.tools_called?.join(', ') || '—'} · ${toolProbeResult.latency_ms}ms`
+                            : `Tool calling works: ${toolProbeResult.tools_called?.join(', ') || '—'} · ${toolProbeResult.latency_ms}ms`)
+                          : (zh ? (toolProbeResult.error || toolProbeResult.hint) : (toolProbeResult.error || toolProbeResult.hint))}
+                        {!toolProbeResult.ok && toolProbeResult.hint && toolProbeResult.error && (
+                          <span className="mt-1 block text-xs opacity-80">{toolProbeResult.hint}</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={probeToolCalling}
+                      disabled={probingTools || !profileForm.base_url.trim() || !profileForm.model.trim() || (!profileForm.api_key.trim() && !profileForm.has_api_key && !(profileForm.id === null && profileForm.reuse_active_api_key))}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={zh ? '发送一条带 tools 的请求，检测该接口是否支持工具调用（助手会实时查库）' : 'Sends one request carrying tools to check whether the provider supports tool calling'}
+                    >
+                      {probingTools ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <SparklesIcon className="h-4 w-4" />}
+                      {zh ? '检测工具调用' : 'Test tool calling'}
+                    </button>
                     <button
                       type="button"
                       onClick={testConnection}

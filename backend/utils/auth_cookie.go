@@ -18,9 +18,9 @@ const (
 	CustomerAuthCookieName = "customer_token"
 )
 
-// AuthCookieSecure reports whether auth cookies should carry the Secure flag.
-// It follows the actual request scheme when a reverse proxy tells us (nginx /
-// Cloudflare set X-Forwarded-Proto), and otherwise falls back to the
+// AuthCookieSecure reports whether auth cookies should carry the Secure flag. It
+// follows the actual request scheme when a trusted reverse proxy tells us (nginx
+// / Cloudflare set X-Forwarded-Proto), and otherwise falls back to the
 // environment. AUTH_COOKIE_SECURE=false forces the flag off (plain-HTTP dev).
 func AuthCookieSecure(c *gin.Context) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_COOKIE_SECURE"))) {
@@ -34,13 +34,19 @@ func AuthCookieSecure(c *gin.Context) bool {
 		if c.Request != nil && c.Request.TLS != nil {
 			return true
 		}
-		if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
-			first := strings.TrimSpace(strings.Split(proto, ",")[0])
-			if strings.EqualFold(first, "https") {
-				return true
-			}
-			if strings.EqualFold(first, "http") {
-				return false
+		// X-Forwarded-Proto is only meaningful when it comes from a proxy we
+		// trust: any client can send the header, and honouring it from a direct
+		// peer would let an attacker decide whether our session cookie is
+		// marked Secure.
+		if IsTrustedProxyRequest(c) {
+			if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
+				first := strings.TrimSpace(strings.Split(proto, ",")[0])
+				if strings.EqualFold(first, "https") {
+					return true
+				}
+				if strings.EqualFold(first, "http") {
+					return false
+				}
 			}
 		}
 	}
