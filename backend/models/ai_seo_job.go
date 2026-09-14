@@ -34,11 +34,14 @@ type AIAgentSEOJob struct {
 }
 
 type AIAgentSEOJobItem struct {
-	ID                   uint      `json:"id" gorm:"primaryKey"`
-	JobID                string    `json:"job_id" gorm:"size:36;index;not null"`
+	// The composite index below serves the worker feed query
+	// (job_id + status, ordered by id). Without it MySQL starts from the job_id
+	// index and re-filters status for every batch of a large job.
+	ID                   uint      `json:"id" gorm:"primaryKey;index:idx_ai_seo_items_job_status_id,priority:3"`
+	JobID                string    `json:"job_id" gorm:"size:36;index;index:idx_ai_seo_items_job_status_id,priority:1;not null"`
 	ProductID            uint      `json:"product_id" gorm:"index;not null"`
 	SKU                  string    `json:"sku" gorm:"size:100"`
-	Status               string    `json:"status" gorm:"size:20;index;not null"` // queued, running, optimized, unresolved, failed, cancelled
+	Status               string    `json:"status" gorm:"size:20;index;index:idx_ai_seo_items_job_status_id,priority:2;not null"` // queued, running, optimized, unresolved, failed, cancelled
 	Error                string    `json:"error" gorm:"type:text"`
 	ClassificationStatus string    `json:"classification_status,omitempty" gorm:"size:24;index"`
 	ClassificationRule   string    `json:"classification_rule,omitempty" gorm:"size:160"`

@@ -634,6 +634,7 @@ func processAIAgentSEOJob(jobID string) {
 		finishAIAgentSEOJob(jobID, workerToken, "paused", "AI configuration is unavailable. Repair settings and resume; existing product results are unchanged.")
 		return
 	}
+	jobRuntime := aiSEOJobRuntime{prompt: claimedJob.Prompt, scope: aiSEOScopeFromPrompt(claimedJob.Prompt)}
 	workers := normalizedAISEOJobConcurrency(setting)
 	if workers > 0 {
 		work := make(chan models.AIAgentSEOJobItem)
@@ -643,7 +644,7 @@ func processAIAgentSEOJob(jobID string) {
 			go func() {
 				defer wg.Done()
 				for item := range work {
-					processAIAgentSEOItem(context.Background(), setting, apiKey, jobID, workerToken, item)
+					processAIAgentSEOItem(context.Background(), setting, apiKey, jobID, workerToken, jobRuntime, item)
 				}
 			}()
 		}
@@ -692,7 +693,15 @@ func loadAIAgentSEOJobProfileID(db *gorm.DB, jobID string) (*uint, error) {
 	return jobProfile.AIProfileID, err
 }
 
-func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, apiKey, jobID, workerToken string, item models.AIAgentSEOJobItem) {
+// aiSEOJobRuntime carries the per-job inputs that are identical for every item in
+// a job. Reading the prompt and reparsing its scope once per product added two
+// redundant queries plus a regexp-free but repeated string scan per item.
+type aiSEOJobRuntime struct {
+	prompt string
+	scope  map[string]bool
+}
+
+func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, apiKey, jobID, workerToken string, runtime aiSEOJobRuntime, item models.AIAgentSEOJobItem) {
 	db := config.GetDB()
 	if !isAISEOJobRunning(db, jobID, workerToken) {
 		return
@@ -712,11 +721,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 		failAIAgentSEOItem(jobID, workerToken, item, err)
 		return
 	}
-	var job models.AIAgentSEOJob
-	if err := db.Select("prompt").First(&job, "id = ?", jobID).Error; err != nil {
-		failAIAgentSEOItem(jobID, workerToken, item, err)
-		return
-	}
+	jobPrompt := runtime.prompt
 	wasActive := product.IsActive
 	originalBrand := strings.TrimSpace(product.Brand)
 	modelForClassification := services.ClassificationModel(product)
@@ -730,8 +735,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	if services.NormalizeBrandKey(product.Brand) == "" && classificationReference.BrandKey != "" && classificationReference.BrandKey != "unknown" {
 		product.Brand = services.CanonicalBrandName(classificationReference.BrandKey)
 	}
-	requestedScope := aiSEOScopeFromPrompt(job.Prompt)
-	if (requestedScope["all"] || requestedScope["category"]) && !services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
+	if (runtime.scope["all"] || runtime.scope["category"]) && !services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
 		setAISEOItemProgress(db, item.ID, "AI 核验分类，无法判断则保留 / AI classification verification")
 		verified, err := classifyProductCategoryWithLLM(ctx, setting, apiKey, product, modelForClassification)
 		if err != nil {
@@ -784,7 +788,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 		"available_categories": availableCategories,
 	})
 	aiSEOProviderSlots <- struct{}{}
-	seoMessages := []aiChatMessage{{Role: "system", Content: aiSEOSystemPrompt}, {Role: "user", Content: "ADMINISTRATOR_SEO_INSTRUCTION:\n" + job.Prompt + "\n\nPRODUCT_REFERENCE:\n" + string(productContext)}}
+	seoMessages := []aiChatMessage{{Role: "system", Content: aiSEOSystemPrompt}, {Role: "user", Content: "ADMINISTRATOR_SEO_INSTRUCTION:\n" + jobPrompt + "\n\nPRODUCT_REFERENCE:\n" + string(productContext)}}
 	setAISEOItemProgress(db, item.ID, "调用 AI 审核名称、分类、描述与 SEO / AI auditing requested fields")
 	output, err := requestAIAgentSEOOutput(ctx, setting, apiKey, seoMessages, 2600)
 	<-aiSEOProviderSlots
@@ -798,7 +802,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 		return
 	}
 	output = completeAISEOOutput(output, product)
-	scope := aiSEOScopeFromPrompt(job.Prompt)
+	scope := runtime.scope
 	setAISEOItemProgress(db, item.ID, "校验 AI 结果并保存 / Validating and saving results")
 	var changes []string
 	now := time.Now().UTC()
@@ -939,6 +943,9 @@ type aiSEOCategoryReference struct {
 }
 
 func loadAISEOCategoryReferences(db *gorm.DB) ([]aiSEOCategoryReference, error) {
+	if cached, ok := cachedAISEOCategoryReferences(); ok {
+		return cached, nil
+	}
 	var rows []models.Category
 	if err := db.Model(&models.Category{}).
 		Select("id", "name", "slug", "parent_id", "sort_order", "is_active").
@@ -974,7 +981,51 @@ func loadAISEOCategoryReferences(db *gorm.DB) ([]aiSEOCategoryReference, error) 
 			ParentID: category.ParentID, Path: strings.Join(parts, " > "), IsLeaf: !hasChildren[category.ID],
 		})
 	}
+	storeAISEOCategoryReferences(categories)
 	return categories, nil
+}
+
+// The active taxonomy is read once per product inside an automatic SEO job, so a
+// job over a large catalogue re-read and re-built the same tree thousands of
+// times. A short TTL removes that duplication while keeping the prompt data
+// fresh. It is safe because every write path re-validates the category against
+// the database (resolveAISEOCategory*) instead of trusting this list.
+const aiSEOCategoryReferenceTTL = 30 * time.Second
+
+var aiSEOCategoryReferenceCache struct {
+	mu      sync.Mutex
+	expires time.Time
+	rows    []aiSEOCategoryReference
+}
+
+func cachedAISEOCategoryReferences() ([]aiSEOCategoryReference, bool) {
+	aiSEOCategoryReferenceCache.mu.Lock()
+	defer aiSEOCategoryReferenceCache.mu.Unlock()
+	if aiSEOCategoryReferenceCache.rows == nil || time.Now().After(aiSEOCategoryReferenceCache.expires) {
+		return nil, false
+	}
+	// Callers may slice the result, so hand out a copy of the backing array.
+	rows := make([]aiSEOCategoryReference, len(aiSEOCategoryReferenceCache.rows))
+	copy(rows, aiSEOCategoryReferenceCache.rows)
+	return rows, true
+}
+
+func storeAISEOCategoryReferences(rows []aiSEOCategoryReference) {
+	aiSEOCategoryReferenceCache.mu.Lock()
+	defer aiSEOCategoryReferenceCache.mu.Unlock()
+	aliased := make([]aiSEOCategoryReference, len(rows))
+	copy(aliased, rows)
+	aiSEOCategoryReferenceCache.rows = aliased
+	aiSEOCategoryReferenceCache.expires = time.Now().Add(aiSEOCategoryReferenceTTL)
+}
+
+// invalidateAISEOCategoryReferences drops the cache after a taxonomy change so
+// the next job prompt sees the new tree immediately.
+func invalidateAISEOCategoryReferences() {
+	aiSEOCategoryReferenceCache.mu.Lock()
+	defer aiSEOCategoryReferenceCache.mu.Unlock()
+	aiSEOCategoryReferenceCache.rows = nil
+	aiSEOCategoryReferenceCache.expires = time.Time{}
 }
 
 // resolveAISEOCategory is deliberately database-authoritative. Automatic SEO

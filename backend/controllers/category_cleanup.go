@@ -68,6 +68,7 @@ func (cc *CategoryController) ApplyCategoryCleanup(c *gin.Context) {
 	if result.MergedCount > 0 || result.DeletedCount > 0 {
 		services.InvalidatePublicCaches(c.Request.Context(), "category:cleanup", []string{"/categories", "/products", "/"})
 		services.TriggerNextRevalidate(nil, []string{"/categories", "/products", "/"}, true)
+		invalidateAISEOCategoryReferences()
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Category cleanup completed", Data: result})
 }

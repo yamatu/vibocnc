@@ -8,6 +8,11 @@ import (
 )
 
 // Only IDs/SKUs are queued. Product bodies are read by a worker, never as one catalogue-sized allocation.
+//
+// The running-state probe is refreshed once per batch. Probing inside the feed
+// loop added one COUNT query per product; the workers themselves re-check the
+// job state before touching a product, so a pause still takes effect
+// immediately and the cheaper batch-level check only stops feeding early.
 func streamAISEOItems(db *gorm.DB, jobID, token string, work chan<- models.AIAgentSEOJobItem) error {
 	var after uint
 	for isAISEOJobRunning(db, jobID, token) {
@@ -19,9 +24,6 @@ func streamAISEOItems(db *gorm.DB, jobID, token string, work chan<- models.AIAge
 			return nil
 		}
 		for _, item := range batch {
-			if !isAISEOJobRunning(db, jobID, token) {
-				return nil
-			}
 			work <- item
 			after = item.ID
 		}

@@ -103,13 +103,34 @@ func publicDialContext(ctx context.Context, network, address string) (net.Conn, 
 	return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].String(), port))
 }
 
-func newPublicHTTPClient(timeout time.Duration) *http.Client {
+// publicTransport is the single connection pool shared by every safe outbound
+// client. The SSRF guard lives in publicDialContext, so it is applied per
+// connection instead of per request, and keeping one transport lets repeated
+// provider calls (AI completions, PayPal, web search) reuse an already
+// established TCP + TLS session. Building a fresh transport per call forced a
+// full DNS lookup and handshake on every request, which dominated the runtime
+// of large AI SEO jobs.
+var publicTransport = newPublicTransport()
+
+func newPublicTransport() *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	transport.DialContext = publicDialContext
+	// AI SEO jobs issue concurrent completions against one provider host, so the
+	// default of two idle connections per host would thrash.
+	transport.MaxIdleConnsPerHost = 8
+	transport.MaxIdleConns = 64
+	transport.IdleConnTimeout = 90 * time.Second
+	return transport
+}
+
+func newPublicHTTPClient(timeout time.Duration) *http.Client {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: transport,
+		Transport: publicTransport,
 		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 			if _, err := validatePublicHTTPURL(req.URL.String()); err != nil {
 				return err
@@ -121,6 +142,8 @@ func newPublicHTTPClient(timeout time.Duration) *http.Client {
 
 // NewPublicHTTPClient is the safe outbound client for configured third-party
 // providers. It prevents provider URLs from becoming an SSRF primitive.
+// The returned client is cheap: it only carries a per-call timeout and shares
+// the process-wide validated transport.
 func NewPublicHTTPClient(timeout time.Duration) *http.Client {
 	return newPublicHTTPClient(timeout)
 }

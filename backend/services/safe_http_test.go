@@ -2,7 +2,9 @@ package services
 
 import (
 	"net"
+	"net/http"
 	"testing"
+	"time"
 )
 
 func TestValidatePublicHTTPURLRejectsPrivateTargets(t *testing.T) {
@@ -55,5 +57,38 @@ func TestIsPublicOutboundIP(t *testing.T) {
 		if got := isPublicOutboundIP(net.ParseIP(test.ip)); got != test.want {
 			t.Errorf("isPublicOutboundIP(%q) = %v, want %v", test.ip, got, test.want)
 		}
+	}
+}
+
+// TestPublicHTTPClientsShareOneTransport locks in connection reuse. Every AI
+// completion and every PayPal call used to build its own transport, so no
+// request could ever reuse a TCP/TLS session with the provider.
+func TestPublicHTTPClientsShareOneTransport(t *testing.T) {
+	t.Parallel()
+
+	first := NewPublicHTTPClient(5 * time.Second)
+	second := NewPublicHTTPClient(75 * time.Second)
+	if first.Transport != second.Transport {
+		t.Fatal("outbound clients must share the validated transport so connections are reused")
+	}
+	if first.Transport != publicTransport {
+		t.Fatal("outbound client must use the process-wide validated transport")
+	}
+	if first.Timeout != 5*time.Second || second.Timeout != 75*time.Second {
+		t.Fatalf("per-client timeouts must be preserved, got %s and %s", first.Timeout, second.Timeout)
+	}
+	if _, ok := first.Transport.(*http.Transport); !ok {
+		t.Fatalf("shared transport must stay an *http.Transport, got %T", first.Transport)
+	}
+}
+
+func TestPublicHTTPClientDefaultsInvalidTimeout(t *testing.T) {
+	t.Parallel()
+
+	if got := NewPublicHTTPClient(0).Timeout; got != 30*time.Second {
+		t.Fatalf("zero timeout should fall back to 30s, got %s", got)
+	}
+	if got := NewPublicHTTPClient(-time.Second).Timeout; got != 30*time.Second {
+		t.Fatalf("negative timeout should fall back to 30s, got %s", got)
 	}
 }

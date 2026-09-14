@@ -313,6 +313,7 @@ func (cc *CategoryController) ReorderCategories(c *gin.Context) {
 	}
 
 	services.InvalidatePublicCaches(c.Request.Context(), "category:reorder", nil)
+	invalidateAISEOCategoryReferences()
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Categories reordered successfully"})
 }
 
@@ -430,6 +431,9 @@ func (cc *CategoryController) CreateCategory(c *gin.Context) {
 	}
 
 	services.InvalidatePublicCaches(c.Request.Context(), "category:create", nil)
+	// The AI SEO prompt embeds the active taxonomy, so a new category must be
+	// visible to the next job immediately rather than after the cache TTL.
+	invalidateAISEOCategoryReferences()
 
 	c.JSON(http.StatusCreated, models.APIResponse{
 		Success: true,
@@ -510,6 +514,7 @@ func (cc *CategoryController) UpdateCategory(c *gin.Context) {
 	}
 
 	services.InvalidatePublicCaches(c.Request.Context(), "category:update", nil)
+	invalidateAISEOCategoryReferences()
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -635,6 +640,7 @@ func (cc *CategoryController) DeleteCategory(c *gin.Context) {
 	}
 
 	services.InvalidatePublicCaches(c.Request.Context(), "category:delete", []string{"/categories", "/products", "/"})
+	invalidateAISEOCategoryReferences()
 	services.TriggerNextRevalidate(nil, []string{"/categories", "/products", "/"}, true)
 
 	c.JSON(http.StatusOK, models.APIResponse{
