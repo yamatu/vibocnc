@@ -1,0 +1,46 @@
+# 统一文本文件的存储与检出为 LF。
+#
+# 为什么必须有这个文件：
+#   - 本仓库在 Linux 容器中构建，而历史上 47 个文件以 CRLF 存进了仓库，
+#     导致 gofmt 检查失败、shell 脚本 shebang 失效（容器无法启动）。
+#   - 这里统一为 LF，使 Windows / macOS / Linux 与 CI、Docker 构建结果一致。
+#
+# 注意：如需在某平台保留 CRLF，请针对具体路径单独声明 eol=crlf，
+# 不要删除本文件中的全局设置。
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.bmp   binary
+*.ico   binary
+*.icns  binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.7z    binary
+*.rar   binary
+*.tar   binary
+*.xls   binary
+*.xlsx  binary
+*.doc   binary
+*.docx  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.mp4   binary
+*.mp3   binary
+*.mov   binary
+*.psd   binary
+*.db    binary
+*.sqlite binary
+
+# 例外：以下两个文件扩展名是图片，但实际内容是 SVG 文本。
+# 必须显式声明为文本，否则会被上面的 image 规则挡住而归一化失败。
+frontend/public/images/placeholder-image.png text eol=lf
+frontend/public/placeholder-banner.jpg  text eol=lf
