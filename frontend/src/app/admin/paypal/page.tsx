@@ -11,6 +11,7 @@ type FormState = {
   enabled: boolean;
   mode: 'sandbox' | 'live';
   currency: string;
+  webhook_id: string;
   client_id_sandbox: string;
   client_id_live: string;
   client_secret_sandbox: string;
@@ -30,6 +31,7 @@ export default function AdminPayPalPage() {
     enabled: false,
     mode: 'sandbox',
     currency: 'USD',
+    webhook_id: '',
     client_id_sandbox: '',
     client_id_live: '',
     client_secret_sandbox: '',
@@ -42,6 +44,7 @@ export default function AdminPayPalPage() {
       enabled: Boolean((data as any).enabled),
       mode: ((data as any).mode === 'live' ? 'live' : 'sandbox') as any,
       currency: String((data as any).currency || 'USD'),
+      webhook_id: String((data as any).webhook_id || ''),
       client_id_sandbox: String((data as any).client_id_sandbox || ''),
       client_id_live: String((data as any).client_id_live || ''),
       client_secret_sandbox: '',
@@ -59,6 +62,7 @@ export default function AdminPayPalPage() {
         enabled: form.enabled,
         mode: form.mode,
         currency: form.currency.trim() || 'USD',
+        webhook_id: form.webhook_id.trim(),
         client_id_sandbox: form.client_id_sandbox.trim(),
         client_id_live: form.client_id_live.trim(),
       };
@@ -216,6 +220,34 @@ export default function AdminPayPalPage() {
             <p className="text-xs text-gray-500">
               {t('paypal.secretHint', locale === 'zh' ? 'Client Secret 会在服务器端加密保存，仅用于 PayPal 支付和退款，不会回传到浏览器。' : 'Client Secrets are encrypted on the server and are never returned to the browser. They are required for PayPal refunds.')}
             </p>
+
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-800 mb-1">
+                  {t('paypal.webhookId', locale === 'zh' ? 'Webhook ID' : 'Webhook ID')}
+                </label>
+                <input
+                  value={form.webhook_id}
+                  onChange={(e) => setForm((p) => ({ ...p, webhook_id: e.target.value }))}
+                  className="block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-yellow-500 focus:ring-yellow-500"
+                  placeholder="例如 8PT597110X687430LKGECATA"
+                />
+              </div>
+              <p className="text-xs text-gray-600">
+                {t(
+                  'paypal.webhookHint',
+                  locale === 'zh'
+                    ? '在 PayPal 后台创建 Webhook，事件类型勾选「付款捕获已完成 (PAYMENT.CAPTURE.COMPLETED)」，然后将 Webhook ID 填到这里。支付结果会通过服务端捕获与 Webhook 双重校验。'
+                    : 'Create a webhook in PayPal with the PAYMENT.CAPTURE.COMPLETED event, then paste its Webhook ID here. Payments are verified both on server-side capture and via this webhook.'
+                )}
+              </p>
+              <div className="text-xs text-gray-600">
+                <span className="font-semibold">Webhook URL:</span>{' '}
+                <span className="font-mono break-all">
+                  {typeof window !== 'undefined' ? `${window.location.origin.replace(/\/$/, '')}/api/v1/paypal/webhook` : '/api/v1/paypal/webhook'}
+                </span>
+              </div>
+            </div>
 
             <div className="flex items-center justify-end gap-2">
               <button

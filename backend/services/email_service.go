@@ -383,6 +383,9 @@ func CreateAndSendVerificationCode(db *gorm.DB, email string, purpose Verificati
 	return SendEmail(db, EmailSendOptions{To: normalizedEmail, Subject: subject, Text: text, HTML: html, Headers: headers})
 }
 
+// MaxVerificationAttempts is the number of failed tries allowed per code.
+const MaxVerificationAttempts = 5
+
 func VerifyEmailCode(db *gorm.DB, email string, purpose VerificationPurpose, code string) error {
 	normalizedEmail := strings.ToLower(strings.TrimSpace(email))
 	if normalizedEmail == "" {
@@ -398,7 +401,20 @@ func VerifyEmailCode(db *gorm.DB, email string, purpose VerificationPurpose, cod
 		Order("created_at DESC").First(&rec).Error; err != nil {
 		return errors.New("invalid or expired code")
 	}
+
+	if rec.Attempts >= MaxVerificationAttempts {
+		// Burn the code: too many wrong guesses.
+		now := time.Now()
+		_ = db.Model(&models.EmailVerificationCode{}).Where("id = ?", rec.ID).Update("used_at", &now).Error
+		return errors.New("too many failed attempts, please request a new code")
+	}
+
 	if err := bcrypt.CompareHashAndPassword([]byte(rec.CodeHash), []byte(normalizedCode)); err != nil {
+		// Atomically count the failed attempt so concurrent guesses cannot race
+		// past the limit.
+		db.Model(&models.EmailVerificationCode{}).
+			Where("id = ? AND attempts < ?", rec.ID, MaxVerificationAttempts).
+			UpdateColumn("attempts", gorm.Expr("attempts + 1"))
 		return errors.New("invalid or expired code")
 	}
 	now := time.Now()

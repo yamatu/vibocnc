@@ -13,7 +13,6 @@ import Layout from '@/components/layout/Layout';
 import PayPalCheckout from '@/components/checkout/PayPalCheckout';
 import { formatCurrency } from '@/lib/utils';
 import { Order } from '@/types';
-import type { PayPalPaymentDetails } from '@/components/checkout/PayPalCheckout';
 import { getErrorMessage } from '@/lib/errors';
 
 import {
@@ -211,14 +210,12 @@ export default function GuestCheckoutPage() {
     }
   };
 
-  const handlePaymentSuccess = async (paymentData: PayPalPaymentDetails) => {
+  const handlePaymentSuccess = async (paidOrder: Order) => {
     if (!currentOrder) return;
     setIsProcessing(true);
     try {
-      await OrderService.processPayment(currentOrder.id, {
-        payment_method: 'paypal',
-        payment_data: { ...paymentData }
-      });
+      // The backend has already captured and verified the payment.
+      setCurrentOrder(paidOrder);
       setStep('success');
       clearCart();
       toast.success('Payment completed successfully!');
@@ -498,6 +495,7 @@ export default function GuestCheckoutPage() {
                   <p className="text-blue-700 text-sm">Total: <span className="font-semibold">${currentOrder.total_amount.toFixed(2)}</span></p>
                 </div>
                 <PayPalCheckout
+                  orderId={currentOrder.id}
                   amount={currentOrder.total_amount}
                   currency="USD"
                   onSuccess={handlePaymentSuccess}

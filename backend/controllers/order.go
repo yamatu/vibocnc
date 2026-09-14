@@ -1,12 +1,15 @@
 package controllers
 
 import (
+	"crypto/rand"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"fanuc-backend/config"
@@ -55,8 +58,16 @@ func (oc *OrderController) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	// Generate order number
-	orderNumber := fmt.Sprintf("ORD-%d", time.Now().Unix())
+	// Generate an unguessable order number. A predictable timestamp-based
+	// number made the public tracking endpoint enumerable.
+	orderNumber, err := generateOrderNumber()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create order",
+		})
+		return
+	}
 
 	// Calculate total amount and validate products
 	var subtotalAmount float64
@@ -148,15 +159,14 @@ func (oc *OrderController) CreateOrder(c *gin.Context) {
 	totalAmount := subtotalAmount + shippingFee
 	var couponID *uint
 
-	// Apply coupon if provided
+	// Validate coupon if provided (read-only: no usage recorded yet)
 	if req.CouponCode != "" {
 		couponController := &CouponController{}
-		couponResponse, err := couponController.ApplyCoupon(config.DB, req.CouponCode, 0, subtotalAmount, req.CustomerEmail)
+		couponResponse, err := couponController.ValidateCouponCode(config.DB, req.CouponCode, subtotalAmount, req.CustomerEmail)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"message": "Failed to validate coupon",
-				"error":   err.Error(),
 			})
 			return
 		}
@@ -213,7 +223,10 @@ func (oc *OrderController) CreateOrder(c *gin.Context) {
 		}
 	}
 
-	if err := config.DB.Create(&order).Error; err != nil {
+	// Create the order and claim the coupon use in one transaction so a
+	// concurrent order cannot slip past the coupon's usage limit.
+	tx := config.DB.Begin()
+	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "Failed to create order",
@@ -221,10 +234,43 @@ func (oc *OrderController) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	// Apply coupon usage if coupon was used
+	if err := tx.Create(&order).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create order",
+		})
+		return
+	}
+
+	// Record coupon usage exactly once, with the real order id.
 	if req.CouponCode != "" && couponID != nil {
 		couponController := &CouponController{}
-		couponController.ApplyCoupon(config.DB, req.CouponCode, order.ID, subtotalAmount, req.CustomerEmail)
+		consumeResp, err := couponController.ConsumeCoupon(tx, req.CouponCode, order.ID, subtotalAmount, req.CustomerEmail)
+		if err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to apply coupon",
+			})
+			return
+		}
+		if consumeResp != nil && !consumeResp.Valid {
+			tx.Rollback()
+			c.JSON(http.StatusConflict, gin.H{
+				"success": false,
+				"message": consumeResp.Message,
+			})
+			return
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to create order",
+		})
+		return
 	}
 
 	// Load order with items, products, and coupon
@@ -254,167 +300,6 @@ func (oc *OrderController) CreateOrder(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"message": "Order created successfully",
-		"data":    order,
-	})
-}
-
-// ProcessPayment processes PayPal payment
-func (oc *OrderController) ProcessPayment(c *gin.Context) {
-	orderID := c.Param("id")
-
-	var req PaymentRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request data",
-			"error":   err.Error(),
-		})
-		return
-	}
-
-	// Find order
-	var order models.Order
-	if err := config.DB.Preload("Items").First(&order, orderID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "Order not found",
-		})
-		return
-	}
-	// Check if order is already paid
-	if order.PaymentStatus == "paid" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Order is already paid",
-		})
-		return
-	}
-
-	// Extract payment details from payment_data
-	paymentData, ok := req.PaymentData.(map[string]interface{})
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid payment data format",
-		})
-		return
-	}
-
-	// Extract payment information from frontend PayPal data structure
-	// Frontend sends: { orderID, payerID, details, paymentSource }
-	paypalOrderID, _ := paymentData["orderID"].(string)
-	payerID, _ := paymentData["payerID"].(string)
-	payerEmail := ""
-	transactionID := ""
-
-	// Try to get details object
-	details, hasDetails := paymentData["details"].(map[string]interface{})
-
-	// If no details, try legacy format
-	if !hasDetails {
-		details = paymentData
-	}
-
-	// Extract payer email from details
-	if payer, ok := details["payer"].(map[string]interface{}); ok {
-		if emailInfo, ok := payer["email_address"].(string); ok {
-			payerEmail = emailInfo
-		}
-	}
-
-	// Extract transaction ID from purchase_units
-	if purchaseUnits, ok := details["purchase_units"].([]interface{}); ok && len(purchaseUnits) > 0 {
-		if unit, ok := purchaseUnits[0].(map[string]interface{}); ok {
-			if payments, ok := unit["payments"].(map[string]interface{}); ok {
-				if captures, ok := payments["captures"].([]interface{}); ok && len(captures) > 0 {
-					if capture, ok := captures[0].(map[string]interface{}); ok {
-						if id, ok := capture["id"].(string); ok {
-							transactionID = id
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Fallback: use PayPal orderID or details ID as transaction ID
-	if transactionID == "" {
-		if id, ok := details["id"].(string); ok {
-			transactionID = id
-		} else if paypalOrderID != "" {
-			transactionID = paypalOrderID
-		}
-	}
-
-	// Create payment transaction record
-	transaction := models.PaymentTransaction{
-		OrderID:       order.ID,
-		TransactionID: transactionID,
-		PaymentMethod: req.PaymentMethod,
-		Amount:        order.TotalAmount,
-		Currency:      order.Currency,
-		Status:        "completed",
-		PayerID:       payerID,
-		PayerEmail:    payerEmail,
-		PaymentData:   fmt.Sprintf("%+v", req.PaymentData),
-	}
-
-	if err := config.DB.Create(&transaction).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to create payment transaction",
-		})
-		return
-	}
-
-	// Update order status
-	order.PaymentStatus = "paid"
-	order.PaymentID = paypalOrderID // Use PayPal order ID
-	order.PaymentMethod = req.PaymentMethod
-	order.Status = "confirmed" // Change from pending to confirmed
-
-	if err := config.DB.Save(&order).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to update order status",
-		})
-		return
-	}
-
-	// Update product stock
-	for _, item := range order.Items {
-		config.DB.Model(&models.Product{}).Where("id = ?", item.ProductID).
-			UpdateColumn("stock_quantity", config.DB.Raw("stock_quantity - ?", item.Quantity))
-	}
-
-	// Load updated order with relationships
-	config.DB.Preload("Items.Product").Preload("User").First(&order, order.ID)
-
-	// Admin notification (best-effort, async)
-	siteURL := os.Getenv("SITE_URL")
-	if siteURL == "" {
-		proto := c.GetHeader("X-Forwarded-Proto")
-		if proto == "" {
-			proto = "https"
-		}
-		host := c.GetHeader("X-Forwarded-Host")
-		if host == "" {
-			host = c.Request.Host
-		}
-		if host != "" {
-			siteURL = fmt.Sprintf("%s://%s", proto, host)
-		}
-	}
-	go func(orderID uint, baseURL string) {
-		if err := services.NotifyAdminOrderPaid(config.DB, baseURL, orderID); err != nil {
-			log.Printf("order notification: %v", err)
-		}
-	}(order.ID, siteURL)
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Payment processed successfully",
 		"data":    order,
 	})
 }
@@ -570,9 +455,11 @@ func (oc *OrderController) UpdateOrderStatus(c *gin.Context) {
 	})
 }
 
-// GetOrderByNumber gets order by order number (public - for order tracking)
+// GetOrderByNumber gets order by order number (public - for order tracking).
+// The response is limited to the fields the public tracking page needs so it
+// cannot leak internal/admin data or product cost prices.
 func (oc *OrderController) GetOrderByNumber(c *gin.Context) {
-	orderNumber := c.Param("orderNumber")
+	orderNumber := strings.TrimSpace(c.Param("orderNumber"))
 
 	if orderNumber == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -584,7 +471,12 @@ func (oc *OrderController) GetOrderByNumber(c *gin.Context) {
 
 	var order models.Order
 	if err := config.DB.Where("order_number = ?", orderNumber).
-		Preload("Items.Product").Preload("User").
+		Preload("Items", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, order_id, product_id, quantity, unit_price, total_price")
+		}).
+		Preload("Items.Product", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, name, slug, sku, image_urls")
+		}).
 		First(&order).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -596,8 +488,42 @@ func (oc *OrderController) GetOrderByNumber(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Order retrieved successfully",
-		"data":    order,
+		"data": gin.H{
+			"order_number":     order.OrderNumber,
+			"customer_name":    order.CustomerName,
+			"customer_email":   order.CustomerEmail,
+			"customer_phone":   order.CustomerPhone,
+			"status":           order.Status,
+			"payment_status":   order.PaymentStatus,
+			"payment_method":   order.PaymentMethod,
+			"shipping_address": order.ShippingAddress,
+			"notes":            order.Notes,
+			"shipping_carrier": order.ShippingCarrier,
+			"tracking_number":  order.TrackingNumber,
+			"shipped_at":       order.ShippedAt,
+			"subtotal_amount":  order.SubtotalAmount,
+			"discount_amount":  order.DiscountAmount,
+			"shipping_fee":     order.ShippingFee,
+			"total_amount":     order.TotalAmount,
+			"currency":         order.Currency,
+			"items":            order.Items,
+			"created_at":       order.CreatedAt,
+			"updated_at":       order.UpdatedAt,
+		},
 	})
+}
+
+// generateOrderNumber returns a high-entropy, human-readable order number.
+func generateOrderNumber() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	enc := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:])
+	if len(enc) > 10 {
+		enc = enc[:10]
+	}
+	return fmt.Sprintf("ORD-%s-%s", time.Now().UTC().Format("20060102"), enc), nil
 }
 
 // DeleteOrder deletes an order (admin only)

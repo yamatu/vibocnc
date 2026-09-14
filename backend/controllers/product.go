@@ -247,7 +247,10 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	}
 
 	if brand != "" {
-		query = query.Where("LOWER(brand) = LOWER(?)", strings.TrimSpace(brand))
+		// Compare directly instead of wrapping the column in LOWER(): the column
+		// keeps its (case-insensitive) collation, so `brand` index is still used.
+		// LOWER(brand) forced a full scan on every brand-filtered page.
+		query = query.Where("brand = ?", strings.TrimSpace(brand))
 	}
 
 	if search != "" {

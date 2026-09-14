@@ -57,10 +57,16 @@ const nextConfig: NextConfig = {
   },
 
   eslint: {
-    ignoreDuringBuilds: true,
+    // Lint failures are still surfaced by `npm run lint` in CI/local runs, but
+    // a lint error should not silently ship an unbuildable bundle. Keep the
+    // build strict unless explicitly opted out.
+    ignoreDuringBuilds: process.env.NEXT_IGNORE_LINT_ERRORS === 'true',
   },
   typescript: {
-    ignoreBuildErrors: true,
+    // Type errors must fail the build: `ignoreBuildErrors` previously let
+    // type-broken code reach production. `npx tsc --noEmit` is clean, so this
+    // is safe to enforce.
+    ignoreBuildErrors: process.env.NEXT_IGNORE_TS_ERRORS === 'true',
   },
 
   async headers() {
@@ -90,17 +96,20 @@ const nextConfig: NextConfig = {
     // Cache generated responsive variants so the Hero LCP is not reprocessed
     // on every deployment request or repeat crawl.
     minimumCacheTTL: 86400,
+    // Only hosts that are genuinely used are allowed. `remotePatterns` is an
+    // allowlist for the image optimizer, so every extra entry is an SSRF-ish
+    // surface plus wasted optimizer cache space.
     remotePatterns: [
       { protocol: 'https', hostname: 's2.loli.net' },
-      { protocol: 'https', hostname: 'i.imgur.com' },
-      { protocol: 'https', hostname: 'cdn.example.com' },
-      { protocol: 'https', hostname: 'images.unsplash.com' },
-      { protocol: 'https', hostname: 'via.placeholder.com' },
-      { protocol: 'https', hostname: 'picsum.photos' },
-      { protocol: 'http', hostname: 'localhost' },
-      { protocol: 'http', hostname: '127.0.0.1' },
-      { protocol: 'http', hostname: 'dz.yamatu.xyz' },
       { protocol: 'https', hostname: 'dz.yamatu.xyz' },
+      // Development-only origins (local backend uploads, throwaway placeholders).
+      ...(process.env.NODE_ENV === 'production'
+        ? []
+        : [
+            { protocol: 'https' as const, hostname: 'localhost' },
+            { protocol: 'http' as const, hostname: 'localhost' },
+            { protocol: 'http' as const, hostname: '127.0.0.1' },
+          ]),
     ],
   },
 };

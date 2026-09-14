@@ -71,10 +71,7 @@ func (uc *UploadController) BatchUploadImages(c *gin.Context) {
 		return
 	}
 
-	uploadPath := os.Getenv("UPLOAD_PATH")
-	if uploadPath == "" {
-		uploadPath = "./uploads"
-	}
+	uploadPath := config.UploadPath()
 
 	// Ensure upload directory exists
 	// #nosec G703 -- uploadPath is server-controlled UPLOAD_PATH configuration.

@@ -25,6 +25,13 @@ export class AuthService {
 
   // Logout
   static async logout(): Promise<void> {
+    try {
+      // Clears the HttpOnly session cookie server-side; the browser cannot do
+      // that from JavaScript.
+      await apiClient.post('/auth/logout');
+    } catch {
+      // Offline / already-expired sessions are fine to ignore.
+    }
     authUtils.removeToken();
     // Redirect to login page
     if (typeof window !== 'undefined') {

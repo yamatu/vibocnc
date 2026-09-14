@@ -105,6 +105,17 @@ func ValidateToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
+// CustomerJWTTTL returns the configured customer session lifetime.
+func CustomerJWTTTL() time.Duration {
+	hours := 168 // 7 days for customers
+	if hoursStr := os.Getenv("CUSTOMER_JWT_EXPIRES_HOURS"); hoursStr != "" {
+		if h, err := strconv.Atoi(hoursStr); err == nil && h > 0 {
+			hours = h
+		}
+	}
+	return time.Duration(hours) * time.Hour
+}
+
 // GenerateCustomerJWT generates a JWT token for a customer
 func GenerateCustomerJWT(customerID uint, email string) (string, error) {
 	jwtSecret, err := getJWTSecret()
@@ -112,14 +123,7 @@ func GenerateCustomerJWT(customerID uint, email string) (string, error) {
 		return "", err
 	}
 
-	expiresHours := 168 // 7 days for customers
-	if hoursStr := os.Getenv("CUSTOMER_JWT_EXPIRES_HOURS"); hoursStr != "" {
-		if hours, err := strconv.Atoi(hoursStr); err == nil {
-			expiresHours = hours
-		}
-	}
-
-	expirationTime := time.Now().Add(time.Duration(expiresHours) * time.Hour)
+	expirationTime := time.Now().Add(CustomerJWTTTL())
 
 	claims := &CustomerClaims{
 		CustomerID: customerID,

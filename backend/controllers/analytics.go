@@ -367,6 +367,10 @@ func (ac *AnalyticsController) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	// The middleware caches the tracking flag; drop it so a change takes
+	// effect immediately instead of after the cache TTL.
+	services.InvalidateTrackingCache()
+
 	// Reload
 	s, _ = services.GetOrCreateAnalyticsSetting(db)
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Settings updated", Data: s})

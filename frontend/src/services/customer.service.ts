@@ -83,6 +83,11 @@ export class CustomerService {
     throw new Error(response.data.message || 'Login failed');
   }
 
+  // 退出登录（清除服务端 HttpOnly 会话 Cookie）
+  static async logout(): Promise<void> {
+    await apiClient.post<APIResponse<null>>('/customer/logout');
+  }
+
   // 获取个人资料
   static async getProfile(): Promise<Customer> {
     const response = await apiClient.get<APIResponse<Customer>>(

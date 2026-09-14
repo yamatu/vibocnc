@@ -244,23 +244,23 @@ func AnalyticsMiddleware() gin.HandlerFunc {
 
 		statusCode := c.Writer.Status()
 
-		// Non-blocking: write the log record in background
+		// Non-blocking: buffer the log record; a background writer flushes it in
+		// batches so the request path never performs a per-hit INSERT.
 		go func() {
 			db := config.GetDB()
 			if db == nil {
 				return
 			}
 
-			// Check if tracking is enabled
-			s, err := services.GetOrCreateAnalyticsSetting(db)
-			if err != nil || !s.TrackingEnabled {
+			// Cheap cached check (refreshed every 30s) instead of a SELECT per hit.
+			if !services.IsTrackingEnabled(db) {
 				return
 			}
 
 			isBot, botName := services.DetectBot(ua)
 			geo := services.LookupGeoIP(ip)
 
-			log := models.VisitorLog{
+			services.EnqueueVisitorLog(models.VisitorLog{
 				IPAddress:   ip,
 				Country:     geo.Country,
 				CountryCode: geo.CountryCode,
@@ -275,8 +275,7 @@ func AnalyticsMiddleware() gin.HandlerFunc {
 				IsBot:       isBot,
 				BotName:     botName,
 				Referer:     referer,
-			}
-			_ = db.Create(&log).Error
+			})
 		}()
 	}
 }

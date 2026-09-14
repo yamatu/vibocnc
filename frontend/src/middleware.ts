@@ -138,7 +138,10 @@ export async function middleware(request: NextRequest) {
   const forwardedSiteLocale = request.headers.get('x-site-locale');
   const locale = pathLocale
     || (isPublicLocale(forwardedSiteLocale) ? normalizePublicLocale(forwardedSiteLocale) : DEFAULT_PUBLIC_LOCALE);
-  const rawToken = request.cookies.get('auth_token')?.value;
+  // The admin session JWT lives in an HttpOnly cookie. Next middleware runs on
+  // the server and can still read it, so route protection keeps working even
+  // though client-side JavaScript can no longer see the token.
+  const rawToken = request.cookies.get('admin_token')?.value;
   const token = isAdminTokenUsable(rawToken) ? rawToken : undefined;
   const userAgent = request.headers.get('user-agent') || '';
 
@@ -305,7 +308,8 @@ export async function middleware(request: NextRequest) {
     loginUrl.searchParams.set('redirect', pathname);
     const redirectResponse = NextResponse.redirect(loginUrl);
     if (rawToken) {
-      redirectResponse.cookies.delete('auth_token');
+      redirectResponse.cookies.delete('admin_token');
+      redirectResponse.cookies.delete('auth_session');
       redirectResponse.cookies.delete('auth_token_expires');
     }
     return redirectResponse;

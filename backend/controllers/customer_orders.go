@@ -3,6 +3,7 @@ package controllers
 import (
 	"fanuc-backend/config"
 	"fanuc-backend/models"
+	"fanuc-backend/utils"
 	"net/http"
 	"strconv"
 
@@ -50,7 +51,7 @@ func (oc *OrderController) GetMyOrders(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to retrieve orders",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}

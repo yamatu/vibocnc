@@ -33,6 +33,14 @@ export interface OrderFilters {
   date_to?: string;
 }
 
+export interface PayPalCreateOrderResponse {
+  order_id: number;
+  order_number: string;
+  paypal_order_id: string;
+  amount: number;
+  currency: string;
+}
+
 export interface PaymentRequest {
   payment_method: string;
   payment_data?: Record<string, unknown>;
@@ -73,18 +81,33 @@ export class OrderService {
     throw new Error(response.data.message || 'Failed to create order');
   }
 
-  // Process payment (public)
-  static async processPayment(orderId: number, paymentData: PaymentRequest): Promise<Order> {
-    const response = await apiClient.post<APIResponse<Order>>(
-      `/orders/${orderId}/payment`,
-      paymentData
+  // Create a server-side PayPal order for an existing order (public).
+  // The amount is decided by the backend, never by the browser.
+  static async createPayPalOrder(orderId: number): Promise<PayPalCreateOrderResponse> {
+    const response = await apiClient.post<APIResponse<PayPalCreateOrderResponse>>(
+      `/orders/${orderId}/paypal/create`
     );
-    
+
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    
-    throw new Error(response.data.message || 'Payment processing failed');
+
+    throw new Error(response.data.message || response.data.error || 'Failed to start PayPal payment');
+  }
+
+  // Capture a PayPal order server-side. Only after this succeeds is the order
+  // marked paid. The browser supplies just the PayPal order id.
+  static async capturePayPalOrder(orderId: number, paypalOrderId: string): Promise<Order> {
+    const response = await apiClient.post<APIResponse<Order>>(
+      `/orders/${orderId}/paypal/capture`,
+      { paypal_order_id: paypalOrderId }
+    );
+
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+
+    throw new Error(response.data.message || response.data.error || 'Payment capture failed');
   }
 
   // Admin: Get orders

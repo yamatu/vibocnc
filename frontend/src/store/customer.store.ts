@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import Cookies from 'js-cookie';
+import { authUtils } from '@/lib/api';
 import type { Customer, LoginRequest, RegisterRequest } from '@/services/customer.service';
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -44,14 +44,13 @@ export const useCustomerStore = create<CustomerAuthState & CustomerAuthActions>(
           const { CustomerService } = await import('@/services/customer.service');
           const response = await CustomerService.login(credentials);
 
-          Cookies.set('customer_token', response.token, {
-            expires: 7,
-            sameSite: 'lax'
-          });
+          // The JWT is stored by the backend in an HttpOnly cookie; only the
+          // non-sensitive expiry marker is written here.
+          authUtils.setCustomerToken(response.token);
 
           set({
             customer: response.customer,
-            token: response.token,
+            token: null,
             isAuthenticated: true,
             isLoading: false,
           });
@@ -70,14 +69,11 @@ export const useCustomerStore = create<CustomerAuthState & CustomerAuthActions>(
           const { CustomerService } = await import('@/services/customer.service');
           const response = await CustomerService.register(data);
 
-          Cookies.set('customer_token', response.token, {
-            expires: 7,
-            sameSite: 'lax',
-          });
+          authUtils.setCustomerToken(response.token);
 
           set({
             customer: response.customer,
-            token: response.token,
+            token: null,
             isAuthenticated: true,
             isLoading: false,
           });
@@ -91,7 +87,11 @@ export const useCustomerStore = create<CustomerAuthState & CustomerAuthActions>(
       },
 
       logout: () => {
-        Cookies.remove('customer_token');
+        // Best-effort server-side cookie clear; never block the UI on it.
+        void import('@/services/customer.service')
+          .then(({ CustomerService }) => CustomerService.logout())
+          .catch(() => undefined);
+        authUtils.removeCustomerToken();
         set({
           customer: null,
           token: null,
@@ -126,21 +126,21 @@ export const useCustomerStore = create<CustomerAuthState & CustomerAuthActions>(
       checkAuth: async () => {
         try {
           set({ isLoading: true });
-          const token = Cookies.get('customer_token');
+          const hasSession = authUtils.isCustomerAuthenticated();
 
-          if (token) {
+          if (hasSession) {
             try {
               const { CustomerService } = await import('@/services/customer.service');
               const customer = await CustomerService.getProfile();
               set({
                 customer,
-                token,
+                token: null,
                 isAuthenticated: true,
                 isLoading: false,
               });
             } catch {
-              // Token is invalid, clear auth state
-              Cookies.remove('customer_token');
+              // Session is invalid, clear auth state
+              authUtils.removeCustomerToken();
               set({
                 customer: null,
                 token: null,

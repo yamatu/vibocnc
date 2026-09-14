@@ -39,7 +39,7 @@ func (pc *PayPalController) GetPublicConfig(c *gin.Context) {
 
 	s, err := getOrCreatePayPalSetting(db)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load settings", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load settings", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -56,7 +56,7 @@ func (pc *PayPalController) GetSettings(c *gin.Context) {
 
 	s, err := getOrCreatePayPalSetting(db)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load settings", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load settings", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -70,6 +70,7 @@ type updatePayPalSettingsRequest struct {
 	ClientIDLive        *string `json:"client_id_live"`
 	ClientSecretSandbox *string `json:"client_secret_sandbox"`
 	ClientSecretLive    *string `json:"client_secret_live"`
+	WebhookID           *string `json:"webhook_id"`
 	Currency            *string `json:"currency"`
 }
 
@@ -89,7 +90,7 @@ func (pc *PayPalController) UpdateSettings(c *gin.Context) {
 
 	s, err := getOrCreatePayPalSetting(db)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load settings", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load settings", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -126,6 +127,9 @@ func (pc *PayPalController) UpdateSettings(c *gin.Context) {
 		}
 		s.ClientSecretLiveEnc = encrypted
 	}
+	if req.WebhookID != nil {
+		s.WebhookID = strings.TrimSpace(*req.WebhookID)
+	}
 	if req.Currency != nil {
 		cur := strings.ToUpper(strings.TrimSpace(*req.Currency))
 		if cur == "" {
@@ -138,7 +142,7 @@ func (pc *PayPalController) UpdateSettings(c *gin.Context) {
 	}
 
 	if err := db.Save(s).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to save settings", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to save settings", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 

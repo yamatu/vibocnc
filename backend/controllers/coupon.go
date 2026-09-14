@@ -443,15 +443,16 @@ func (cc *CouponController) validateCouponRules(db *gorm.DB, coupon *models.Coup
 	}
 }
 
-// ApplyCoupon applies a coupon to an order (used during order creation)
-func (cc *CouponController) ApplyCoupon(db *gorm.DB, couponCode string, orderID uint, orderAmount float64, customerEmail string) (*models.CouponValidateResponse, error) {
-	if couponCode == "" {
+// ValidateCouponCode checks whether a coupon may be used for the given order
+// amount/customer WITHOUT recording any usage. Read-only: safe to call before
+// the order exists.
+func (cc *CouponController) ValidateCouponCode(db *gorm.DB, couponCode string, orderAmount float64, customerEmail string) (*models.CouponValidateResponse, error) {
+	if strings.TrimSpace(couponCode) == "" {
 		return nil, nil // No coupon applied
 	}
 
-	// Find coupon
 	var coupon models.Coupon
-	err := db.Where("code = ?", strings.ToUpper(couponCode)).First(&coupon).Error
+	err := db.Where("code = ?", strings.ToUpper(strings.TrimSpace(couponCode))).First(&coupon).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return &models.CouponValidateResponse{
@@ -462,30 +463,74 @@ func (cc *CouponController) ApplyCoupon(db *gorm.DB, couponCode string, orderID 
 		return nil, err
 	}
 
-	// Validate coupon
 	response := cc.validateCouponRules(db, &coupon, orderAmount, customerEmail)
+	return &response, nil
+}
+
+// ConsumeCoupon atomically claims one use of a coupon and records it against
+// the order. The used_count is incremented with a conditional UPDATE so two
+// concurrent orders can never exceed the total usage limit (no TOCTOU). Must be
+// called exactly once per order, inside the same transaction that created it.
+func (cc *CouponController) ConsumeCoupon(tx *gorm.DB, couponCode string, orderID uint, orderAmount float64, customerEmail string) (*models.CouponValidateResponse, error) {
+	if strings.TrimSpace(couponCode) == "" {
+		return nil, nil
+	}
+
+	var coupon models.Coupon
+	if err := tx.Where("code = ?", strings.ToUpper(strings.TrimSpace(couponCode))).First(&coupon).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return &models.CouponValidateResponse{Valid: false, Message: "Invalid coupon code"}, nil
+		}
+		return nil, err
+	}
+
+	response := cc.validateCouponRules(tx, &coupon, orderAmount, customerEmail)
 	if !response.Valid {
 		return &response, nil
 	}
 
-	// Create usage record
+	// Atomic, race-free usage claim.
+	q := tx.Model(&models.Coupon{}).
+		Where("id = ?", coupon.ID).
+		Where("is_active = ?", true)
+	if coupon.UsageLimit != nil {
+		q = q.Where("used_count < ?", *coupon.UsageLimit)
+	}
+	res := q.UpdateColumn("used_count", gorm.Expr("used_count + ?", 1))
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return &models.CouponValidateResponse{Valid: false, Message: "This coupon has reached its usage limit"}, nil
+	}
+
 	usage := models.CouponUsage{
 		CouponID:       coupon.ID,
 		OrderID:        orderID,
 		CustomerEmail:  customerEmail,
 		DiscountAmount: response.DiscountAmount,
 	}
-
-	if err := db.Create(&usage).Error; err != nil {
-		return nil, err
-	}
-
-	// Update coupon used count
-	if err := db.Model(&coupon).UpdateColumn("used_count", gorm.Expr("used_count + ?", 1)).Error; err != nil {
+	if err := tx.Create(&usage).Error; err != nil {
 		return nil, err
 	}
 
 	return &response, nil
+}
+
+// ApplyCoupon applies a coupon to an order (used during order creation).
+// Kept for compatibility: validates then consumes in one step.
+func (cc *CouponController) ApplyCoupon(db *gorm.DB, couponCode string, orderID uint, orderAmount float64, customerEmail string) (*models.CouponValidateResponse, error) {
+	if strings.TrimSpace(couponCode) == "" {
+		return nil, nil
+	}
+	validated, err := cc.ValidateCouponCode(db, couponCode, orderAmount, customerEmail)
+	if err != nil || validated == nil {
+		return validated, err
+	}
+	if !validated.Valid {
+		return validated, nil
+	}
+	return cc.ConsumeCoupon(db, couponCode, orderID, orderAmount, customerEmail)
 }
 
 // GetCouponUsage returns usage statistics for a coupon

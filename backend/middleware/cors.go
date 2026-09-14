@@ -85,7 +85,14 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 
 	extensionOrigins := splitAndTrimCSV(os.Getenv("CORS_EXTENSION_ORIGINS"))
-	allowChromeExtensions := envBoolWithDefault("CORS_ALLOW_CHROME_EXTENSIONS", true)
+
+	// Environment is needed before deciding the extension default: production must
+	// not blanket-allow every browser extension origin (any 32-char id), because
+	// CORS responses are credentialed. Operators can still opt in explicitly via
+	// CORS_ALLOW_CHROME_EXTENSIONS=true or CORS_EXTENSION_ORIGINS.
+	goEnv := strings.ToLower(strings.TrimSpace(os.Getenv("GO_ENV")))
+	isDev := goEnv != "production"
+	allowChromeExtensions := envBoolWithDefault("CORS_ALLOW_CHROME_EXTENSIONS", isDev)
 
 	methods := os.Getenv("CORS_METHODS")
 	if methods == "" {
@@ -103,8 +110,6 @@ func CORSMiddleware() gin.HandlerFunc {
 
 	// For local development, be forgiving about origins to prevent confusing 403s in the browser.
 	// This still keeps production restricted via explicit CORS_ORIGINS / CORS_EXTENSION_ORIGINS.
-	goEnv := strings.ToLower(strings.TrimSpace(os.Getenv("GO_ENV")))
-	isDev := goEnv != "production"
 	allowAll := false
 	for _, o := range originList {
 		if o == "*" {

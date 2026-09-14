@@ -13,25 +13,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetClientIP returns a best-effort client IP.
-// Priority: CF-Connecting-IP (Cloudflare) > X-Forwarded-For (first value) > Gin default.
+// GetClientIP returns the client IP, honouring forwarding headers only when the
+// direct peer is a trusted proxy (configured in ConfigureTrustedProxies).
+//
+// Raw headers such as CF-Connecting-IP / X-Forwarded-For are intentionally NOT
+// read here: a client could otherwise forge them and bypass rate limiting.
 func GetClientIP(c *gin.Context) string {
-	// Cloudflare sets this header to the true client IP
-	if cfIP := strings.TrimSpace(c.GetHeader("CF-Connecting-IP")); cfIP != "" {
-		return cfIP
+	if ip := strings.TrimSpace(c.ClientIP()); ip != "" {
+		return ip
 	}
-	// Prefer X-Forwarded-For if present
-	xff := c.GetHeader("X-Forwarded-For")
-	if xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			ip := strings.TrimSpace(parts[0])
-			if ip != "" {
-				return ip
-			}
-		}
-	}
-	return c.ClientIP()
+	return strings.TrimSpace(c.Request.RemoteAddr)
 }
 
 // getClientIP is an unexported alias for backward compatibility within this file.

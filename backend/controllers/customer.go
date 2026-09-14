@@ -48,7 +48,7 @@ func (cc *CustomerController) RequestPasswordReset(c *gin.Context) {
 	if err := db.Where("email = ? AND is_active = ?", email, true).First(&customer).Error; err == nil {
 		_ = services.CreateAndSendVerificationCode(db, email, services.PurposeReset)
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process reset request", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process reset request", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -95,7 +95,7 @@ func (cc *CustomerController) ConfirmPasswordReset(c *gin.Context) {
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process password", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process password", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -104,7 +104,7 @@ func (cc *CustomerController) ConfirmPasswordReset(c *gin.Context) {
 		customer.IsVerified = true
 	}
 	if err := db.Save(&customer).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update password", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update password", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -156,7 +156,7 @@ func (cc *CustomerController) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to process password",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -177,7 +177,7 @@ func (cc *CustomerController) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to create account",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -188,10 +188,12 @@ func (cc *CustomerController) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Account created but failed to generate token",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
+
+	utils.SetAuthCookie(c, utils.CustomerAuthCookieName, token, utils.CustomerJWTTTL())
 
 	c.JSON(http.StatusCreated, models.APIResponse{
 		Success: true,
@@ -259,10 +261,12 @@ func (cc *CustomerController) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Login successful but failed to generate token",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
+
+	utils.SetAuthCookie(c, utils.CustomerAuthCookieName, token, utils.CustomerJWTTTL())
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -272,6 +276,13 @@ func (cc *CustomerController) Login(c *gin.Context) {
 			Customer: customer,
 		},
 	})
+}
+
+// Logout clears the customer session cookie. Public: clearing an absent or
+// already-expired cookie is a no-op.
+func (cc *CustomerController) Logout(c *gin.Context) {
+	utils.ClearAuthCookie(c, utils.CustomerAuthCookieName)
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Logged out"})
 }
 
 // GetProfile returns the current customer's profile
@@ -349,7 +360,7 @@ func (cc *CustomerController) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update profile",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -408,7 +419,7 @@ func (cc *CustomerController) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to process new password",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -418,7 +429,7 @@ func (cc *CustomerController) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update password",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -464,7 +475,7 @@ func (cc *CustomerController) GetAllCustomers(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to fetch customers",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}

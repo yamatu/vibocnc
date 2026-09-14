@@ -9,11 +9,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// bearerOrCookieToken extracts the session JWT from the Authorization header
+// when present, and otherwise falls back to the HttpOnly session cookie.
+// Non-browser clients keep working via the header; browsers no longer need to
+// expose the token to JavaScript.
+func bearerOrCookieToken(c *gin.Context, cookieName string) string {
+	if authHeader := c.GetHeader("Authorization"); authHeader != "" {
+		tokenParts := strings.SplitN(authHeader, " ", 2)
+		if len(tokenParts) == 2 && strings.EqualFold(tokenParts[0], "Bearer") {
+			if token := strings.TrimSpace(tokenParts[1]); token != "" {
+				return token
+			}
+		}
+	}
+	if cookieName == "" {
+		return ""
+	}
+	if cookie, err := c.Cookie(cookieName); err == nil {
+		return strings.TrimSpace(cookie)
+	}
+	return ""
+}
+
 // AuthMiddleware validates JWT token and sets user context
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		token := bearerOrCookieToken(c, utils.AdminAuthCookieName)
+		if token == "" {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
 				Success: false,
 				Message: "Authorization header required",
@@ -23,25 +45,12 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Extract token from "Bearer <token>"
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, models.APIResponse{
-				Success: false,
-				Message: "Invalid authorization header format",
-				Error:   "invalid_auth_format",
-			})
-			c.Abort()
-			return
-		}
-
-		token := tokenParts[1]
 		claims, err := utils.ValidateToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
 				Success: false,
 				Message: "Invalid or expired token",
-				Error:   err.Error(),
+				Error:   utils.PublicError(err, "invalid_token"),
 			})
 			c.Abort()
 			return
@@ -100,8 +109,8 @@ func EditorOrAdmin() gin.HandlerFunc {
 // CustomerAuthMiddleware validates customer JWT token and sets customer context
 func CustomerAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		token := bearerOrCookieToken(c, utils.CustomerAuthCookieName)
+		if token == "" {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
 				Success: false,
 				Message: "Authorization header required",
@@ -111,25 +120,12 @@ func CustomerAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Extract token from "Bearer <token>"
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, models.APIResponse{
-				Success: false,
-				Message: "Invalid authorization header format",
-				Error:   "invalid_auth_format",
-			})
-			c.Abort()
-			return
-		}
-
-		token := tokenParts[1]
 		claims, err := utils.ValidateCustomerToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{
 				Success: false,
 				Message: "Invalid or expired token",
-				Error:   err.Error(),
+				Error:   utils.PublicError(err, "invalid_token"),
 			})
 			c.Abort()
 			return

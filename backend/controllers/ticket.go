@@ -3,6 +3,7 @@ package controllers
 import (
 	"fanuc-backend/config"
 	"fanuc-backend/models"
+	"fanuc-backend/utils"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -63,7 +64,7 @@ func (tc *TicketController) CreateTicket(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to create ticket",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -106,7 +107,7 @@ func (tc *TicketController) GetMyTickets(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to retrieve tickets",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -228,7 +229,7 @@ func (tc *TicketController) ReplyToTicket(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to create reply",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -270,7 +271,7 @@ func (tc *TicketController) GetAllTickets(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to retrieve tickets",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -329,7 +330,7 @@ func (tc *TicketController) UpdateTicketStatus(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update ticket",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -398,7 +399,7 @@ func (tc *TicketController) AdminReplyToTicket(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to create reply",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}

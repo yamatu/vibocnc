@@ -10,6 +10,7 @@ import (
 	"fanuc-backend/config"
 	"fanuc-backend/models"
 	"fanuc-backend/services"
+	"fanuc-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -42,7 +43,7 @@ func (oc *OrderController) RefundOrder(c *gin.Context) {
 	}
 	payPalClient, err := services.NewPayPalRefundClientFromSettings(db)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "PayPal refunds are not configured", Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "PayPal refunds are not configured", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -138,15 +139,15 @@ func (oc *OrderController) RefundOrder(c *gin.Context) {
 	}
 
 	if err := applyPayPalRefundResult(db, refund.ID, result.ID, providerStatus, result.RawJSON); err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "PayPal refunded the payment, but the local order needs reconciliation", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "PayPal refunded the payment, but the local order needs reconciliation", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 	if err := db.Preload("Items.Product").Preload("Refunds").First(&order, order.ID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund completed but the updated order could not be loaded", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund completed but the updated order could not be loaded", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 	if err := db.First(&refund, refund.ID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund completed but the refund record could not be loaded", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund completed but the refund record could not be loaded", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -173,7 +174,7 @@ func (oc *OrderController) SyncRefund(c *gin.Context) {
 	}
 	var refund models.Refund
 	if err := db.Where("id = ? AND order_id = ?", c.Param("refundID"), c.Param("id")).First(&refund).Error; err != nil {
-		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Refund not found", Error: err.Error()})
+		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Refund not found", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 	if refund.Status == "completed" || refund.Status == "failed" {
@@ -198,7 +199,7 @@ func (oc *OrderController) SyncRefund(c *gin.Context) {
 	}
 	result, err := client.GetRefund(c.Request.Context(), refund.ProviderRefundID)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, models.APIResponse{Success: false, Message: "Failed to read PayPal refund status", Error: err.Error()})
+		c.JSON(http.StatusBadGateway, models.APIResponse{Success: false, Message: "Failed to read PayPal refund status", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 	status := strings.ToLower(strings.TrimSpace(result.Status))
@@ -209,12 +210,12 @@ func (oc *OrderController) SyncRefund(c *gin.Context) {
 		status = "failed"
 	}
 	if err := applyPayPalRefundResult(db, refund.ID, result.ID, status, result.RawJSON); err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund status read but local reconciliation failed", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund status read but local reconciliation failed", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 	var order models.Order
 	if err := db.Preload("Items.Product").Preload("Refunds").First(&order, refund.OrderID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund reconciled but order could not be loaded", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Refund reconciled but order could not be loaded", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 	db.First(&refund, refund.ID)

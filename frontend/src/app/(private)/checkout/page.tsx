@@ -17,7 +17,6 @@ import PayPalCheckout from '@/components/checkout/PayPalCheckout';
 import OrderSummary from '@/components/checkout/OrderSummary';
 import CheckoutForm from '@/components/checkout/CheckoutForm';
 import { Order } from '@/types';
-import type { PayPalPaymentDetails } from '@/components/checkout/PayPalCheckout';
 import { getErrorMessage } from '@/lib/errors';
 
 import {
@@ -197,16 +196,14 @@ export default function CheckoutPage() {
     }
   };
 
-  const handlePaymentSuccess = async (paymentData: PayPalPaymentDetails) => {
+  const handlePaymentSuccess = async (paidOrder: Order) => {
     if (!currentOrder) return;
 
     setIsProcessing(true);
 
     try {
-      await OrderService.processPayment(currentOrder.id, {
-        payment_method: 'paypal',
-        payment_data: { ...paymentData },
-      });
+      // The backend has already captured and verified the payment.
+      setCurrentOrder(paidOrder);
 
       // Mark success first to avoid empty-cart redirect effect.
       setStep('success');
@@ -319,6 +316,7 @@ export default function CheckoutPage() {
                 </div>
 
                 <PayPalCheckout
+                  orderId={currentOrder.id}
                   amount={currentOrder.total_amount}
                   currency="USD"
                   onSuccess={handlePaymentSuccess}

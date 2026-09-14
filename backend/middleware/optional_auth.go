@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"fanuc-backend/utils"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,22 +10,13 @@ import (
 // This is useful for public endpoints that want to associate data with logged-in customers if available
 func OptionalCustomerAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			// No auth header, continue without setting customer_id
+		token := bearerOrCookieToken(c, utils.CustomerAuthCookieName)
+		if token == "" {
+			// No credentials, continue without setting customer_id
 			c.Next()
 			return
 		}
 
-		// Extract token from "Bearer <token>"
-		tokenParts := strings.Split(authHeader, " ")
-		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-			// Invalid format, continue without setting customer_id
-			c.Next()
-			return
-		}
-
-		token := tokenParts[1]
 		claims, err := utils.ValidateCustomerToken(token)
 		if err != nil {
 			// Invalid token, continue without setting customer_id

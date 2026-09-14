@@ -20,6 +20,11 @@ type PayPalSetting struct {
 	ClientSecretSandboxEnc string `json:"-" gorm:"type:text"`
 	ClientSecretLiveEnc    string `json:"-" gorm:"type:text"`
 
+	// WebhookID is the PayPal webhook identifier used to verify inbound
+	// webhook signatures. It is not a secret, but webhook reconciliation is
+	// disabled until it is configured.
+	WebhookID string `json:"webhook_id" gorm:"size:255;default:''"`
+
 	Currency string `json:"currency" gorm:"size:10;default:'USD'"`
 
 	CreatedAt time.Time `json:"created_at"`
@@ -34,6 +39,7 @@ type PayPalAdminConfig struct {
 	ClientIDLive           string    `json:"client_id_live"`
 	HasClientSecretSandbox bool      `json:"has_client_secret_sandbox"`
 	HasClientSecretLive    bool      `json:"has_client_secret_live"`
+	WebhookID              string    `json:"webhook_id"`
 	Currency               string    `json:"currency"`
 	CreatedAt              time.Time `json:"created_at"`
 	UpdatedAt              time.Time `json:"updated_at"`
@@ -48,6 +54,7 @@ func (s *PayPalSetting) ToAdminConfig() PayPalAdminConfig {
 		ClientIDLive:           s.ClientIDLive,
 		HasClientSecretSandbox: s.ClientSecretSandboxEnc != "",
 		HasClientSecretLive:    s.ClientSecretLiveEnc != "",
+		WebhookID:              s.WebhookID,
 		Currency:               s.Currency,
 		CreatedAt:              s.CreatedAt,
 		UpdatedAt:              s.UpdatedAt,

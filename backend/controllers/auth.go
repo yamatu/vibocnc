@@ -54,7 +54,7 @@ func (ac *AuthController) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Database error",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -75,7 +75,7 @@ func (ac *AuthController) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to generate token",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -84,6 +84,11 @@ func (ac *AuthController) Login(c *gin.Context) {
 	now := time.Now()
 	user.LastLogin = &now
 	db.Save(&user)
+
+	// Keep the JWT out of JavaScript's reach: store it in a hardened,
+	// HttpOnly cookie. The response body still returns the token for
+	// non-browser API clients that use `Authorization: Bearer`.
+	utils.SetAuthCookie(c, utils.AdminAuthCookieName, token, time.Until(expiresAt))
 
 	// Return response
 	response := models.LoginResponse{
@@ -117,19 +122,26 @@ func (ac *AuthController) RefreshToken(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, models.APIResponse{Success: false, Message: "Account is disabled or removed", Error: "account_unavailable"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 	token, expiresAt, err := utils.GenerateToken(user.ID, user.Username, user.Role)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to generate token", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to generate token", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
+	utils.SetAuthCookie(c, utils.AdminAuthCookieName, token, time.Until(expiresAt))
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Token refreshed",
 		Data:    models.LoginResponse{Token: token, User: user, ExpiresAt: expiresAt},
 	})
+}
+
+// Logout clears the admin session cookie.
+func (ac *AuthController) Logout(c *gin.Context) {
+	utils.ClearAuthCookie(c, utils.AdminAuthCookieName)
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Logged out"})
 }
 
 // RequestPasswordReset sends an admin password reset code to email.
@@ -159,7 +171,7 @@ func (ac *AuthController) RequestPasswordReset(c *gin.Context) {
 	if err == nil {
 		_ = services.CreateAndSendVerificationCode(db, email, services.PurposeAdminReset)
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process reset request", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process reset request", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -198,19 +210,19 @@ func (ac *AuthController) ConfirmPasswordReset(c *gin.Context) {
 			c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Account not found", Error: "account_not_found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
 	hashedPassword, err := utils.HashPassword(req.NewPassword)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process password", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to process password", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
 	user.PasswordHash = hashedPassword
 	if err := db.Save(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update password", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update password", Error: utils.PublicError(err, "internal_error")})
 		return
 	}
 
@@ -358,7 +370,7 @@ func (ac *AuthController) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to hash password",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}
@@ -369,7 +381,7 @@ func (ac *AuthController) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to update password",
-			Error:   err.Error(),
+			Error:   utils.PublicError(err, "internal_error"),
 		})
 		return
 	}

@@ -47,3 +47,10 @@ backend/*_backup*.json
 
 # 前端历史压缩包（体积大，不建议入库）
 frontend/frontend历史/
+
+# 本地临时脚本/抓取产物（体积大，不入库）
+tmp/
+tmpfiles/
+
+# Windows 重定向误产生的空文件
+nul

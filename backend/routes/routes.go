@@ -7,7 +7,9 @@ import (
 	"fanuc-backend/middleware"
 	"fanuc-backend/services"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,6 +45,7 @@ func SetupRoutes(r *gin.Engine) {
 	cacheController := &controllers.CacheController{}
 	hotlinkController := &controllers.HotlinkController{}
 	payPalController := &controllers.PayPalController{}
+	payPalPaymentController := &controllers.PayPalPaymentController{}
 	socialLinksController := &controllers.SocialLinksController{}
 	analyticsController := &controllers.AnalyticsController{}
 	newsController := &controllers.NewsController{}
@@ -112,10 +115,10 @@ func SetupRoutes(r *gin.Engine) {
 			public.GET("/analytics/config", analyticsController.GetTrackingCode)
 
 			// Contact form submission (public access)
-			public.POST("/contact", contactHandler.SubmitContact)
+			public.POST("/contact", middleware.IPRateLimit("contact", 5, time.Minute), contactHandler.SubmitContact)
 
 			// Coupon validation (public access)
-			public.POST("/coupons/validate", couponController.ValidateCoupon)
+			public.POST("/coupons/validate", middleware.IPRateLimit("coupon_validate", 30, time.Minute), couponController.ValidateCoupon)
 
 			// PayPal (public config)
 			public.GET("/paypal/config", payPalController.GetPublicConfig)
@@ -123,7 +126,7 @@ func SetupRoutes(r *gin.Engine) {
 
 			// Email (public)
 			public.GET("/email/config", emailController.GetPublicConfig)
-			public.POST("/email/send-code", emailController.SendCode)
+			public.POST("/email/send-code", middleware.IPRateLimit("email_send_code", 10, time.Hour), emailController.SendCode)
 			public.GET("/indexnow/key", indexNowController.GetPublicKey)
 
 			// News / Articles (public read access)
@@ -134,12 +137,16 @@ func SetupRoutes(r *gin.Engine) {
 			public.GET("/site-pages/:pageKey", sitePageController.GetPublicPage)
 		}
 
+		// PayPal inbound webhook (signature verified, no other auth).
+		v1.POST("/paypal/webhook", payPalPaymentController.PayPalWebhook)
+
 		// Authentication routes
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/login", middleware.LoginRateLimitMiddleware(), authController.Login)
+			auth.POST("/logout", authController.Logout)
 			auth.POST("/password-reset/request", middleware.LoginRateLimitMiddleware(), authController.RequestPasswordReset)
-			auth.POST("/password-reset/confirm", authController.ConfirmPasswordReset)
+			auth.POST("/password-reset/confirm", middleware.IPRateLimit("admin_pwreset_confirm", 10, time.Hour), authController.ConfirmPasswordReset)
 
 			// Protected auth routes
 			authProtected := auth.Group("")
@@ -595,18 +602,20 @@ func SetupRoutes(r *gin.Engine) {
 		publicOrders := v1.Group("/orders")
 		publicOrders.Use(middleware.OptionalCustomerAuth()) // Try to authenticate if token present
 		{
-			publicOrders.POST("", orderController.CreateOrder)
-			publicOrders.POST("/:id/payment", orderController.ProcessPayment)
-			publicOrders.GET("/track/:orderNumber", orderController.GetOrderByNumber) // Order tracking endpoint
+			publicOrders.POST("", middleware.IPRateLimit("order_create", 20, time.Hour), orderController.CreateOrder)
+			publicOrders.POST("/:id/paypal/create", middleware.IPRateLimit("paypal_create", 40, time.Hour), payPalPaymentController.CreatePayPalOrder)
+			publicOrders.POST("/:id/paypal/capture", middleware.IPRateLimit("paypal_capture", 60, time.Hour), payPalPaymentController.CapturePayPalOrder)
+			publicOrders.GET("/track/:orderNumber", middleware.IPRateLimit("order_track", 60, time.Hour), orderController.GetOrderByNumber) // Order tracking endpoint
 		}
 
 		// Customer authentication routes (public)
 		customer := v1.Group("/customer")
 		{
-			customer.POST("/register", customerController.Register)
-			customer.POST("/login", customerController.Login)
-			customer.POST("/password-reset/request", customerController.RequestPasswordReset)
-			customer.POST("/password-reset/confirm", customerController.ConfirmPasswordReset)
+			customer.POST("/register", middleware.IPRateLimit("customer_register", 10, time.Hour), customerController.Register)
+			customer.POST("/login", middleware.IPRateLimit("customer_login", 20, 15*time.Minute), customerController.Login)
+			customer.POST("/logout", customerController.Logout)
+			customer.POST("/password-reset/request", middleware.IPRateLimit("customer_pwreset_request", 5, time.Hour), customerController.RequestPasswordReset)
+			customer.POST("/password-reset/confirm", middleware.IPRateLimit("customer_pwreset_confirm", 10, time.Hour), customerController.ConfirmPasswordReset)
 
 			// Protected customer routes
 			customerProtected := customer.Group("")
@@ -658,5 +667,31 @@ func SetupRoutes(r *gin.Engine) {
 		}
 		c.Next()
 	})
-	uploads.StaticFS("/", http.Dir("./uploads"))
+	uploads.StaticFS("/", noDirectoryListingFS{fs: http.Dir(config.UploadPath())})
+}
+
+// noDirectoryListingFS wraps an http.FileSystem so that directory requests are
+// rejected instead of being rendered as an HTML index. Gin's StaticFS uses
+// http.FileServer, which happily lists any directory (including user upload
+// folders) - that leaks filenames to anonymous visitors.
+type noDirectoryListingFS struct {
+	fs http.FileSystem
+}
+
+func (n noDirectoryListingFS) Open(name string) (http.File, error) {
+	f, err := n.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	if st, statErr := f.Stat(); statErr == nil && st.IsDir() {
+		// Only serve a directory if it explicitly contains an index.html;
+		// otherwise report not-found rather than enumerating its contents.
+		if idx, idxErr := n.fs.Open(strings.TrimSuffix(name, "/") + "/index.html"); idxErr == nil {
+			idx.Close()
+			return f, nil
+		}
+		f.Close()
+		return nil, os.ErrNotExist
+	}
+	return f, nil
 }

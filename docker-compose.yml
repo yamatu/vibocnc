@@ -78,6 +78,13 @@ services:
       # Rate limiting
       LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
 
+      # Client IP hardening. Only these proxies may set X-Forwarded-For/X-Real-IP.
+      # Defaults to loopback + RFC1918 (host Nginx / Docker bridge).
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Set to "cloudflare" only if the origin is reachable exclusively through
+      # Cloudflare (otherwise CF-Connecting-IP could be spoofed).
+      TRUSTED_PLATFORM: ${TRUSTED_PLATFORM:-}
+
       # Public cache TTLs (seconds)
       CACHE_TTL_CATEGORIES_SECONDS: ${CACHE_TTL_CATEGORIES_SECONDS:-300}
       CACHE_TTL_HOMEPAGE_SECONDS: ${CACHE_TTL_HOMEPAGE_SECONDS:-120}

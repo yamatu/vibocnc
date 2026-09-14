@@ -18,6 +18,7 @@ export interface PayPalSetting {
   client_id_live: string;
   has_client_secret_sandbox?: boolean;
   has_client_secret_live?: boolean;
+  webhook_id?: string;
   currency: string;
   created_at?: string;
   updated_at?: string;
@@ -30,6 +31,7 @@ export interface UpdatePayPalSettingRequest {
   client_id_live?: string;
   client_secret_sandbox?: string;
   client_secret_live?: string;
+  webhook_id?: string;
   currency?: string;
 }
 

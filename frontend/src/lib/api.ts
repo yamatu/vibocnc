@@ -38,33 +38,26 @@ const api: AxiosInstance = axios.create({
   },
 });
 
+// Session JWTs are kept in HttpOnly cookies and are invisible to JavaScript.
+// We only mirror the token in memory for the current page session so that
+// non-browser fallback (the Authorization header) keeps working, and so
+// same-tab navigation is instant. Nothing sensitive is persisted to
+// localStorage or to a JavaScript-readable cookie.
+const inMemoryTokens: { admin?: string; customer?: string } = {};
+
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    // Only attempt to read cookies in the browser environment
-    let adminToken: string | undefined;
-    let customerToken: string | undefined;
-    if (typeof window !== 'undefined') {
-      try {
-        adminToken = Cookies.get('auth_token');
-        customerToken = Cookies.get('customer_token');
-      } catch {
-        // In case js-cookie throws in unusual environments, ignore and proceed without tokens
-      }
-    }
-
-    // Choose token based on the request URL
+    // Choose token based on the request URL. If absent, the browser will still
+    // authenticate with the HttpOnly session cookie.
     let token: string | undefined;
 
     if (config.url?.includes('/admin/') || config.url?.includes('/auth/')) {
-      // Admin routes - use admin token
-      token = adminToken;
+      token = inMemoryTokens.admin;
     } else if (config.url?.includes('/customer/')) {
-      // Customer routes - use customer token
-      token = customerToken;
+      token = inMemoryTokens.customer;
     } else {
-      // For other routes (like public orders), prefer customer token if available
-      token = customerToken || adminToken;
+      token = inMemoryTokens.customer || inMemoryTokens.admin;
     }
 
     if (token) {
@@ -157,10 +150,9 @@ api.interceptors.response.use(
         const reqUrl = String(error?.config?.url || '');
         try {
           if (reqUrl.includes('/customer/')) {
-            Cookies.remove('customer_token');
+            authUtils.removeCustomerToken();
           } else if (reqUrl.includes('/admin/') || reqUrl.includes('/auth/')) {
-            Cookies.remove('auth_token');
-            Cookies.remove('auth_token_expires');
+            authUtils.removeToken();
           }
         } catch {
           // ignore cookie cleanup errors in non-browser contexts
@@ -228,29 +220,64 @@ export const apiClient = {
 const ADMIN_TOKEN_FALLBACK_HOURS = 24;
 
 export const authUtils = {
-  // Store the admin token for exactly as long as the JWT is valid, so a
-  // stale cookie can never outlive the token and trigger 401 storms. The
-  // parallel expiry cookie lets the auto-refresh know when to rotate.
+  // Record only the session expiry in a JavaScript-readable cookie (used by
+  // Next middleware + auto-refresh). The token itself lives in the HttpOnly
+  // `admin_token` cookie set by the backend and is never exposed to JS.
   setToken: (token: string, expiresAt?: string | Date) => {
     let expires = expiresAt ? new Date(expiresAt) : null;
     if (!expires || Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
       expires = new Date(Date.now() + ADMIN_TOKEN_FALLBACK_HOURS * 60 * 60 * 1000);
     }
-    Cookies.set('auth_token', token, { expires });
-    Cookies.set('auth_token_expires', expires.toISOString(), { expires });
+    if (token) {
+      inMemoryTokens.admin = token;
+    }
+    Cookies.set('auth_session', '1', { expires, sameSite: 'lax' });
+    Cookies.set('auth_token_expires', expires.toISOString(), { expires, sameSite: 'lax' });
   },
 
   getToken: () => {
-    return Cookies.get('auth_token');
+    return inMemoryTokens.admin;
   },
 
   removeToken: () => {
-    Cookies.remove('auth_token');
+    delete inMemoryTokens.admin;
+    Cookies.remove('auth_session');
     Cookies.remove('auth_token_expires');
   },
 
   isAuthenticated: () => {
-    return !!Cookies.get('auth_token');
+    const expiresRaw = Cookies.get('auth_token_expires');
+    const expiresAt = expiresRaw ? Date.parse(expiresRaw) : NaN;
+    if (!Number.isNaN(expiresAt)) return expiresAt > Date.now();
+    return Cookies.get('auth_session') === '1';
+  },
+
+  // Customer session helpers (mirrors the admin helpers above).
+  setCustomerToken: (token: string, expiresAt?: string | Date) => {
+    let expires = expiresAt ? new Date(expiresAt) : null;
+    if (!expires || Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
+      expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    }
+    if (token) {
+      inMemoryTokens.customer = token;
+    }
+    Cookies.set('customer_session', '1', { expires, sameSite: 'lax' });
+    Cookies.set('customer_token_expires', expires.toISOString(), { expires, sameSite: 'lax' });
+  },
+
+  getCustomerToken: () => inMemoryTokens.customer,
+
+  removeCustomerToken: () => {
+    delete inMemoryTokens.customer;
+    Cookies.remove('customer_session');
+    Cookies.remove('customer_token_expires');
+  },
+
+  isCustomerAuthenticated: () => {
+    const expiresRaw = Cookies.get('customer_token_expires');
+    const expiresAt = expiresRaw ? Date.parse(expiresRaw) : NaN;
+    if (!Number.isNaN(expiresAt)) return expiresAt > Date.now();
+    return Cookies.get('customer_session') === '1';
   },
 };
 
@@ -264,8 +291,7 @@ let lastAdminTokenRefreshAttempt = 0;
 
 async function maybeRefreshAdminToken(): Promise<void> {
   if (typeof window === 'undefined' || refreshingAdminToken) return;
-  const token = Cookies.get('auth_token');
-  if (!token) return;
+  if (!authUtils.isAuthenticated()) return;
 
   const now = Date.now();
   if (now - lastAdminTokenRefreshAttempt < TOKEN_REFRESH_MIN_INTERVAL_MS) return;

@@ -70,6 +70,9 @@ func main() {
 
 	// Create Gin router
 	r := gin.New()
+	// Only trust forwarding headers from our own reverse proxies so client IPs
+	// (rate limiting, audit logs) cannot be spoofed via X-Forwarded-For.
+	middleware.ConfigureTrustedProxies(r)
 	// Allow larger multipart uploads (e.g. backup ZIP restore). Files are spooled to disk when exceeding this.
 	r.MaxMultipartMemory = 256 << 20 // 256 MiB
 
@@ -98,6 +101,7 @@ func main() {
 	// Background jobs (best-effort)
 	services.StartCloudflareAutoPurgeScheduler()
 	services.StartAnalyticsCleanupScheduler()
+	services.StartVisitorLogWriter()
 
 	// Get host and port from environment
 	host := os.Getenv("HOST")
