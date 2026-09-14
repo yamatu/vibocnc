@@ -198,6 +198,9 @@ export interface AIAgentSEOJobItem {
   sku: string;
   status: AIAgentSEOItemStatus;
   error?: string;
+  classification_status?: string;
+  classification_rule?: string;
+  evidence_json?: string;
   created_at: string;
   updated_at: string;
 }
@@ -326,6 +329,70 @@ export interface AICategorySEOBatch {
   has_more: boolean;
   next_after_id: number;
   results: AICategorySEOItem[];
+}
+
+/**
+ * Classification states that still need an administrator's decision. Anything
+ * the pipeline could verify is written as `completed` and never appears here.
+ */
+export type AIClassificationReviewStatus = 'needs_review' | 'conflict' | 'unresolved';
+
+export interface AIClassificationReviewEvidence {
+  title?: string;
+  url?: string;
+  snippet?: string;
+  source_type?: string;
+  evidence_level?: string;
+}
+
+/** The candidate the classifier proposed, as stored next to the product. */
+export interface AIClassificationReviewPayload {
+  source?: string;
+  confirmed?: boolean;
+  conflict?: boolean;
+  confidence?: number;
+  reason?: string;
+  brand?: string;
+  brand_key?: string;
+  part_type?: string;
+  model_family?: string;
+  category_slug?: string;
+  match_rule?: string;
+  search_error?: string;
+  evidence?: AIClassificationReviewEvidence[];
+}
+
+export interface AIClassificationReviewItem {
+  item_id: number;
+  job_id: string;
+  product_id: number;
+  sku: string;
+  product_name: string;
+  brand: string;
+  model: string;
+  category_id: number;
+  category_path: string;
+  is_active: boolean;
+  classification_status: AIClassificationReviewStatus;
+  classification_rule?: string;
+  review?: AIClassificationReviewPayload | AIClassificationReviewEvidence[];
+  error?: string;
+  updated_at: string;
+}
+
+export interface AIClassificationReviewPage {
+  items: AIClassificationReviewItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AIClassificationReviewDecision {
+  item_id: number;
+  product_id: number;
+  category_id?: number;
+  category_path?: string;
+  status?: string;
 }
 
 export class AIAgentService {
@@ -510,6 +577,55 @@ export class AIAgentService {
     );
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Category SEO batch failed');
+  }
+
+  /** Candidates the pipeline refused to publish, awaiting a human decision. */
+  static async listClassificationReview(params: {
+    limit?: number;
+    offset?: number;
+    status?: AIClassificationReviewStatus | '';
+    job_id?: string;
+    search?: string;
+  } = {}): Promise<AIClassificationReviewPage> {
+    const response = await apiClient.get<APIResponse<AIClassificationReviewPage>>('/admin/ai-agent/classification/review', {
+      params: {
+        limit: params.limit,
+        offset: params.offset,
+        status: params.status || undefined,
+        job_id: params.job_id || undefined,
+        search: params.search || undefined,
+      },
+    });
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to load the classification review queue');
+  }
+
+  /**
+   * Accept a candidate. The backend applies the category and records the
+   * decision as a verified rule, so the same model is classified the same way
+   * next time.
+   */
+  static async approveClassificationReview(
+    itemId: number,
+    payload: { allow_new_product_types?: boolean; activate_product?: boolean; note?: string } = {}
+  ): Promise<AIClassificationReviewDecision> {
+    const response = await apiClient.post<APIResponse<AIClassificationReviewDecision>>(
+      `/admin/ai-agent/classification/review/${itemId}/approve`,
+      payload,
+      // Applying a candidate can create a category and rewrite the product.
+      { timeout: 0 }
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to approve the classification candidate');
+  }
+
+  static async dismissClassificationReview(itemId: number, note = ''): Promise<AIClassificationReviewDecision> {
+    const response = await apiClient.post<APIResponse<AIClassificationReviewDecision>>(
+      `/admin/ai-agent/classification/review/${itemId}/dismiss`,
+      { note }
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to dismiss the classification candidate');
   }
 }
 

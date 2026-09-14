@@ -185,6 +185,12 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.POST("/seo/jobs/:id/resume", aiAgentController.ResumeSEOJob)
 				aiAgent.POST("/seo/jobs/:id/end", aiAgentController.EndPausedSEOJob)
 				aiAgent.GET("/seo/stats", aiAgentController.GetSEOStats)
+				// Classification review queue: candidates that could not be published
+				// automatically are decided by an administrator here, which is the
+				// only place an unverified type can become a public category.
+				aiAgent.GET("/classification/review", middleware.AdminOnly(), aiAgentController.ListClassificationReview)
+				aiAgent.POST("/classification/review/:id/approve", middleware.AdminOnly(), aiAgentController.ApproveClassificationReview)
+				aiAgent.POST("/classification/review/:id/dismiss", middleware.AdminOnly(), aiAgentController.DismissClassificationReview)
 				aiAgent.GET("/settings", middleware.AdminOnly(), aiAgentController.GetSettings)
 				aiAgent.PUT("/settings", middleware.AdminOnly(), aiAgentController.UpdateSettings)
 				aiAgent.GET("/profiles", middleware.AdminOnly(), aiAgentController.ListProfiles)

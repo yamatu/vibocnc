@@ -191,15 +191,16 @@ func BuildEbayImportDraftWithContext(ctx context.Context, db *gorm.DB, raw map[s
 	}
 
 	classificationModel := firstNonEmptyString(model, mpn, partNumber)
-	inference := InferProductCategory(brand, classificationModel)
-	// Shopify collection uploads can contain thousands of items. Keep the
-	// initial ingest local and leave optional web verification for an explicit
-	// draft recheck/confirmation action.
-	if classificationModel != "" && !IsConfirmedProductCategory(inference, classificationModel) && !isShopifyImportPayload(raw) {
-		searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
-		inference, _, _ = ResolveProductCategoryWithWebEvidence(searchCtx, brand, classificationModel)
-		cancel()
-	}
+	// Draft ingestion shares the single classification entry point with every
+	// other caller, so a product ingested here and later picked up by an AI SEO
+	// job cannot be classified differently. Shopify collection uploads can
+	// contain thousands of items, so they skip the outbound web lookup and leave
+	// optional verification for an explicit draft recheck/confirmation action.
+	reference := ResolveClassificationReference(ctx, models.Product{Brand: brand, Model: classificationModel, Name: title, CategoryID: 0}, ClassificationReferenceOptions{
+		DB:           db,
+		UseWebSearch: classificationModel != "" && !isShopifyImportPayload(raw),
+	})
+	inference := reference.Inference
 	// Treat placeholder brands from marketplace payloads as missing. When the
 	// model rules or web evidence verify a manufacturer, persist its canonical
 	// name so an inferred category can never be published as brand "Unknown".

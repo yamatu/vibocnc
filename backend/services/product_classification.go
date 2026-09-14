@@ -44,6 +44,11 @@ func isConfirmedInference(inference ProductCategoryInference) bool {
 	if rule == "" || strings.Contains(rule, "fallback") || strings.Contains(rule, "empty-model") {
 		return false
 	}
+	// A learned rule repeats a decision this catalog already verified, so the
+	// checks below have to look at the rule it came from. Stripping the prefix
+	// first keeps "learned:web:generic:servo-motor-keyword" as trustworthy as
+	// the original evidence-based rule it was recorded from.
+	rule = StripLearnedRulePrefix(rule)
 	// Free-form words embedded in an uploaded model/name (for example
 	// "MOTOR-123" or "POWER-METER") are hints, not manufacturer model-family
 	// evidence. They may guide a web search, but cannot publish by themselves.
@@ -53,16 +58,16 @@ func isConfirmedInference(inference ProductCategoryInference) bool {
 	// A free-form upload brand is not proof of manufacturer identity. Accept
 	// the supported brand registry for deterministic rules; custom brands must
 	// carry an explicit web-evidence rule before they can publish.
-	return isClassificationBrandAllowed(inference.BrandKey, rule)
+	return isClassificationBrandAllowed(inference.BrandKey, inference.MatchRule)
 }
 
 func isClassificationBrandAllowed(brandKey, rule string) bool {
 	rule = strings.ToLower(strings.TrimSpace(rule))
-	// Web evidence and administrator-approved LLM classifications carry their
+	// Web evidence and administrator-approved AI classifications carry their
 	// own verification, so any concrete manufacturer they name is acceptable.
 	// This is what lets newly stocked brands outside the deterministic registry
 	// below still classify cleanly.
-	if strings.HasPrefix(rule, "web:") || strings.HasPrefix(rule, "llm:") {
+	if IsVerifiedClassificationRule(rule) {
 		return strings.TrimSpace(brandKey) != "" && !strings.EqualFold(strings.TrimSpace(brandKey), "unknown")
 	}
 	switch NormalizeBrandKey(brandKey) {
@@ -575,6 +580,9 @@ var brandAliasTable = map[string][]string{
 	"keyence":       {"keyence"},
 	"delta":         {"delta", "delta electronics"},
 	"bosch-rexroth": {"bosch rexroth", "rexroth", "bosch"},
+	"heidenhain":    {"heidenhain", "dr. johannes heidenhain", "dr johannes heidenhain", "heidenhain gmbh"},
+	"lenze":         {"lenze", "lenze se", "lenze ag"},
+	"danfoss":       {"danfoss", "danfoss a/s", "danfoss drives", "vlt"},
 }
 
 func brandAliases(brandKey string, brandName string) []string {
@@ -761,6 +769,12 @@ func NormalizeBrandKey(brand string) string {
 		return "delta"
 	case "boschrexroth", "rexroth", "bosch":
 		return "bosch-rexroth"
+	case "heidenhain", "drjohannesheidenhain", "heidenhaingmbh", "heidenhaincorporation":
+		return "heidenhain"
+	case "lenze", "lenzese", "lenzeag", "lenzeinternational":
+		return "lenze"
+	case "danfoss", "danfossas", "danfossdrives", "vlt":
+		return "danfoss"
 	default:
 		return key
 	}
@@ -800,6 +814,12 @@ func CanonicalBrandName(brand string) string {
 		return "Delta"
 	case "bosch-rexroth":
 		return "Bosch Rexroth"
+	case "heidenhain":
+		return "Heidenhain"
+	case "lenze":
+		return "Lenze"
+	case "danfoss":
+		return "Danfoss"
 	default:
 		return strings.TrimSpace(brand)
 	}
@@ -831,6 +851,16 @@ func InferProductCategory(brand string, model string) ProductCategoryInference {
 		return inferTamagawaCategoryInference(model)
 	case "fluke":
 		return inferFlukeCategoryInference(model)
+	case "heidenhain":
+		return inferHeidenhainCategoryInference(model)
+	case "lenze":
+		return inferLenzeCategoryInference(model)
+	case "danfoss":
+		return inferDanfossCategoryInference(model)
+	case "yaskawa":
+		return inferYaskawaCategoryInference(model)
+	case "schneider":
+		return inferSchneiderCategoryInference(model)
 	default:
 		inference := inferGenericCategoryInference(brand, model)
 		if brandKey == "" || brandKey == "unknown" {
@@ -868,6 +898,16 @@ func inferBrandKeyFromModel(model string) string {
 		return "fluke"
 	case hasAnyPrefix(compact, "TAMAGAWA", "TS2640", "TS5213", "TBL", "OSA", "TS"):
 		return "tamagawa"
+	case hasAnyPrefix(compact, "ERN", "ECN", "EQN", "EQI", "EBI", "RCN", "ROC", "ROD", "LIC", "ITNC", "TNC", "MANUALPLUS", "CNCPILOT"):
+		return "heidenhain"
+	case hasAnyPrefix(compact, "E82", "EVS", "ECS", "EXL", "8400", "9400", "8200", "I500", "I510", "I550", "MCS", "MCA", "MDSKS", "GST", "GKS", "GFL", "GSS", "IGF", "IGS"):
+		return "lenze"
+	case hasAnyPrefix(compact, "VLT", "MCD", "MCI", "175Z", "176F", "130B", "MBT") || hasPrefixBeforeDigit(compact, "FC"):
+		return "danfoss"
+	case hasAnyPrefix(compact, "SGDV", "SGD7", "SGDH", "SGDB", "SGD", "SJDE", "SJME", "SGMJV", "SGMGH", "SGMPS", "SGMAS", "SGMAH", "SGMSV", "SGM7", "SGM", "CIMR", "JEPMC", "JAPMC", "YRC", "MP2200", "MP2300", "MP3200", "MP3300", "GA700", "GA800", "HV600", "V1000", "A1000", "J1000"):
+		return "yaskawa"
+	case hasAnyPrefix(compact, "TSX", "TWD", "TM2", "TMS", "BMX", "BME", "BMH", "ATV", "XBT", "HMIG", "LC1", "LC2", "GV2", "GV3", "RXM", "RSB", "SEPAM", "LXM", "BCH", "NSX", "XB4", "XB5", "ZB4", "ZELIO"):
+		return "schneider"
 	default:
 		return ""
 	}
@@ -887,6 +927,24 @@ func compactModel(model string) string {
 func hasAnyPrefix(value string, prefixes ...string) bool {
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(value, strings.ToUpper(prefix)) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasPrefixBeforeDigit matches prefixes that are too short to be safe on their
+// own. A compacted model such as FC302 or LS187 is unambiguous, while a longer
+// word that merely starts with the same letters (FCB, LSL) is not, so the match
+// requires a digit immediately after the prefix.
+func hasPrefixBeforeDigit(value string, prefixes ...string) bool {
+	for _, prefix := range prefixes {
+		prefix = strings.ToUpper(prefix)
+		if !strings.HasPrefix(value, prefix) {
+			continue
+		}
+		rest := value[len(prefix):]
+		if rest != "" && rest[0] >= '0' && rest[0] <= '9' {
 			return true
 		}
 	}
@@ -994,6 +1052,141 @@ func confirmedInference(brandKey, partType, categorySlug, matchRule, family stri
 		CategorySlug: categorySlug,
 		ModelFamily:  family,
 		MatchRule:    matchRule,
+	}
+}
+
+// The five families below were promised by the classifier prompt but had no
+// deterministic rule, so every one of their models paid for a public search and
+// a provider call even though the numbering scheme alone identifies them. The
+// prefixes are deliberately family-level: a prefix may prove "this is a
+// Heidenhain encoder", never a specific voltage or rating.
+func inferHeidenhainCategoryInference(model string) ProductCategoryInference {
+	upper := NormalizeProductModel(model)
+	if upper == "" {
+		return ProductCategoryInference{BrandKey: "heidenhain", BrandName: "Heidenhain", PartType: "Spare Part", CategorySlug: "spare-parts", MatchRule: "heidenhain:empty-model"}
+	}
+	compact := compactModel(upper)
+	switch {
+	case hasAnyPrefix(compact, "ERN", "ECN", "EQN", "EQI", "EBI", "RCN", "ROD", "ROC", "LIC", "ECA", "SVM"):
+		return confirmedInference("heidenhain", "Encoder / Feedback", "encoders-feedback", "heidenhain:model-encoder", firstModelFamily(upper))
+	case hasPrefixBeforeDigit(compact, "LS", "LB", "LF", "LC"):
+		return confirmedInference("heidenhain", "Encoder / Feedback", "encoders-feedback", "heidenhain:model-linear-scale", firstModelFamily(upper))
+	// Touch probes share the TS/TT prefix with Tamagawa resolvers, so they are
+	// only recognised once the brand is already known to be Heidenhain.
+	case hasAnyPrefix(compact, "TS", "TT") && len(compact) <= 6:
+		return confirmedInference("heidenhain", "Touch Probe", "touch-probes", "heidenhain:model-touch-probe", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "TNC", "ITNC", "MANUALPLUS", "CNCPILOT", "ND"):
+		return confirmedInference("heidenhain", "Control Unit", "control-units", "heidenhain:model-control", firstModelFamily(upper))
+	default:
+		inference := inferGenericCategoryInference("heidenhain", upper)
+		if inference.MatchRule == "generic:fallback" {
+			inference.MatchRule = "heidenhain:fallback"
+		}
+		return inference
+	}
+}
+
+func inferLenzeCategoryInference(model string) ProductCategoryInference {
+	upper := NormalizeProductModel(model)
+	if upper == "" {
+		return ProductCategoryInference{BrandKey: "lenze", BrandName: "Lenze", PartType: "Spare Part", CategorySlug: "spare-parts", MatchRule: "lenze:empty-model"}
+	}
+	compact := compactModel(upper)
+	switch {
+	case hasAnyPrefix(compact, "8400", "9400", "8200", "9300", "I500", "I510", "I550", "E82", "EVS", "ECS", "EXL"):
+		return confirmedInference("lenze", "Variable Frequency Drive", "variable-frequency-drives", "lenze:model-drive", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "MCS", "MCA", "MDSKS", "MDEMA", "MDFMA"):
+		return confirmedInference("lenze", "Servo Motor", "servo-motors", "lenze:model-servo-motor", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "IGF", "IGS"):
+		return confirmedInference("lenze", "Encoder / Feedback", "encoders-feedback", "lenze:model-encoder", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "GST", "GKS", "GFL", "GSS", "GKK", "GKR", "GST"):
+		return confirmedInference("lenze", "Gearbox", "gearboxes", "lenze:model-gearbox", firstModelFamily(upper))
+	default:
+		inference := inferGenericCategoryInference("lenze", upper)
+		if inference.MatchRule == "generic:fallback" {
+			inference.MatchRule = "lenze:fallback"
+		}
+		return inference
+	}
+}
+
+func inferDanfossCategoryInference(model string) ProductCategoryInference {
+	upper := NormalizeProductModel(model)
+	if upper == "" {
+		return ProductCategoryInference{BrandKey: "danfoss", BrandName: "Danfoss", PartType: "Spare Part", CategorySlug: "spare-parts", MatchRule: "danfoss:empty-model"}
+	}
+	compact := compactModel(upper)
+	switch {
+	case hasAnyPrefix(compact, "VLT") || hasPrefixBeforeDigit(compact, "FC"):
+		return confirmedInference("danfoss", "Variable Frequency Drive", "variable-frequency-drives", "danfoss:model-drive", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "MCD", "MCI"):
+		return confirmedInference("danfoss", "Soft Starter", "soft-starters", "danfoss:model-soft-starter", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "LCP"):
+		return confirmedInference("danfoss", "Operator Panel / HMI", "operator-panels-hmi", "danfoss:model-panel", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "175Z", "176F", "130B", "MCB", "MCO"):
+		return confirmedInference("danfoss", "Control Board", "control-boards", "danfoss:model-option-board", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "MBT", "MBS"):
+		return confirmedInference("danfoss", "Sensor", "sensors", "danfoss:model-sensor", firstModelFamily(upper))
+	default:
+		inference := inferGenericCategoryInference("danfoss", upper)
+		if inference.MatchRule == "generic:fallback" {
+			inference.MatchRule = "danfoss:fallback"
+		}
+		return inference
+	}
+}
+
+func inferYaskawaCategoryInference(model string) ProductCategoryInference {
+	upper := NormalizeProductModel(model)
+	if upper == "" {
+		return ProductCategoryInference{BrandKey: "yaskawa", BrandName: "Yaskawa", PartType: "Spare Part", CategorySlug: "spare-parts", MatchRule: "yaskawa:empty-model"}
+	}
+	compact := compactModel(upper)
+	switch {
+	case hasAnyPrefix(compact, "SGDV", "SGD7", "SGDH", "SGDB", "SGD", "SJDE", "SJME"):
+		return confirmedInference("yaskawa", "Servo Amplifier / Drive", "servo-amplifiers-drives", "yaskawa:model-servo-drive", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "SGMJV", "SGMGH", "SGMPS", "SGMAS", "SGMAH", "SGMSV", "SGM7", "SGM"):
+		return confirmedInference("yaskawa", "Servo Motor", "servo-motors", "yaskawa:model-servo-motor", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "CIMR"):
+		return confirmedInference("yaskawa", "Variable Frequency Drive", "variable-frequency-drives", "yaskawa:model-drive", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "JEPMC", "JAPMC", "MP2200", "MP2300", "MP3200", "MP3300", "DX100", "DX200"):
+		return confirmedInference("yaskawa", "Programmable Logic Controller", "programmable-logic-controllers", "yaskawa:model-controller", firstModelFamily(upper))
+	default:
+		inference := inferGenericCategoryInference("yaskawa", upper)
+		if inference.MatchRule == "generic:fallback" {
+			inference.MatchRule = "yaskawa:fallback"
+		}
+		return inference
+	}
+}
+
+func inferSchneiderCategoryInference(model string) ProductCategoryInference {
+	upper := NormalizeProductModel(model)
+	if upper == "" {
+		return ProductCategoryInference{BrandKey: "schneider", BrandName: "Schneider Electric", PartType: "Spare Part", CategorySlug: "spare-parts", MatchRule: "schneider:empty-model"}
+	}
+	compact := compactModel(upper)
+	switch {
+	case hasAnyPrefix(compact, "ATV", "LXM"):
+		return confirmedInference("schneider", "Variable Frequency Drive", "variable-frequency-drives", "schneider:model-drive", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "TSX", "TWD", "TM2", "TMS", "BMX", "BME", "PCX"):
+		return confirmedInference("schneider", "Programmable Logic Controller", "programmable-logic-controllers", "schneider:model-controller", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "BMH", "BCH"):
+		return confirmedInference("schneider", "Servo Motor", "servo-motors", "schneider:model-servo-motor", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "XBT", "HMIG", "HMIGTO"):
+		return confirmedInference("schneider", "Operator Panel / HMI", "operator-panels-hmi", "schneider:model-panel", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "LC1", "LC2", "LP1", "LP2"):
+		return confirmedInference("schneider", "Contactor", "contactors", "schneider:model-contactor", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "GV2", "GV3", "NSX", "NS100", "NSX100", "C60", "iC60"):
+		return confirmedInference("schneider", "Circuit Breaker", "circuit-breakers", "schneider:model-breaker", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "RXM", "RSB", "XB4", "XB5", "ZB4"):
+		return confirmedInference("schneider", "Control Board", "control-boards", "schneider:model-control-component", firstModelFamily(upper))
+	default:
+		inference := inferGenericCategoryInference("schneider", upper)
+		if inference.MatchRule == "generic:fallback" {
+			inference.MatchRule = "schneider:fallback"
+		}
+		return inference
 	}
 }
 

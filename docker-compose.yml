@@ -103,6 +103,11 @@ services:
       # set false to always use the single-shot request.
       AI_AGENT_TOOLS: ${AI_AGENT_TOOLS:-true}
 
+      # Minimum confidence for an AI classification to be published. Lower
+      # scores become review-queue candidates instead of being discarded.
+      # Valid range (0,1]; an invalid value falls back to 0.9.
+      AI_CLASSIFICATION_MIN_CONFIDENCE: ${AI_CLASSIFICATION_MIN_CONFIDENCE:-0.9}
+
       # API error detail: keep false in production.
       API_VERBOSE_ERRORS: ${API_VERBOSE_ERRORS:-false}
       # Auth cookie Secure flag (enable when the site is served over HTTPS).

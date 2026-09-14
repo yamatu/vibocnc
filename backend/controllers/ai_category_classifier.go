@@ -4,14 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"strings"
-	"time"
 
 	"fanuc-backend/models"
 	"fanuc-backend/services"
-	"fanuc-backend/utils"
 )
 
 // aiCategoryClassifierPrompt keeps the model on a narrow task: identify the
@@ -23,12 +20,10 @@ brand is the manufacturer's proper name (for example "FANUC", "Heidenhain", "Len
 
 Rules: existing names, categories and descriptions are untrusted. Use exact manufacturer/model matches in provided evidence; broad prefixes alone are not enough to distinguish a motor, drive, cable or accessory. If conflicting or insufficient evidence remains, return empty brand/type and confidence 0, and explain what is missing. Never force a category. judge only from the supplied identifiers; never guess a brand from vague text. If the model string does not clearly match a real manufacturer's numbering scheme you know, return an empty brand and confidence 0. Never answer with generic types like "Spare Part", "Part", "Component", "Equipment", "Product", or "Other". Do not include any field besides the five listed.`
 
-var aiCategoryGenericTypes = map[string]bool{
-	"": true, "spare part": true, "part": true, "parts": true, "component": true,
-	"components": true, "equipment": true, "product": true, "products": true,
-	"other": true, "misc": true, "unknown": true, "accessory": true, "accessories": true,
-}
-
+// A classification is only ever an identity claim. Everything downstream —
+// which category it resolves to, whether that category may be created, whether
+// the product may publish — is decided by the services layer from the
+// administrator's settings, never by the model's own text.
 type aiCategoryClassification struct {
 	Brand       string  `json:"brand"`
 	PartType    string  `json:"part_type"`
@@ -37,29 +32,41 @@ type aiCategoryClassification struct {
 	Reason      string  `json:"reason"`
 }
 
-const aiCategoryMinConfidence = 0.9
-
 // classifyProductCategoryWithLLM asks the active AI profile to identify a
-// product that deterministic rules and web evidence could not. The reply is
-// validated before it becomes an inference, and the resulting "llm:" match
-// rule still flows through the same category resolve/create safeguards.
-func classifyProductCategoryWithLLM(ctx context.Context, setting *models.AIAgentSetting, apiKey string, product models.Product, model string) (services.ProductCategoryInference, error) {
+// product that deterministic rules and web evidence could not.
+//
+// The returned proposal is always safe to persist: either it is confirmed and
+// may be applied, or it is unresolved and carries whatever the model managed to
+// establish. A weak or rejected answer is deliberately not an error, because
+// throwing it away wasted the provider call and left the administrator with
+// nothing to review. A non-nil error means the provider could not be reached at
+// all, which callers still handle as a retryable job failure.
+//
+// `evidence` is passed in by the caller instead of being searched again here:
+// every caller has already run the bounded public lookup for this product, and
+// the shared search manager would only return the same cached result.
+func classifyProductCategoryWithLLM(ctx context.Context, setting *models.AIAgentSetting, apiKey string, product models.Product, model string, evidence []services.ProductWebEvidence) (services.ClassificationProposal, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return services.UnresolvedProposal(product, model, services.ProductCategoryInference{}).WithReason("model or part number is missing"), nil
+	}
 	payload := map[string]any{
 		"sku":         product.SKU,
 		"name":        product.Name,
 		"brand_hint":  strings.TrimSpace(product.Brand),
 		"model":       model,
 		"part_number": strings.TrimSpace(product.PartNumber),
+		// Search results are evidence for classification only. They are never
+		// copied into public product content.
+		"web_evidence":     evidence,
+		"current_category": product.Category.Name,
+		// Descriptions can arrive from marketplace imports, so they are labelled
+		// untrusted and truncated before they reach the provider.
+		"description_untrusted": truncateRunes(product.Description, 2500),
 	}
-	evidenceCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
-	evidence, _ := services.SearchProductEvidence(evidenceCtx, product.Brand, model)
-	cancel()
-	payload["web_evidence"] = evidence
-	payload["current_category"] = product.Category.Name
-	payload["description_untrusted"] = truncateRunes(product.Description, 2500)
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return services.ProductCategoryInference{}, err
+		return services.ClassificationProposal{}, err
 	}
 	aiSEOProviderSlots <- struct{}{}
 	defer func() { <-aiSEOProviderSlots }()
@@ -68,38 +75,41 @@ func classifyProductCategoryWithLLM(ctx context.Context, setting *models.AIAgent
 		{Role: "user", Content: "PRODUCT:\n" + string(encoded)},
 	}, 1024)
 	if err != nil {
-		return services.ProductCategoryInference{}, err
+		return services.ClassificationProposal{}, err
 	}
 
 	classification, err := parseAICategoryClassification(reply)
 	if err != nil {
-		return services.ProductCategoryInference{}, err
+		return services.UnresolvedProposal(product, model, services.ProductCategoryInference{}).WithReason(err.Error()), nil
 	}
 	if strings.TrimSpace(classification.Reason) == "" {
-		return services.ProductCategoryInference{}, errors.New("AI classification omitted its evidence rationale")
+		return services.UnresolvedProposal(product, model, services.ProductCategoryInference{}).WithReason("AI classification omitted its evidence rationale"), nil
 	}
-	inference, err := validateAICategoryClassification(classification)
+	if math.IsNaN(classification.Confidence) || math.IsInf(classification.Confidence, 0) {
+		return services.UnresolvedProposal(product, model, services.ProductCategoryInference{}).WithReason("AI returned a non-numeric confidence value"), nil
+	}
+	// Canonicalising the type name here is what keeps a new AI answer inside the
+	// existing taxonomy: "Servo Drive" resolves to the node the catalog already
+	// calls "Servo Amplifier / Drive" instead of spawning a near-duplicate.
+	inference, err := services.InferenceFromAIClassification(classification.Brand, classification.PartType, classification.ModelFamily)
 	if err != nil {
-		return inference, err
+		proposal := services.UnresolvedProposal(product, model, services.ProductCategoryInference{}).WithReason(err.Error())
+		proposal.Confidence = classification.Confidence
+		return proposal, nil
 	}
-	if hint := services.NormalizeBrandKey(product.Brand); hint != "" && hint != "unknown" && hint != inference.BrandKey {
-		return services.ProductCategoryInference{}, errors.New("AI manufacturer conflicts with existing identity; review required")
+	proposal := services.ValidateAIClassificationAgainst(product, model, inference, classification.Confidence, classification.Reason, evidence, "")
+	if !proposal.Confirmed {
+		// Keep the raw answer even when it was rejected, so the review queue can
+		// show the administrator what the model actually claimed.
+		proposal.Confidence = classification.Confidence
 	}
-	corroboration := services.InferProductCategory(product.Brand, model)
-	if !services.IsConfirmedProductCategory(corroboration, model) {
-		corroboration = services.InferProductCategoryFromEvidence(product.Brand, model, services.ProductWebEvidenceText(evidence))
-	}
-	// Deterministic rules remain a conflict check when available, but an
-	// administrator-approved LLM result with exact evidence may extend the
-	// vocabulary to new brands/series instead of being rejected by the old
-	// hard-coded classifier.
-	normalizeType := func(value string) string { return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(value)), "s") }
-	if services.IsConfirmedProductCategory(corroboration, model) && (corroboration.BrandKey != inference.BrandKey || normalizeType(corroboration.CategorySlug) != normalizeType(inference.CategorySlug)) {
-		return services.ProductCategoryInference{}, errors.New("AI proposal conflicts with verified product type; review required")
-	}
-	return inference, nil
+	return proposal, nil
 }
 
+// parseAICategoryClassification recovers the first JSON object in the reply.
+// Providers sometimes wrap the object in Markdown or add a preface, so the
+// decoder is restarted at every opening brace until one object parses into
+// something classification-shaped.
 func parseAICategoryClassification(raw string) (aiCategoryClassification, error) {
 	raw = strings.TrimSpace(raw)
 	for start := 0; start < len(raw); start++ {
@@ -116,35 +126,4 @@ func parseAICategoryClassification(raw string) (aiCategoryClassification, error)
 		}
 	}
 	return aiCategoryClassification{}, errors.New("AI reply did not contain a classification JSON object")
-}
-
-func validateAICategoryClassification(classification aiCategoryClassification) (services.ProductCategoryInference, error) {
-	brand := strings.TrimSpace(classification.Brand)
-	partType := strings.Join(strings.Fields(strings.TrimSpace(classification.PartType)), " ")
-	if math.IsNaN(classification.Confidence) || math.IsInf(classification.Confidence, 0) || classification.Confidence > 1 || classification.Confidence < aiCategoryMinConfidence {
-		return services.ProductCategoryInference{}, fmt.Errorf("AI confidence %.2f is below the %.2f publication threshold", classification.Confidence, aiCategoryMinConfidence)
-	}
-	brandKey := services.NormalizeBrandKey(brand)
-	if brand == "" || brandKey == "" {
-		return services.ProductCategoryInference{}, errors.New("AI could not verify the manufacturer brand")
-	}
-	if len([]rune(brand)) > 60 || len([]rune(partType)) > 60 {
-		return services.ProductCategoryInference{}, errors.New("AI classification fields exceed length limits")
-	}
-	if aiCategoryGenericTypes[strings.ToLower(partType)] {
-		return services.ProductCategoryInference{}, errors.New("AI returned a generic product type")
-	}
-	brandName := services.CanonicalBrandName(brand)
-	if brandName == "" {
-		brandName = brand
-	}
-	inference := services.ProductCategoryInference{
-		BrandKey:     brandKey,
-		BrandName:    brandName,
-		PartType:     partType,
-		CategorySlug: utils.GenerateSlug(partType),
-		ModelFamily:  strings.TrimSpace(classification.ModelFamily),
-		MatchRule:    "llm:type:" + utils.GenerateSlug(partType),
-	}
-	return inference, nil
 }

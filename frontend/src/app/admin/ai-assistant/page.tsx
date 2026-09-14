@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import AdminLayout from '@/components/admin/AdminLayout';
+import AIClassificationReviewPanel from '@/components/admin/AIClassificationReviewPanel';
 import {
   AIAgentConnectionTestResult,
   AIAgentProfile,
@@ -675,6 +676,8 @@ export default function AIAssistantSettingsPage() {
                 </button>
               </div>
             </form>
+
+            <AIClassificationReviewPanel />
           </>
         )}
       </div>

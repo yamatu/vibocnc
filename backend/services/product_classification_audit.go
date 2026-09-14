@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -115,19 +116,19 @@ func buildAuditCategoryIndex(categories []models.Category) map[uint]auditCategor
 // is deliberately conservative for active products whose model rules are
 // unknown: without verified evidence there is no better category to move them
 // to, so only clearly broken placements are flagged.
-func evaluateProductClassification(product models.Product, categoryIndex map[uint]auditCategoryInfo) (string, string) {
+//
+// The lookup goes through the shared classification entry point (without the
+// outbound web step, which must stay off for a whole-catalog scan) so a product
+// this catalog has already decided on is judged by the same rule the jobs use.
+func evaluateProductClassification(db *gorm.DB, product models.Product, categoryIndex map[uint]auditCategoryInfo) (string, string) {
 	category := categoryIndex[product.CategoryID]
 	if product.CategoryID == 0 || !category.Exists {
 		return AuditIssueUncategorized, "product has no existing category"
 	}
 
 	model := productClassificationModel(product)
-	inference := InferProductCategory(strings.TrimSpace(product.Brand), model)
-	if !IsConfirmedProductCategory(inference, model) {
-		if nameInference, ok := inferAdminNameCategory(strings.TrimSpace(product.Brand), model, product.Name); ok {
-			inference = nameInference
-		}
-	}
+	reference := ResolveClassificationReference(context.Background(), product, ClassificationReferenceOptions{DB: db})
+	inference := reference.Inference
 
 	if IsConfirmedProductCategory(inference, model) {
 		if CategoryPathMatchScore(category.Path, inference) == 0 {
@@ -137,7 +138,11 @@ func evaluateProductClassification(product models.Product, categoryIndex map[uin
 	}
 
 	if !product.IsActive {
-		return AuditIssueInactiveUnresolved, ClassificationFailureReason(inference, model)
+		reason := reference.Reason
+		if reason == "" {
+			reason = ClassificationFailureReason(inference, model)
+		}
+		return AuditIssueInactiveUnresolved, reason
 	}
 	if strings.EqualFold(strings.TrimSpace(product.AISEOStatus), "failed") {
 		return AuditIssueSEOFailed, "AI SEO run failed and the classification is unverified"
@@ -206,7 +211,7 @@ func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bo
 		for _, product := range products {
 			afterID = product.ID
 			result.Scanned++
-			issue, detail := evaluateProductClassification(product, categoryIndex)
+			issue, detail := evaluateProductClassification(db, product, categoryIndex)
 			contentIssue, contentDetail := "", ""
 			if includeContent && !product.DisableAutoSEO {
 				contentIssue, contentDetail = EvaluateProductContentQuality(product)

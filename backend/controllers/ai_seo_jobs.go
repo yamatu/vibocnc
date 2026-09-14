@@ -725,30 +725,44 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 	wasActive := product.IsActive
 	originalBrand := strings.TrimSpace(product.Brand)
 	modelForClassification := services.ClassificationModel(product)
-	classificationReference := services.InferProductCategory(strings.TrimSpace(product.Brand), modelForClassification)
 	setAISEOItemProgress(db, item.ID, "核验品牌、型号与证据 / Verifying identity and evidence")
-	var webEvidence []services.ProductWebEvidence
-	if !services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
-		webEvidence, _ = services.SearchProductEvidence(ctx, product.Brand, modelForClassification)
-		classificationReference = services.InferProductCategoryFromEvidence(product.Brand, modelForClassification, services.ProductWebEvidenceText(webEvidence))
+	// One call answers "what is this product?" for every source: a decision this
+	// catalog already verified, the deterministic model rules, bounded public
+	// evidence, then administrator name hints.
+	reference := services.ResolveClassificationReference(ctx, product, services.ClassificationReferenceOptions{DB: db, UseWebSearch: true})
+	webEvidence := reference.Evidence
+	if services.NormalizeBrandKey(product.Brand) == "" && reference.Inference.BrandKey != "" && reference.Inference.BrandKey != "unknown" {
+		product.Brand = services.CanonicalBrandName(reference.Inference.BrandKey)
 	}
-	if services.NormalizeBrandKey(product.Brand) == "" && classificationReference.BrandKey != "" && classificationReference.BrandKey != "unknown" {
-		product.Brand = services.CanonicalBrandName(classificationReference.BrandKey)
-	}
-	if (runtime.scope["all"] || runtime.scope["category"]) && !services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
-		setAISEOItemProgress(db, item.ID, "AI 核验分类，无法判断则保留 / AI classification verification")
-		verified, err := classifyProductCategoryWithLLM(ctx, setting, apiKey, product, modelForClassification)
-		if err != nil {
-			markAIAgentSEOItemUnresolved(jobID, workerToken, item, fmt.Errorf("Review required; product unchanged: %w", err))
+	if !reference.Confirmed {
+		if runtime.scope["all"] || runtime.scope["category"] {
+			setAISEOItemProgress(db, item.ID, "AI 核验分类，无法判断则保留 / AI classification verification")
+			verified, err := classifyProductCategoryWithLLM(ctx, setting, apiKey, product, modelForClassification, webEvidence)
+			if err != nil {
+				markAIAgentSEOItemUnresolvedWithProposal(jobID, workerToken, item, reference, fmt.Errorf("Review required; product unchanged: %w", err))
+				return
+			}
+			reference = verified
+		}
+		if !reference.Confirmed && (runtime.scope["all"] || runtime.scope["category"]) {
+			// The identity could not be verified, so the category must not be
+			// touched. Keep the failed attempt with its evidence and candidate type
+			// so an administrator can resolve it from the review queue instead of
+			// paying for the same provider call again.
+			_ = services.RecordClassificationAudit(db, product, reference.Inference, modelForClassification, webEvidence, "unresolved", reference.Reason, jobID)
+			markAIAgentSEOItemUnresolvedWithProposal(jobID, workerToken, item, reference, fmt.Errorf("Review required; product unchanged: %s", reference.Reason))
 			return
 		}
-		classificationReference = verified
+		// Outside the category scope an unverified identity only means "leave the
+		// category alone": the requested SEO fields are still safe to write.
+		_ = services.RecordClassificationAudit(db, product, reference.Inference, modelForClassification, webEvidence, "unresolved", reference.Reason, jobID)
 	}
+	classificationReference := reference.Inference
 	auditStatus := "unresolved"
-	if services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
+	if reference.Confirmed {
 		auditStatus = "completed"
+		_ = services.RecordClassificationAudit(db, product, classificationReference, modelForClassification, webEvidence, auditStatus, "", jobID)
 	}
-	_ = services.RecordClassificationAudit(db, product, classificationReference, modelForClassification, webEvidence, auditStatus, services.ClassificationFailureReason(classificationReference, modelForClassification), jobID)
 	classificationCategoryID := uint(0)
 	classificationCategoryErr := error(nil)
 	if services.IsConfirmedProductCategory(classificationReference, modelForClassification) {
@@ -1370,12 +1384,22 @@ func failAIAgentSEOItem(jobID, workerToken string, item models.AIAgentSEOJobItem
 }
 
 func markAIAgentSEOItemUnresolved(jobID, workerToken string, item models.AIAgentSEOJobItem, err error) {
+	markAIAgentSEOItemUnresolvedWithProposal(jobID, workerToken, item, services.ClassificationProposal{}, err)
+}
+
+// markAIAgentSEOItemUnresolvedWithProposal also stores what the classification
+// attempt established. A rejected or weak answer used to survive only as an
+// error sentence truncated to 1000 runes, so the administrator could neither
+// see the candidate brand/type nor approve it without re-running the whole job.
+func markAIAgentSEOItemUnresolvedWithProposal(jobID, workerToken string, item models.AIAgentSEOJobItem, proposal services.ClassificationProposal, err error) {
 	if isAISEOJobCancelled(config.GetDB(), jobID) {
 		return
 	}
 	message := truncateRunes(err.Error(), 1000)
 	db := config.GetDB()
-	result := db.Model(&models.AIAgentSEOJobItem{}).Where("id = ? AND status = ?", item.ID, "running").Where("EXISTS (SELECT 1 FROM ai_agent_seo_jobs WHERE id = ? AND status IN ? AND worker_token = ?)", jobID, []string{"running", "paused"}, workerToken).Updates(map[string]interface{}{"status": "unresolved", "error": message})
+	updates := map[string]interface{}{"status": "unresolved", "error": message}
+	applyClassificationProposalUpdates(updates, proposal)
+	result := db.Model(&models.AIAgentSEOJobItem{}).Where("id = ? AND status = ?", item.ID, "running").Where("EXISTS (SELECT 1 FROM ai_agent_seo_jobs WHERE id = ? AND status IN ? AND worker_token = ?)", jobID, []string{"running", "paused"}, workerToken).Updates(updates)
 	if result.Error == nil && result.RowsAffected > 0 {
 		_ = db.Model(&models.AIAgentSEOJob{}).Where("id = ?", jobID).Updates(map[string]interface{}{"processed": gorm.Expr("processed + 1"), "unresolved": gorm.Expr("unresolved + 1")})
 	}

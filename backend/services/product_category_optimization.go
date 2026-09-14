@@ -23,6 +23,15 @@ type ProductCategoryOptimizationOptions struct {
 	UseWebSearch            bool
 	CreateMissingCategories bool
 	ActivateResolved        bool
+	// AllowNewProductTypes permits creating a brand/type leaf that no existing
+	// category vocabulary covers. It is deliberately separate from
+	// CreateMissingCategories: creating a known type under an existing brand is
+	// taxonomy upkeep, while inventing a new public type name from model text is
+	// an editorial decision.
+	AllowNewProductTypes bool
+	// DisableLearnedRules skips the decisions this catalog already verified, for
+	// the rare deliberate re-classification of a product.
+	DisableLearnedRules bool
 	// BeforeWrite is used by background jobs to fence writes after a task was
 	// cancelled or superseded. It is called inside the same transaction that
 	// performs each category/product mutation.
@@ -67,33 +76,30 @@ func OptimizeProductCategory(ctx context.Context, db *gorm.DB, product models.Pr
 
 	model := productClassificationModel(product)
 	result.Model = model
-	brandInput := strings.TrimSpace(product.Brand)
-	inference := InferProductCategory(brandInput, model)
-	if !IsConfirmedProductCategory(inference, model) {
-		if nameInference, ok := inferAdminNameCategory(brandInput, model, product.Name); ok {
-			inference = nameInference
-		}
-	}
-	var evidence []ProductWebEvidence
-	var searchErr error
-	if opts.UseWebSearch && !IsConfirmedProductCategory(inference, model) {
-		searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
-		inference, evidence, searchErr = ResolveProductCategoryWithWebEvidence(searchCtx, brandInput, model)
-		cancel()
-	}
+	// Every classification caller shares this one entry point, including the
+	// review queue, so the audit trail and the jobs can never disagree about what
+	// a product is or why it was unresolved.
+	reference := ResolveClassificationReference(ctx, product, ClassificationReferenceOptions{
+		DB:                  db,
+		UseWebSearch:        opts.UseWebSearch,
+		DisableLearnedRules: opts.DisableLearnedRules,
+		WebSearchTimeout:    12 * time.Second,
+	})
+	inference := reference.Inference
+	evidence := reference.Evidence
 	result.Inference = inference
 	result.Evidence = evidence
 	result.PartType = strings.TrimSpace(inference.PartType)
 	result.MatchRule = strings.TrimSpace(inference.MatchRule)
 	result.Brand = strings.TrimSpace(inference.BrandName)
 	if result.Brand == "" {
-		result.Brand = CanonicalBrandName(brandInput)
+		result.Brand = CanonicalBrandName(strings.TrimSpace(product.Brand))
 	}
 
 	if !IsConfirmedProductCategory(inference, model) {
-		reason := ClassificationFailureReason(inference, model)
-		if searchErr != nil {
-			reason = fmt.Sprintf("%s; web verification failed: %v", reason, searchErr)
+		reason := reference.Reason
+		if reason == "" {
+			reason = ClassificationFailureReason(inference, model)
 		}
 		if err := keepProductInactiveWithGuard(db.WithContext(ctx), product.ID, result.Brand, opts.BeforeWrite); err != nil {
 			result.Message = fmt.Sprintf("%s; failed to keep product inactive: %v", reason, err)
@@ -165,7 +171,7 @@ func applyConfirmedCategoryInference(ctx context.Context, db *gorm.DB, product m
 	categoryID, err := ResolveExistingCategoryForInference(db.WithContext(ctx), inference, product.Category.Name)
 	created := false
 	if (err != nil || categoryID == 0) && opts.CreateMissingCategories {
-		categoryID, created, err = resolveOrCreateCategoryForInferenceWithGuard(db.WithContext(ctx), inference, opts.BeforeWrite)
+		categoryID, created, err = resolveOrCreateCategoryForInferenceWithGuard(db.WithContext(ctx), inference, opts.BeforeWrite, opts.AllowNewProductTypes)
 	}
 	if err != nil || categoryID == 0 {
 		reason := fmt.Sprintf("no active category matches verified brand %q and product type %q", inference.BrandName, inference.PartType)
@@ -228,12 +234,21 @@ func applyConfirmedCategoryInference(ctx context.Context, db *gorm.DB, product m
 // ResolveOrCreateCategoryForInference is intentionally reserved for the
 // explicit administrator category-optimization endpoint. It creates at most a
 // canonical brand root and one verified type child. Existing inactive exact
-// nodes are reactivated instead of duplicated.
+// nodes are reactivated instead of duplicated. It is also the only entry point
+// allowed to introduce a product type the taxonomy has never seen.
 func ResolveOrCreateCategoryForInference(db *gorm.DB, inference ProductCategoryInference) (uint, bool, error) {
-	return resolveOrCreateCategoryForInferenceWithGuard(db, inference, nil)
+	return resolveOrCreateCategoryForInferenceWithGuard(db, inference, nil, true)
 }
 
-func resolveOrCreateCategoryForInferenceWithGuard(db *gorm.DB, inference ProductCategoryInference, beforeWrite func(*gorm.DB) error) (uint, bool, error) {
+// resolveOrCreateCategoryForInferenceWithGuard creates the brand root and one
+// verified type child.
+//
+// `allowNewTypes` decides whether a product type name the catalog has never
+// used may become a new public category node. Since the type name can originate
+// from an AI answer, an unrecognised name is refused by default: reuse the
+// vocabulary the taxonomy already has, and leave the rest to an administrator
+// rather than letting model text mint a public category.
+func resolveOrCreateCategoryForInferenceWithGuard(db *gorm.DB, inference ProductCategoryInference, beforeWrite func(*gorm.DB) error, allowNewTypes bool) (uint, bool, error) {
 	if db == nil {
 		return 0, false, errors.New("database is nil")
 	}
@@ -247,6 +262,9 @@ func resolveOrCreateCategoryForInferenceWithGuard(db *gorm.DB, inference Product
 	partType := canonicalCategoryTypeName(inference.PartType)
 	if brandName == "" || partType == "" || strings.EqualFold(partType, "Spare Part") {
 		return 0, false, errors.New("verified brand and specific product type are required before creating a category")
+	}
+	if !allowNewTypes && !IsKnownProductTypeName(db, inference.PartType) {
+		return 0, false, fmt.Errorf("product type %q is not part of the existing category vocabulary; administrator approval is required to add it", partType)
 	}
 
 	categoryID := uint(0)
@@ -439,6 +457,36 @@ func productClassificationModel(product models.Product) string {
 
 func canonicalCategoryTypeName(value string) string {
 	return CanonicalProductType(value)
+}
+
+// IsKnownProductTypeName reports whether a product type already belongs to the
+// catalog's vocabulary: either a canonical dictionary entry or a node name or
+// slug that exists anywhere in the tree. The check is deliberately tree-wide,
+// so a type proven under one manufacturer can be reused for another instead of
+// spawning a duplicate node under a second parent.
+func IsKnownProductTypeName(db *gorm.DB, partType string) bool {
+	name := canonicalCategoryTypeName(partType)
+	if strings.TrimSpace(name) == "" {
+		return false
+	}
+	for _, canonical := range ProductTypeDictionary {
+		if strings.EqualFold(canonicalCategoryTypeName(canonical), name) {
+			return true
+		}
+	}
+	if db == nil {
+		return false
+	}
+	slugs := []string{utils.GenerateSlug(name)}
+	if extra := utils.GenerateSlug(partType); extra != slugs[0] {
+		slugs = append(slugs, extra)
+	}
+	var count int64
+	if err := db.Model(&models.Category{}).Where("name = ? OR slug IN ?", name, slugs).Count(&count).Error; err != nil {
+		// A transient database error must not silently authorise a new node.
+		return false
+	}
+	return count > 0
 }
 
 func categorySlugForBrandType(brandKey, inferredSlug, partType string) string {

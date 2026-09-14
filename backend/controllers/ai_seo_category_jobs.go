@@ -42,9 +42,14 @@ type aiSEOCategoryJobRequest struct {
 	AISEOStatus             string `json:"ai_seo_status"`
 	UseWebSearch            *bool  `json:"use_web_search"`
 	CreateMissingCategories *bool  `json:"create_missing_categories"`
-	ActivateResolved        *bool  `json:"activate_resolved"`
-	UseLLMFallback          *bool  `json:"use_llm_fallback"`
-	RepairContent           *bool  `json:"repair_content"`
+	// AllowNewProductTypes permits a product type the taxonomy has never seen to
+	// become a new public category node. It defaults to false because the type
+	// name can originate from an AI answer; without it an unknown type is
+	// reported for review instead of being published as a new category.
+	AllowNewProductTypes *bool `json:"allow_new_product_types"`
+	ActivateResolved     *bool `json:"activate_resolved"`
+	UseLLMFallback       *bool `json:"use_llm_fallback"`
+	RepairContent        *bool `json:"repair_content"`
 	// ReworkOnly replaces the filter selection with the classification audit:
 	// only products that are misplaced, uncategorized, unresolved-inactive, or
 	// AI-SEO-failed are queued.
@@ -54,6 +59,7 @@ type aiSEOCategoryJobRequest struct {
 type aiSEOCategoryJobOptions struct {
 	UseWebSearch            bool `json:"use_web_search"`
 	CreateMissingCategories bool `json:"create_missing_categories"`
+	AllowNewProductTypes    bool `json:"allow_new_product_types"`
 	ActivateResolved        bool `json:"activate_resolved"`
 	UseLLMFallback          bool `json:"use_llm_fallback"`
 	RepairContent           bool `json:"repair_content"`
@@ -81,6 +87,7 @@ func (ac *AIAgentController) StartCategoryOptimizationJob(c *gin.Context) {
 	opts := aiSEOCategoryJobOptions{
 		UseWebSearch:            optionalBool(req.UseWebSearch, true),
 		CreateMissingCategories: optionalBool(req.CreateMissingCategories, true),
+		AllowNewProductTypes:    optionalBool(req.AllowNewProductTypes, false),
 		ActivateResolved:        optionalBool(req.ActivateResolved, true),
 		UseLLMFallback:          optionalBool(req.UseLLMFallback, true),
 		RepairContent:           optionalBool(req.RepairContent, req.ReworkOnly),
@@ -434,6 +441,7 @@ func processCategoryOptimizationItem(ctx context.Context, jobID, workerToken str
 	serviceOpts := services.ProductCategoryOptimizationOptions{
 		UseWebSearch:            opts.UseWebSearch,
 		CreateMissingCategories: opts.CreateMissingCategories,
+		AllowNewProductTypes:    opts.AllowNewProductTypes,
 		ActivateResolved:        opts.ActivateResolved,
 		AuditJobID:              jobID,
 		BeforeWrite: func(tx *gorm.DB) error {
@@ -449,22 +457,32 @@ func processCategoryOptimizationItem(ctx context.Context, jobID, workerToken str
 	}
 	setAISEOItemProgress(db, item.ID, "调用 AI 核验品牌、型号与分类证据 / AI classification review")
 	var result services.ProductCategoryOptimizationResult
+	reviewProposal := services.ClassificationProposal{}
 	llmNote := ""
 	result = services.OptimizeProductCategory(ctx, db, product, serviceOpts)
 	if result.Status == "unresolved" && opts.UseLLMFallback && llmSetting != nil && llmAPIKey != "" {
 		model := services.ClassificationModel(product)
-		inference, err := classifyProductCategoryWithLLM(ctx, llmSetting, llmAPIKey, product, model)
-		if err == nil {
-			setAISEOItemProgress(db, item.ID, "AI 核验通过，匹配现有分类 / Matching verified category")
-			result = services.ApplyProductCategoryInference(ctx, db, product, inference, serviceOpts)
-			llmNote = "AI verified: "
+		// The evidence OptimizeProductCategory already fetched is reused, so the
+		// classifier never triggers a second public lookup for the same product.
+		aiProposal, err := classifyProductCategoryWithLLM(ctx, llmSetting, llmAPIKey, product, model, result.Evidence)
+		if err != nil {
+			// A provider outage is not a classification decision: keep the
+			// deterministic outcome and let the item report the network problem.
+			reviewProposal = services.UnresolvedProposal(product, model, result.Inference).WithReason(err.Error())
+		} else {
+			reviewProposal = aiProposal
+			if aiProposal.Confirmed {
+				setAISEOItemProgress(db, item.ID, "AI 核验通过，匹配现有分类 / Matching verified category")
+				result = services.ApplyProductCategoryInference(ctx, db, product, aiProposal.Inference, serviceOpts)
+				llmNote = "AI verified: "
+			}
 		}
 	}
 	if isAISEOJobCancelled(db, jobID) {
 		return nil
 	}
 	if result.Status == "unresolved" {
-		markCategoryOptimizationItemUnresolved(jobID, workerToken, item, result)
+		markCategoryOptimizationItemUnresolved(jobID, workerToken, item, result, reviewProposal)
 		return nil
 	}
 	if result.Status != "completed" {
@@ -649,13 +667,25 @@ func finalizeCategoryOptimizationJob(db *gorm.DB, jobID, workerToken string, wor
 	return finished, err
 }
 
-func markCategoryOptimizationItemUnresolved(jobID, workerToken string, item models.AIAgentSEOJobItem, result services.ProductCategoryOptimizationResult) {
+func markCategoryOptimizationItemUnresolved(jobID, workerToken string, item models.AIAgentSEOJobItem, result services.ProductCategoryOptimizationResult, proposal services.ClassificationProposal) {
 	db := config.GetDB()
-	evidenceJSON, _ := json.Marshal(result.Evidence)
+	updates := map[string]any{"status": "unresolved", "classification_status": "unresolved", "classification_rule": truncateRunes(result.MatchRule, 160), "error": truncateRunes(result.Message, 1000)}
+	// Prefer the richer review payload when the AI fallback ran, so the queue
+	// shows the candidate brand/type/confidence; otherwise keep the raw
+	// evidence the deterministic pass collected.
+	if payload := ClassificationReviewPayloadJSON(proposal); payload != "" {
+		updates["evidence_json"] = payload
+		updates["classification_status"] = classificationStatusForProposal(proposal)
+		if strings.TrimSpace(proposal.Inference.MatchRule) != "" {
+			updates["classification_rule"] = truncateRunes(proposal.Inference.MatchRule, 160)
+		}
+	} else if evidenceJSON, err := json.Marshal(result.Evidence); err == nil {
+		updates["evidence_json"] = string(evidenceJSON)
+	}
 	dbResult := db.Model(&models.AIAgentSEOJobItem{}).
 		Where("id = ? AND status = ?", item.ID, "running").
 		Where("EXISTS (SELECT 1 FROM ai_agent_seo_jobs WHERE id = ? AND status IN ? AND worker_token = ?)", jobID, []string{"running", "paused"}, workerToken).
-		Updates(map[string]any{"status": "unresolved", "classification_status": "unresolved", "classification_rule": truncateRunes(result.MatchRule, 160), "evidence_json": string(evidenceJSON), "error": truncateRunes(result.Message, 1000)})
+		Updates(updates)
 	if dbResult.Error == nil && dbResult.RowsAffected > 0 {
 		config.GetDB().Model(&models.AIAgentSEOJob{}).Where("id = ?", jobID).Updates(map[string]any{"processed": gorm.Expr("processed + 1"), "unresolved": gorm.Expr("unresolved + 1")})
 	}
