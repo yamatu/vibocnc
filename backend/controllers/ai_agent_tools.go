@@ -566,16 +566,18 @@ func aiToolRunSEOGapReport(db *gorm.DB, rawArguments string) (any, error) {
 		query = query.Where("is_active = ?", true)
 	}
 	var row aiSEOProductGapRow
+	// COUNT(CASE ...) rather than SUM(CASE ...) so an empty catalogue reports 0
+	// instead of NULL, which the model would otherwise read as "unknown".
 	if err := query.Select(`COUNT(*) AS scanned,
-		SUM(CASE WHEN TRIM(COALESCE(meta_title, '')) = '' THEN 1 ELSE 0 END) AS missing_meta_title,
-		SUM(CASE WHEN TRIM(COALESCE(meta_description, '')) = '' THEN 1 ELSE 0 END) AS missing_meta_description,
-		SUM(CASE WHEN TRIM(COALESCE(meta_keywords, '')) = '' THEN 1 ELSE 0 END) AS missing_meta_keywords,
-		SUM(CASE WHEN TRIM(COALESCE(description, '')) = '' AND TRIM(COALESCE(short_description, '')) = '' THEN 1 ELSE 0 END) AS missing_description,
-		SUM(CASE WHEN TRIM(COALESCE(model, '')) = '' THEN 1 ELSE 0 END) AS missing_model,
-		SUM(CASE WHEN TRIM(COALESCE(brand, '')) = '' THEN 1 ELSE 0 END) AS missing_brand,
-		SUM(CASE WHEN category_id = 0 THEN 1 ELSE 0 END) AS missing_category,
-		SUM(CASE WHEN TRIM(COALESCE(ai_seo_status, '')) <> 'optimized' THEN 1 ELSE 0 END) AS not_optimized,
-		SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS inactive`).Scan(&row).Error; err != nil {
+		COUNT(CASE WHEN TRIM(COALESCE(meta_title, '')) = '' THEN 1 END) AS missing_meta_title,
+		COUNT(CASE WHEN TRIM(COALESCE(meta_description, '')) = '' THEN 1 END) AS missing_meta_description,
+		COUNT(CASE WHEN TRIM(COALESCE(meta_keywords, '')) = '' THEN 1 END) AS missing_meta_keywords,
+		COUNT(CASE WHEN TRIM(COALESCE(description, '')) = '' AND TRIM(COALESCE(short_description, '')) = '' THEN 1 END) AS missing_description,
+		COUNT(CASE WHEN TRIM(COALESCE(model, '')) = '' THEN 1 END) AS missing_model,
+		COUNT(CASE WHEN TRIM(COALESCE(brand, '')) = '' THEN 1 END) AS missing_brand,
+		COUNT(CASE WHEN category_id = 0 THEN 1 END) AS missing_category,
+		COUNT(CASE WHEN TRIM(COALESCE(ai_seo_status, '')) <> 'optimized' THEN 1 END) AS not_optimized,
+		COUNT(CASE WHEN is_active = 0 THEN 1 END) AS inactive`).Scan(&row).Error; err != nil {
 		return nil, err
 	}
 	return map[string]any{
