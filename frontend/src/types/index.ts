@@ -861,6 +861,13 @@ export interface SpecResearchCandidate {
   evidence?: string;
   /** 'extracted' = pattern match, 'ai' = language model proposal that passed the verbatim check. */
   origin?: 'extracted' | 'ai' | string;
+  /**
+   * Other values found for the same parameter. A reviewer must pick one; the
+   * pipeline never silently keeps the first hit.
+   */
+  alternatives?: string[];
+  /** True when sources disagreed about this parameter. */
+  conflict?: boolean;
 }
 
 export interface ProductWebEvidence {
@@ -901,8 +908,12 @@ export interface ProductSpecDraftDetail {
   evidence: ProductWebEvidence[];
 }
 
+/**
+ * Model-only research request. Catalogue products are researched through the AI
+ * job queue (`SpecResearchJobRequest`) because a web lookup per product is far
+ * too slow for a request/response cycle.
+ */
 export interface SpecResearchRequest {
-  product_id?: number;
   brand?: string;
   model?: string;
   sku?: string;
@@ -910,22 +921,29 @@ export interface SpecResearchRequest {
   force?: boolean;
 }
 
-export interface SpecResearchBatchRequest {
-  ids: number[];
+/** Scope of a specification research job. Explicit ids win over filters. */
+export interface SpecResearchJobRequest {
+  product_ids?: number[];
   limit?: number;
+  category_id?: number;
+  include_descendants?: boolean;
+  brand?: string;
+  search?: string;
+  include_inactive?: boolean;
+  /** Skip products that already publish a specification table. */
+  only_missing?: boolean;
   use_ai?: boolean;
   force?: boolean;
-  only_missing?: boolean;
 }
 
-export interface SpecResearchBatchOutcome {
-  product_id: number;
-  sku?: string;
-  model?: string;
-  draft_id?: number;
+/** One completed job item: which draft to open and how much review it needs. */
+export interface SpecResearchItemPayload {
+  draft_id: number;
   candidates: number;
-  status: string;
-  message?: string;
+  confidence?: string;
+  conflicts?: number;
+  /** The run reused an existing pending draft instead of creating a new one. */
+  reused?: boolean;
 }
 
 export interface SpecDraftApproveRequest {

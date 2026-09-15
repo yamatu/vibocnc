@@ -224,7 +224,7 @@ export interface AIAgentSEOJob {
   id: string;
   prompt: string;
   focus?: AIAgentSEOFocus[];
-  selection_mode: 'selected' | 'auto_candidates' | 'auto_failed' | 'category_optimization';
+  selection_mode: 'selected' | 'auto_candidates' | 'auto_failed' | 'category_optimization' | 'spec_research';
   status: AIAgentSEOJobStatus;
   ai_profile_id?: number;
   ai_profile_name?: string;
@@ -289,6 +289,26 @@ export interface AIAgentCategoryOptimizationOptions {
   rework_only?: boolean;
   /** After category repair, audit and rewrite only weak or incorrect descriptions. */
   repair_content?: boolean;
+}
+
+/**
+ * Scope of a model-number specification research job. The job only writes review
+ * drafts; nothing reaches the storefront without an explicit approval.
+ */
+export interface AIAgentSpecResearchOptions {
+  product_ids?: number[];
+  limit?: number;
+  category_id?: number;
+  include_descendants?: boolean;
+  brand?: string;
+  search?: string;
+  include_inactive?: boolean;
+  /** Skip products that already publish a specification table. */
+  only_missing?: boolean;
+  /** Add the language-model extraction pass on top of pattern extraction. */
+  use_ai?: boolean;
+  /** Re-run research even when a pending draft already exists. */
+  force?: boolean;
 }
 
 export interface AIAgentSEOJobItemsPage {
@@ -529,6 +549,12 @@ export class AIAgentService {
     const response = await apiClient.post<APIResponse<AIAgentSEOJob>>('/admin/ai-agent/seo/category-jobs', options);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Unable to start category optimization job');
+  }
+
+  static async startSpecResearchJob(options: AIAgentSpecResearchOptions): Promise<AIAgentSEOJob> {
+    const response = await apiClient.post<APIResponse<AIAgentSEOJob>>('/admin/ai-agent/seo/spec-jobs', options);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to start specification research job');
   }
 
   static async getSEOJob(id: string): Promise<AIAgentSEOJob> {

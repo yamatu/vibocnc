@@ -605,66 +605,7 @@ func repairCategoryJobProductContent(ctx context.Context, jobID, workerToken str
 // closes the job. A claim/update failure therefore remains auditable but can
 // never leave queued/running product IDs permanently excluded from later jobs.
 func finalizeCategoryOptimizationJob(db *gorm.DB, jobID, workerToken string, workerErrors []string) (bool, error) {
-	finished := false
-	err := db.Transaction(func(tx *gorm.DB) error {
-		var job models.AIAgentSEOJob
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("status", "worker_token").First(&job, "id = ?", jobID).Error; err != nil {
-			return err
-		}
-		if job.Status != "running" || job.WorkerToken != workerToken {
-			return nil
-		}
-
-		summary := "Category task item did not reach a terminal state"
-		if len(workerErrors) > 0 {
-			summary = truncateRunes(strings.Join(workerErrors, "; "), 1000)
-		}
-		sweep := tx.Model(&models.AIAgentSEOJobItem{}).
-			Where("job_id = ? AND status IN ?", jobID, []string{"queued", "running"}).
-			Updates(map[string]any{"status": "failed", "error": summary})
-		if sweep.Error != nil {
-			return sweep.Error
-		}
-
-		var succeeded int64
-		if err := tx.Model(&models.AIAgentSEOJobItem{}).Where("job_id = ? AND status = ?", jobID, "optimized").Count(&succeeded).Error; err != nil {
-			return err
-		}
-		var failed int64
-		if err := tx.Model(&models.AIAgentSEOJobItem{}).Where("job_id = ? AND status = ?", jobID, "failed").Count(&failed).Error; err != nil {
-			return err
-		}
-		var unresolved int64
-		if err := tx.Model(&models.AIAgentSEOJobItem{}).Where("job_id = ? AND status = ?", jobID, "unresolved").Count(&unresolved).Error; err != nil {
-			return err
-		}
-		status := "completed"
-		jobError := ""
-		if failed > 0 {
-			status = "completed_with_errors"
-			if len(workerErrors) > 0 || sweep.RowsAffected > 0 {
-				jobError = summary
-			}
-		}
-		completedAt := time.Now().UTC()
-		result := tx.Model(&models.AIAgentSEOJob{}).
-			Where("id = ? AND status = ? AND worker_token = ?", jobID, "running", workerToken).
-			Updates(map[string]any{
-				"status":       status,
-				"error":        jobError,
-				"processed":    succeeded + failed + unresolved,
-				"succeeded":    succeeded,
-				"failed":       failed,
-				"unresolved":   unresolved,
-				"completed_at": &completedAt,
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-		finished = result.RowsAffected > 0
-		return nil
-	})
-	return finished, err
+	return finalizeDraftJob(db, jobID, workerToken, workerErrors, "Category task item did not reach a terminal state")
 }
 
 func markCategoryOptimizationItemUnresolved(jobID, workerToken string, item models.AIAgentSEOJobItem, result services.ProductCategoryOptimizationResult, proposal services.ClassificationProposal) {
@@ -734,14 +675,6 @@ func authorizeCategoryJobControl(c *gin.Context, db *gorm.DB, jobID string) bool
 		return false
 	}
 	return true
-}
-
-func isCategoryOptimizationJob(db *gorm.DB, jobID string) (bool, error) {
-	var job models.AIAgentSEOJob
-	if err := db.Select("selection_mode").First(&job, "id = ?", jobID).Error; err != nil {
-		return false, err
-	}
-	return job.SelectionMode == aiSEOCategorySelectionMode, nil
 }
 
 // ListSEOJobItems pages large task details without loading up to 30,000 item

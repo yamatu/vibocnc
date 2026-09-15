@@ -21,9 +21,11 @@ So the pipeline has one hard rule:
 ```
 model number (型号)
         │
-        ├─ 1. Search   services.SearchProductEvidence(ctx, brand, model)
+        ├─ 1. Search   services.SpecResearchEvidence(ctx, brand, model)
         │              bounded + SSRF-safe fetch, manufacturer pages preferred,
-        │              results cached (success 15m / failure 45s)
+        │              results cached (success 15m / failure 45s); up to 3 real
+        │              pages are opened and up to 6 specification windows
+        │              (700 chars each) are kept next to the classified snippet
         │
         ├─ 2. Extract  services.ExtractSpecCandidates(model, evidence)
         │              deterministic regex extraction, no inference
@@ -40,6 +42,28 @@ model number (型号)
                                     └─ approve → Product.TechnicalSpecs
                                        (blank fields only, unless "overwrite")
 ```
+
+### One spelling per parameter
+
+Two pages rarely spell a parameter the same way (`Rated input voltage` vs
+`Input voltage` vs `主电源电压`). Left alone, one product would end up with two
+rows for the same measurement — or worse, two contradictory values.
+
+`services.CanonicalSpecLabel` therefore folds known spellings and qualifiers onto
+a single canonical label, and `services.CanonicalizeSpecMap` folds a whole table.
+Unknown labels keep the reviewer's wording, because a parameter we do not
+recognise is not ours to rename. Values are never dropped: the first non-empty
+value wins and the map function never returns a row without a value.
+
+### Conflicts are surfaced, not hidden
+
+When several pages disagree, the stronger source is proposed
+(`specSourceIsStronger`: manufacturer > distributor > aggregator), the other
+values are recorded in the candidate's `alternatives` list, the candidate is
+flagged `conflict`, and its confidence is downgraded. The review UI shows
+"sources disagree" and the alternatives next to the value, so the operator makes
+the decision instead of the pipeline silently keeping whichever page it read
+first.
 
 ### Extraction rules (anti-fabrication)
 
@@ -77,14 +101,22 @@ an empty result, not a wrong parameter.
 
 ## Admin workflow
 
-1. **Research a model number** — three entry points:
-   - Admin → Spec Research (bare model number),
+1. **Start research** — three entry points:
+   - Admin → Spec Research (bare model number, no product row yet) — runs
+     synchronously, because a single lookup is fast;
    - the **Research specs by model number** button on the product edit form
-     (next to the 型号 / Model field) for one product,
-   - select products in Admin → Products and press **Research Specs**.
-   Batch research is capped at 20 products per request because each product
-   performs a real web lookup (`only_missing` skips products that already have
-   specifications).
+     (next to the 型号 / Model field) — queues a one-product task;
+   - select products in Admin → Products and press **Research Specs** — queues a
+     task for the selection (`only_missing` skips products that already have
+     specifications).
+
+   Catalogue products are always researched **on the AI job queue**, never inside
+   the request: every product performs a real web lookup, so a synchronous batch
+   used to time out mid-run, showed no progress and lost everything on a restart.
+   A queued task gives the run item-level progress, pause / resume / stop, and
+   automatic recovery after a restart, and it occupies the same overlap gate as
+   content optimization so two tasks cannot research the same product at once.
+   The task **never publishes**: each item only creates a review draft.
 2. **Review** — each row shows the parameter, the value, the source page and the
    verbatim evidence snippet. Values whose citation is missing are refused by the
    API, so a value can never be approved without a source. The reviewer may
@@ -103,19 +135,38 @@ stays opt-in, so existing indexed copy is not rewritten in bulk.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `POST` | `/api/v1/admin/products/spec-research` | body `{brand, model, sku?, use_ai?, force?}` |
-| `POST` | `/api/v1/admin/products/:id/spec-research` | research for one product |
-| `POST` | `/api/v1/admin/products/spec-research/batch` | body `{ids, limit, use_ai?, force?, only_missing?}` |
+| `POST` | `/api/v1/admin/products/spec-research` | bare model number: `{brand, model, sku?, use_ai?, force?}` → draft |
+| `POST` | `/api/v1/admin/products/:id/spec-research` | queue a one-product task → `202` + job |
+| `POST` | `/api/v1/admin/products/spec-research/batch` | `{product_ids, limit, only_missing?, use_ai?, force?}` → `202` + job |
+| `POST` | `/api/v1/admin/ai-agent/seo/spec-jobs` | scope-filtered task: `{limit, category_id?, include_descendants?, brand?, search?, include_inactive?, only_missing?, use_ai?, force?}` |
 | `GET` | `/api/v1/admin/products/spec-drafts` | `?status=&search=&product_id=&page=&page_size=` |
 | `GET` | `/api/v1/admin/products/spec-drafts/:id` | draft + candidates + evidence |
 | `POST` | `/api/v1/admin/products/spec-drafts/:id/approve` | body `{candidates?, overwrite?}` |
 | `POST` | `/api/v1/admin/products/spec-drafts/:id/reject` | body `{reason?}` |
 
-All of the above require `editor` or `admin`. A draft created from a bare model
-number is linked to a product by SKU when it is applied; if no product has that
-SKU the API asks the operator to start the research from the product page.
+All of the above require `editor` or `admin` (unlike category jobs, which are
+admin-only: a research task writes drafts, never product content).
 
-## Multi-brand notes
+Progress, pause / resume / stop and the per-product outcome are read through the
+shared job endpoints (`GET /admin/ai-agent/seo/jobs/:id`,
+`.../jobs/:id/items`, `.../jobs/:id/pause|resume|end`). Each completed item
+carries `{draft_id, candidates, confidence, conflicts, reused}` in
+`evidence_json`, which is what links a job row to the draft to review.
+
+A draft created from a bare model number is linked to a product by SKU when it is
+applied; if no product has that SKU the API asks the operator to start the
+research from the product page. Re-running research for the same product and
+model marks the older pending draft `superseded`, so the queue always has exactly
+one current proposal per model.
+
+## AI availability
+
+The AI pass is an optional booster on top of deterministic extraction. At start
+time the API checks the active provider: if none is configured the task is
+created with `use_ai = false` and the response says so, instead of queueing work
+that silently does nothing. A task that is already running keeps using the AI
+profile it was created with, even if the administrator switches profiles
+mid-run.
 
 The pipeline and the content skeleton are brand agnostic. FANUC, Mitsubishi,
 Siemens, ABB, Allen-Bradley, Omron, Yaskawa, Schneider, SICK, Tamagawa, Fluke,

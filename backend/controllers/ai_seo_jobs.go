@@ -488,7 +488,7 @@ func (ac *AIAgentController) ResumeSEOJob(c *gin.Context) {
 	if !authorizeCategoryJobControl(c, db, jobID) {
 		return
 	}
-	categoryOnly, err := isCategoryOptimizationJob(db, jobID)
+	requeueRunning, err := jobRequeuesRunningItemsOnResume(db, jobID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to inspect AI SEO job", Error: err.Error()})
 		return
@@ -505,10 +505,12 @@ func (ac *AIAgentController) ResumeSEOJob(c *gin.Context) {
 			return nil
 		}
 		resumed = true
-		if categoryOnly {
+		if requeueRunning {
 			// An old web lookup may still be returning. Requeue its claimed item;
 			// the worker-token fence prevents the old worker from applying or
-			// counting a result after the resumed worker takes over.
+			// counting a result after the resumed worker takes over. This applies
+			// to draft-only job kinds (category optimization, specification
+			// research); content jobs keep their item state.
 			return tx.Model(&models.AIAgentSEOJobItem{}).
 				Where("job_id = ? AND status = ?", jobID, "running").
 				Update("status", "queued").Error
@@ -619,6 +621,10 @@ func processAIAgentSEOJob(jobID string) {
 	}
 	if claimedJob.SelectionMode == aiSEOCategorySelectionMode {
 		processCategoryOptimizationJob(jobID, workerToken, claimedJob.Prompt)
+		return
+	}
+	if claimedJob.SelectionMode == aiSEOSpecSelectionMode {
+		processSpecResearchJob(jobID, workerToken, claimedJob.Prompt)
 		return
 	}
 	profileID, err := loadAIAgentSEOJobProfileID(db, jobID)

@@ -27,32 +27,23 @@ import (
 type ProductSpecDraftController struct{}
 
 const (
-	specResearchMaxBatch    = 20
 	specResearchDefaultAI   = true
 	specDraftListMaxPerPage = 100
 )
 
+// specResearchRequest researches a bare model number that has no product row
+// yet. Catalogue products are researched through the AI job queue instead
+// (see ai_seo_spec_jobs.go), because a batch lookup is far too slow for a
+// request/response cycle.
 type specResearchRequest struct {
-	ProductID uint   `json:"product_id"`
-	Brand     string `json:"brand"`
-	Model     string `json:"model"`
-	SKU       string `json:"sku"`
+	Brand string `json:"brand"`
+	Model string `json:"model"`
+	SKU   string `json:"sku"`
 	// UseAI enables the language-model extraction pass. The model may only
 	// propose values; anything not found verbatim on a cited page is discarded.
 	UseAI *bool `json:"use_ai"`
 	// Force re-runs research even when a pending draft already exists.
 	Force bool `json:"force"`
-}
-
-type specResearchBatchRequest struct {
-	IDs []uint `json:"ids"`
-	// Limit caps how many products one request may research, because every
-	// lookup performs a real public search.
-	Limit int   `json:"limit"`
-	UseAI *bool `json:"use_ai"`
-	Force bool  `json:"force"`
-	// OnlyMissing skips products that already carry technical specifications.
-	OnlyMissing *bool `json:"only_missing"`
 }
 
 type specDraftApproveRequest struct {
@@ -68,57 +59,38 @@ type specDraftRejectRequest struct {
 	Reason string `json:"reason"`
 }
 
-// ResearchProduct runs the pipeline for a single product (or a bare model
-// number) and stores the result as a pending draft.
-func (sc *ProductSpecDraftController) ResearchProduct(c *gin.Context) {
+// ResearchModel researches a bare model number and stores the result as a
+// pending draft. It is intentionally synchronous: there is no product row to
+// attach a job item to, and a single lookup is fast. Researching catalogue
+// products goes through StartProductSpecResearchJob / StartBatchSpecResearchJob,
+// which run on the AI job queue with progress, pause/resume and restart
+// recovery.
+func (sc *ProductSpecDraftController) ResearchModel(c *gin.Context) {
 	var req specResearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request data", Error: err.Error()})
 		return
 	}
-
 	db := config.GetDB()
-	var product *models.Product
-	if idParam := strings.TrimSpace(c.Param("id")); idParam != "" {
-		id, err := strconv.ParseUint(idParam, 10, 64)
-		if err != nil || id == 0 {
-			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid product id"})
-			return
-		}
-		req.ProductID = uint(id)
-	}
-	if req.ProductID > 0 {
-		var found models.Product
-		if err := db.First(&found, req.ProductID).Error; err != nil {
-			c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Product not found"})
-			return
-		}
-		product = &found
-	}
-
-	brand := strings.TrimSpace(req.Brand)
-	model := strings.TrimSpace(req.Model)
-	sku := strings.TrimSpace(req.SKU)
-	if product != nil {
-		if brand == "" {
-			brand = product.Brand
-		}
-		if model == "" {
-			model = specFirstNonEmpty(product.Model, product.PartNumber, product.SKU)
-		}
-		if sku == "" {
-			sku = product.SKU
-		}
-	}
-	model = strings.TrimSpace(services.NormalizeProductModel(model))
+	model := strings.TrimSpace(services.NormalizeProductModel(req.Model))
 	if model == "" {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "A model number is required to research specifications"})
 		return
 	}
+	sku := strings.TrimSpace(req.SKU)
+	var product *models.Product
+	if sku != "" {
+		// A draft started from a bare model number can still be applied later
+		// when one product already carries that SKU.
+		var matched models.Product
+		if err := db.Where("sku = ?", sku).First(&matched).Error; err == nil {
+			product = &matched
+		}
+	}
 
-	draft, err := buildAndStoreSpecDraft(c.Request.Context(), specDraftInput{
+	draft, _, err := buildAndStoreSpecDraft(c.Request.Context(), specDraftInput{
 		Product: product,
-		Brand:   brand,
+		Brand:   strings.TrimSpace(req.Brand),
 		Model:   model,
 		SKU:     sku,
 		UseAI:   req.UseAI,
@@ -130,97 +102,6 @@ func (sc *ProductSpecDraftController) ResearchProduct(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Specification draft created for review", Data: draft})
-}
-
-// ResearchBatch runs the pipeline for up to specResearchMaxBatch products.
-func (sc *ProductSpecDraftController) ResearchBatch(c *gin.Context) {
-	var req specResearchBatchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request data", Error: err.Error()})
-		return
-	}
-	if len(req.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Select at least one product"})
-		return
-	}
-	limit := req.Limit
-	if limit <= 0 || limit > specResearchMaxBatch {
-		limit = specResearchMaxBatch
-	}
-
-	db := config.GetDB()
-	ids := req.IDs
-	if len(ids) > limit {
-		ids = ids[:limit]
-	}
-	var products []models.Product
-	if err := db.Where("id IN ?", ids).Find(&products).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load products", Error: err.Error()})
-		return
-	}
-
-	type batchOutcome struct {
-		ProductID  uint   `json:"product_id"`
-		SKU        string `json:"sku"`
-		Model      string `json:"model"`
-		DraftID    uint   `json:"draft_id,omitempty"`
-		Candidates int    `json:"candidates"`
-		Status     string `json:"status"`
-		Message    string `json:"message,omitempty"`
-	}
-	outcomes := make([]batchOutcome, 0, len(products))
-
-	for index := range products {
-		if err := c.Request.Context().Err(); err != nil {
-			break
-		}
-		product := products[index]
-		outcome := batchOutcome{ProductID: product.ID, SKU: product.SKU}
-		model := strings.TrimSpace(services.NormalizeProductModel(specFirstNonEmpty(product.Model, product.PartNumber, product.SKU)))
-		outcome.Model = model
-		if model == "" {
-			outcome.Status = "skipped"
-			outcome.Message = "no model number"
-			outcomes = append(outcomes, outcome)
-			continue
-		}
-		if req.OnlyMissing != nil && *req.OnlyMissing && strings.TrimSpace(product.TechnicalSpecs) != "" && strings.TrimSpace(product.TechnicalSpecs) != "{}" {
-			outcome.Status = "skipped"
-			outcome.Message = "already has specifications"
-			outcomes = append(outcomes, outcome)
-			continue
-		}
-		draft, err := buildAndStoreSpecDraft(c.Request.Context(), specDraftInput{
-			Product: &product,
-			Brand:   product.Brand,
-			Model:   model,
-			SKU:     product.SKU,
-			UseAI:   req.UseAI,
-			Force:   req.Force,
-			UserID:  currentUserID(c),
-		})
-		if err != nil {
-			outcome.Status = "failed"
-			outcome.Message = err.Error()
-			outcomes = append(outcomes, outcome)
-			continue
-		}
-		payload := services.DecodeSpecDraftPayload(draft.CandidatesJSON)
-		outcome.Status = "pending_review"
-		outcome.DraftID = draft.ID
-		outcome.Candidates = len(payload.Candidates)
-		if len(payload.Candidates) == 0 {
-			outcome.Message = "no verifiable parameter found"
-		}
-		outcomes = append(outcomes, outcome)
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: gin.H{
-		"requested": len(req.IDs),
-		"processed": len(outcomes),
-		"limit":     limit,
-		"results":   outcomes,
-	}})
 }
 
 // ListDrafts returns the review queue.
@@ -454,30 +335,42 @@ type specDraftInput struct {
 	UseAI   *bool
 	Force   bool
 	UserID  uint
+	// JobID links the draft to the AI job item that produced it.
+	JobID string
+	// AISetting/AIAPIKey pin the provider of a running job, so the research keeps
+	// the profile the job was created with even if the administrator switches it
+	// mid-run.
+	AISetting *models.AIAgentSetting
+	AIAPIKey  string
 }
 
 // buildAndStoreSpecDraft runs the research pipeline and persists the review row.
-func buildAndStoreSpecDraft(ctx context.Context, in specDraftInput) (*models.ProductSpecDraft, error) {
+// The boolean result reports that an existing pending draft was reused instead of
+// a new one being created.
+func buildAndStoreSpecDraft(ctx context.Context, in specDraftInput) (*models.ProductSpecDraft, bool, error) {
 	db := config.GetDB()
+	if db == nil {
+		return nil, false, errors.New("database connection failed")
+	}
 
 	if !in.Force && in.Product != nil {
 		var existing models.ProductSpecDraft
 		err := db.Where("product_id = ? AND model = ? AND status = ?", in.Product.ID, in.Model, "pending").
 			Order("id DESC").First(&existing).Error
 		if err == nil {
-			return &existing, nil
+			return &existing, true, nil
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
-	researchCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	researchCtx, cancel := context.WithTimeout(ctx, specResearchItemTimeout)
 	defer cancel()
 
 	result, err := services.ResearchProductSpecs(researchCtx, in.Brand, in.Model, productName(in.Product))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	useAI := specResearchDefaultAI
@@ -485,7 +378,7 @@ func buildAndStoreSpecDraft(ctx context.Context, in specDraftInput) (*models.Pro
 		useAI = *in.UseAI
 	}
 	if useAI {
-		if aiCandidates, aiErr := proposeSpecsWithAI(researchCtx, in.Brand, in.Model, result.Evidence); aiErr == nil && len(aiCandidates) > 0 {
+		if aiCandidates, aiErr := proposeSpecsWithAI(researchCtx, in.Brand, in.Model, result.Evidence, in.AISetting, in.AIAPIKey); aiErr == nil && len(aiCandidates) > 0 {
 			verified := services.FilterSpecCandidatesByVerbatimEvidence(in.Model, aiCandidates, result.Evidence)
 			result.Candidates = services.MergeSpecCandidateLists(result.Candidates, verified)
 			if len(verified) > 0 && result.Confidence == "low" {
@@ -504,6 +397,7 @@ func buildAndStoreSpecDraft(ctx context.Context, in specDraftInput) (*models.Pro
 		EvidenceJSON:   services.SpecEvidenceJSON(result.Evidence),
 		Notes:          result.Notes,
 		RequestedBy:    in.UserID,
+		JobID:          in.JobID,
 	}
 	if in.Product != nil {
 		draft.ProductID = in.Product.ID
@@ -516,10 +410,28 @@ func buildAndStoreSpecDraft(ctx context.Context, in specDraftInput) (*models.Pro
 	}
 	draft.SpecsJSON = services.TechnicalSpecsJSON(services.SpecCandidatesToMap(result.Candidates))
 
-	if err := db.Create(draft).Error; err != nil {
-		return nil, err
+	// A new draft replaces the older pending proposals for the same product and
+	// model. Without this, re-running research with Force piled up identical
+	// pending rows and the reviewer could not tell which one was current.
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(draft).Error; err != nil {
+			return err
+		}
+		supersede := tx.Model(&models.ProductSpecDraft{}).
+			Where("id <> ? AND status = ? AND model = ?", draft.ID, "pending", draft.Model)
+		if draft.ProductID > 0 {
+			supersede = supersede.Where("product_id = ?", draft.ProductID)
+		} else if strings.TrimSpace(draft.SKU) != "" {
+			supersede = supersede.Where("product_id = 0 AND sku = ?", draft.SKU)
+		} else {
+			return nil
+		}
+		return supersede.Update("status", "superseded").Error
+	})
+	if err != nil {
+		return nil, false, err
 	}
-	return draft, nil
+	return draft, false, nil
 }
 
 func productName(product *models.Product) string {
@@ -532,13 +444,19 @@ func productName(product *models.Product) string {
 // proposeSpecsWithAI asks the configured provider to read the collected evidence
 // and list only the parameters it can see there. The reply is untrusted: every
 // value must pass the verbatim evidence check before it reaches a draft.
-func proposeSpecsWithAI(ctx context.Context, brand, model string, evidence []services.ProductWebEvidence) ([]services.SpecResearchCandidate, error) {
+func proposeSpecsWithAI(ctx context.Context, brand, model string, evidence []services.ProductWebEvidence, pinned *models.AIAgentSetting, pinnedAPIKey string) ([]services.SpecResearchCandidate, error) {
 	if len(evidence) == 0 {
 		return nil, nil
 	}
-	setting, _, apiKey, err := loadAIAgentConfigWithProfile()
-	if err != nil || setting == nil || !setting.Enabled || strings.TrimSpace(apiKey) == "" {
-		return nil, errors.New("AI provider is not configured")
+	setting := pinned
+	apiKey := pinnedAPIKey
+	if setting == nil || strings.TrimSpace(apiKey) == "" {
+		resolved, _, resolvedKey, err := loadAIAgentConfigWithProfile()
+		if err != nil || resolved == nil || !resolved.Enabled || strings.TrimSpace(resolvedKey) == "" {
+			return nil, errors.New("AI provider is not configured")
+		}
+		setting = resolved
+		apiKey = resolvedKey
 	}
 
 	var sourceText strings.Builder
@@ -560,7 +478,7 @@ func proposeSpecsWithAI(ctx context.Context, brand, model string, evidence []ser
 			Role: "system",
 			Content: "You extract technical parameters from supplied source text. You must not use outside knowledge, must not guess, and must not convert units. " +
 				"Only list a parameter when its exact value appears in the source text. If a value is missing, omit it. " +
-				"Allowed labels: Input voltage, Rated current, Rated power, Frequency, Weight, Dimensions, Max speed, Encoder resolution, Operating temperature, Protection class, Insulation class, Cooling method, Mounting type, Interface, Certifications. " +
+				"Use one of these labels whenever it fits, so the same parameter is never split into two rows: Input voltage, Rated current, Rated power, Frequency, Weight, Dimensions, Max speed, Encoder resolution, Operating temperature, Protection class, Insulation class, Cooling method, Mounting type, Interface, Certifications. " +
 				"Reply with JSON only: {\"parameters\":[{\"label\":\"...\",\"value\":\"...\"}]}. Copy the value text exactly as written in the source.",
 		},
 		{

@@ -136,15 +136,16 @@ export default function EditProductPage() {
     ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy }
     : FALLBACK_COMMERCE_POLICY;
 
-  // Model-number (型号) specification research. Results always land in the review
-  // queue at /admin/spec-drafts — nothing is written to this product here.
+  // Model-number (型号) specification research. The run is queued as an AI task
+  // so a slow web lookup cannot block this form; results always land in the
+  // review queue at /admin/spec-drafts — nothing is written to this product here.
   const specResearchMutation = useMutation({
-    mutationFn: () => ProductSpecService.research({ product_id: productId, use_ai: true }),
-    onSuccess: (draft) => {
+    mutationFn: () => ProductSpecService.startProductResearchJob(productId as number, { use_ai: true }),
+    onSuccess: (job) => {
       toast.success(
         locale === 'zh'
-          ? `已生成参数草稿 #${draft.id} — 请先在“型号参数检索”中审核后再应用`
-          : `Draft #${draft.id} created for ${draft.model || draft.sku || 'this model'} — review it under Spec Research before applying`,
+          ? `已加入检索队列（任务 ${job.id.slice(0, 8)}）— 进度与审核请在“型号参数检索”页面查看`
+          : `Research queued (task ${job.id.slice(0, 8)}) — track progress and review under Spec Research`,
       );
       queryClient.invalidateQueries({ queryKey: ['spec-drafts'] });
     },

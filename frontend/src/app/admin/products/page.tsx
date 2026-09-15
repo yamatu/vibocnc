@@ -79,9 +79,9 @@ const AI_SEO_FOCUS_COPY: Record<AIAgentSEOFocus, { zh: string; en: string; instr
 };
 
 const BULK_UPDATE_BATCH_SIZE = 100;
-// Every researched product triggers a real public web lookup, so the batch stays
-// small and the button can be pressed again for the next slice.
-const SPEC_RESEARCH_BATCH_LIMIT = 20;
+// Research runs as a background AI task (one public web lookup per product), so
+// the request only has to queue it and the operator can leave the page.
+const SPEC_RESEARCH_BATCH_LIMIT = 50;
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -983,19 +983,18 @@ function AdminProductsContent() {
         toast.error(t('products.bulk.noProducts', locale === 'zh' ? '没有可处理的产品' : 'No products to process'));
         return;
       }
-      const result = await ProductSpecService.researchBatch({
-        ids: requested,
+      // The task runs in the background queue: it keeps going if the operator
+      // closes the tab, and it never publishes anything by itself.
+      const job = await ProductSpecService.startBatchResearchJob({
+        product_ids: requested,
         limit: SPEC_RESEARCH_BATCH_LIMIT,
         only_missing: true,
       });
-      const created = result.results.filter((row) => row.status === 'pending_review').length;
-      const withParameters = result.results.filter((row) => row.candidates > 0).length;
       toast.success(
         locale === 'zh'
-          ? `已创建 ${created} 条待审核草稿（其中 ${withParameters} 条找到可核实参数）`
-          : `${created} draft(s) created for review (${withParameters} with verifiable parameters)`
+          ? `已加入检索队列（${job.total} 个产品），进度与审核请在“型号参数检索”页面查看`
+          : `Research queued for ${job.total} product(s); track progress and review results in Spec Research`
       );
-      queryClient.invalidateQueries({ queryKey: ['spec-drafts'] });
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, locale === 'zh' ? '型号参数检索失败' : 'Specification research failed'));
     } finally {
@@ -1731,8 +1730,8 @@ function AdminProductsContent() {
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-700 hover:bg-indigo-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={specResearchRunning || (!selectAllResults && selectedIds.length === 0)}
                 title={locale === 'zh'
-                  ? '根据型号检索公开的厂家/代理页面，生成待审核的技术参数草稿（不会自动发布）。'
-                  : 'Search public manufacturer/distributor pages for each model number and queue the parameters for review (never auto-published).'}
+                  ? '根据型号在公开的厂家/代理页面检索参数，加入后台任务队列；结果生成待审核草稿，不会自动发布。进度见“型号参数检索”。'
+                  : 'Search public manufacturer/distributor pages by model number and queue the lookup as a background task. Results become review drafts and are never auto-published; progress is shown in Spec Research.'}
               >
                 <SparklesIcon className="mr-2 h-4 w-4" />
                 {specResearchRunning

@@ -22,6 +22,9 @@ func TestSpecDraftRoutesDoNotConflictWithProductID(t *testing.T) {
 		"GET /api/v1/admin/products/spec-drafts/:id":          false,
 		"POST /api/v1/admin/products/spec-drafts/:id/approve": false,
 		"POST /api/v1/admin/products/spec-drafts/:id/reject":  false,
+		// Batch and per-product research are AI jobs; the scope-filtered
+		// entry point sits next to the other AI job starters.
+		"POST /api/v1/admin/ai-agent/seo/spec-jobs": false,
 	}
 	for _, route := range engine.Routes() {
 		key := route.Method + " " + route.Path

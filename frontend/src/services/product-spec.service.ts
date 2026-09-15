@@ -1,13 +1,14 @@
 import { apiClient } from '@/lib/api';
+import { AIAgentService, type AIAgentSEOJob, type AIAgentSEOJobItemsPage } from '@/services/ai-agent.service';
 import type {
   APIResponse,
   PaginationResponse,
   ProductSpecDraft,
   ProductSpecDraftDetail,
   SpecDraftApproveRequest,
-  SpecResearchBatchOutcome,
-  SpecResearchBatchRequest,
   SpecResearchCandidate,
+  SpecResearchItemPayload,
+  SpecResearchJobRequest,
   SpecResearchRequest,
 } from '@/types';
 
@@ -19,25 +20,70 @@ import type {
  * cannot change without a human review step.
  */
 export class ProductSpecService {
+  /**
+   * Researches a model number that has no product row yet.
+   *
+   * This is the only synchronous entry point. Catalogue products go through
+   * `startResearchJob` (or `startProductResearchJob`) so a slow lookup cannot
+   * block an HTTP request and so the run survives a restart.
+   */
   static async research(payload: SpecResearchRequest): Promise<ProductSpecDraft> {
-    const { product_id, ...rest } = payload;
-    const url = product_id ? `/admin/products/${product_id}/spec-research` : '/admin/products/spec-research';
-    const res = await apiClient.post<APIResponse<ProductSpecDraft>>(url, rest);
+    const res = await apiClient.post<APIResponse<ProductSpecDraft>>('/admin/products/spec-research', payload);
     if (res.data.success && res.data.data) return res.data.data;
     throw new Error(res.data.message || res.data.error || 'Specification research failed');
   }
 
-  static async researchBatch(payload: SpecResearchBatchRequest): Promise<{
-    requested: number;
-    processed: number;
-    limit: number;
-    results: SpecResearchBatchOutcome[];
-  }> {
-    const res = await apiClient.post<
-      APIResponse<{ requested: number; processed: number; limit: number; results: SpecResearchBatchOutcome[] }>
-    >('/admin/products/spec-research/batch', payload);
+  /** Queues research for a filtered product scope (AI job queue). */
+  static async startResearchJob(payload: SpecResearchJobRequest): Promise<AIAgentSEOJob> {
+    return AIAgentService.startSpecResearchJob(payload);
+  }
+
+  /** Queues research for the given products. Used by the product list action. */
+  static async startBatchResearchJob(payload: SpecResearchJobRequest): Promise<AIAgentSEOJob> {
+    const res = await apiClient.post<APIResponse<AIAgentSEOJob>>('/admin/products/spec-research/batch', payload);
     if (res.data.success && res.data.data) return res.data.data;
     throw new Error(res.data.message || res.data.error || 'Batch specification research failed');
+  }
+
+  /** Queues research for a single catalogue product. */
+  static async startProductResearchJob(productId: number, payload: SpecResearchJobRequest = {}): Promise<AIAgentSEOJob> {
+    const res = await apiClient.post<APIResponse<AIAgentSEOJob>>(
+      `/admin/products/${productId}/spec-research`,
+      payload,
+    );
+    if (res.data.success && res.data.data) return res.data.data;
+    throw new Error(res.data.message || res.data.error || 'Specification research failed');
+  }
+
+  static async getResearchJob(id: string): Promise<AIAgentSEOJob> {
+    return AIAgentService.getSEOJob(id);
+  }
+
+  static async listResearchJobItems(id: string, limit = 200, offset = 0, status = ''): Promise<AIAgentSEOJobItemsPage> {
+    return AIAgentService.listSEOJobItems(id, limit, offset, status);
+  }
+
+  static async pauseResearchJob(id: string): Promise<AIAgentSEOJob> {
+    return AIAgentService.pauseSEOJob(id);
+  }
+
+  static async resumeResearchJob(id: string): Promise<AIAgentSEOJob> {
+    return AIAgentService.resumeSEOJob(id);
+  }
+
+  static async endResearchJob(id: string): Promise<AIAgentSEOJob> {
+    return AIAgentService.endPausedSEOJob(id);
+  }
+
+  /** Reads the per-item summary the job worker stored (draft id, conflicts). */
+  static parseItemPayload(item: { evidence_json?: string }): SpecResearchItemPayload | null {
+    if (!item.evidence_json) return null;
+    try {
+      const parsed = JSON.parse(item.evidence_json) as SpecResearchItemPayload;
+      return typeof parsed?.draft_id === 'number' ? parsed : null;
+    } catch {
+      return null;
+    }
   }
 
   static async listDrafts(params: {

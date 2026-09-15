@@ -180,6 +180,7 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.POST("/seo/jobs", aiAgentController.StartSelectedSEO)
 				aiAgent.POST("/seo/candidates", aiAgentController.StartCandidateSEO)
 				aiAgent.POST("/seo/category-jobs", middleware.AdminOnly(), aiAgentController.StartCategoryOptimizationJob)
+				aiAgent.POST("/seo/spec-jobs", aiAgentController.StartSpecResearchJob)
 				aiAgent.POST("/seo/audit", aiAgentController.SEOAudit)
 				aiAgent.POST("/seo/auto-fix", aiAgentController.StartSEOAutoFix)
 				aiAgent.POST("/category-seo", middleware.AdminOnly(), aiAgentController.OptimizeCategorySEO)
@@ -248,10 +249,13 @@ func SetupRoutes(r *gin.Engine) {
 				products.PUT("/bulk-update", productController.BulkUpdateProducts)
 				products.POST("/selection-ids", productController.GetBulkProductSelectionIDs)
 
-				// Model-number specification research (review queue; never auto-published)
-				products.POST("/spec-research", productSpecDraftController.ResearchProduct)
-				products.POST("/spec-research/batch", productSpecDraftController.ResearchBatch)
-				products.POST("/:id/spec-research", productSpecDraftController.ResearchProduct)
+				// Model-number specification research. Batch and per-product runs
+				// are queued on the AI job queue; only a bare model number (no
+				// product row yet) is researched synchronously. Nothing is
+				// published without an explicit approval.
+				products.POST("/spec-research", productSpecDraftController.ResearchModel)
+				products.POST("/spec-research/batch", productSpecDraftController.StartBatchSpecResearchJob)
+				products.POST("/:id/spec-research", productSpecDraftController.StartProductSpecResearchJob)
 				products.GET("/spec-drafts", productSpecDraftController.ListDrafts)
 				products.GET("/spec-drafts/:id", productSpecDraftController.GetDraft)
 				products.POST("/spec-drafts/:id/approve", productSpecDraftController.ApproveDraft)
