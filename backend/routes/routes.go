@@ -51,6 +51,8 @@ func SetupRoutes(r *gin.Engine) {
 	newsController := &controllers.NewsController{}
 	sitePageController := &controllers.SitePageController{}
 	productOptimizationController := &controllers.ProductOptimizationController{}
+	commercePolicyController := &controllers.CommercePolicyController{}
+	productSpecDraftController := &controllers.ProductSpecDraftController{}
 	indexNowController := &controllers.IndexNowController{}
 	ebayImportDraftController := &controllers.EbayImportDraftController{}
 	aiAgentController := &controllers.AIAgentController{}
@@ -61,7 +63,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "ok",
-			"message": "FANUC Backend API is running",
+			"message": "Vibocnc Backend API is running",
 		})
 	})
 
@@ -135,6 +137,9 @@ func SetupRoutes(r *gin.Engine) {
 			public.GET("/news/:id", newsController.GetPublicArticle)
 			public.GET("/news/slug/:slug", newsController.GetPublicArticleBySlug)
 			public.GET("/site-pages/:pageKey", sitePageController.GetPublicPage)
+
+			// Storefront commercial promise (shipping / warranty / return policy)
+			public.GET("/commerce-policy", middleware.CachePublicGET(middleware.CacheTTLHomepage(), "cache:public:commerce_policy:"), commercePolicyController.GetPublicSettings)
 		}
 
 		// PayPal inbound webhook (signature verified, no other auth).
@@ -242,6 +247,15 @@ func SetupRoutes(r *gin.Engine) {
 				// Bulk update is_active / is_featured
 				products.PUT("/bulk-update", productController.BulkUpdateProducts)
 				products.POST("/selection-ids", productController.GetBulkProductSelectionIDs)
+
+				// Model-number specification research (review queue; never auto-published)
+				products.POST("/spec-research", productSpecDraftController.ResearchProduct)
+				products.POST("/spec-research/batch", productSpecDraftController.ResearchBatch)
+				products.POST("/:id/spec-research", productSpecDraftController.ResearchProduct)
+				products.GET("/spec-drafts", productSpecDraftController.ListDrafts)
+				products.GET("/spec-drafts/:id", productSpecDraftController.GetDraft)
+				products.POST("/spec-drafts/:id/approve", productSpecDraftController.ApproveDraft)
+				products.POST("/spec-drafts/:id/reject", productSpecDraftController.RejectDraft)
 				products.GET("/optimization-status", productOptimizationController.GetOptimizationStatus)
 				products.POST("/optimize", productOptimizationController.OptimizeProduct)
 				products.POST("/bulk-optimize", productOptimizationController.BulkOptimizeProducts)
@@ -562,6 +576,14 @@ func SetupRoutes(r *gin.Engine) {
 				companyProfile.POST("", companyProfileController.UpsertCompanyProfile)
 				companyProfile.PUT("/:id", companyProfileController.UpdateCompanyProfile)
 				companyProfile.DELETE("/:id", middleware.AdminOnly(), companyProfileController.DeleteCompanyProfile)
+			}
+
+			// Storefront commercial promise (shipping / warranty / returns)
+			commercePolicy := admin.Group("/commerce-policy")
+			commercePolicy.Use(middleware.EditorOrAdmin())
+			{
+				commercePolicy.GET("", commercePolicyController.GetSettings)
+				commercePolicy.PUT("", commercePolicyController.UpdateSettings)
 			}
 
 			// Social media links (admin and editor access)

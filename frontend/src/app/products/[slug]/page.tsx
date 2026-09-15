@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { ProductService } from '@/services';
 import { getProductBySkuCached } from '@/services/product.server';
+import { getCommercePolicyCached } from '@/services/commerce-policy.server';
 import { getSiteUrl } from '@/lib/url';
 import { withSiteName, withoutSiteNameSuffix } from '@/lib/seo';
 import { toProductPathId } from '@/lib/utils';
@@ -153,7 +154,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       alt: semanticImageAlt,
     }));
 
-    const metaDescription = buildProductSeoDescription(product);
+    // Placeholder/template meta copy is rejected in favour of the real record
+    // copy, and the warranty/shipping promise comes from the commerce policy.
+    const metaDescription = buildProductSeoDescription(product, 160, await getCommercePolicyCached());
     const metaKeywords = (product.meta_keywords || '').trim();
     const title = buildMetadataTitle(product);
     const socialTitle = withSiteName(title);
@@ -245,6 +248,10 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const hasRequestedTranslation = hasTranslationForLocale(initialProduct.translations, locale);
   initialProduct = localizeProductContent(initialProduct, locale);
 
+  // The shipping / warranty / returns promise shown on the page and published in
+  // structured data is admin-editable, not hard-coded.
+  const commercePolicy = await getCommercePolicyCached();
+
   // Canonical redirect to the normalized product slug shared with sitemap and links.
   const canonicalId = getCanonicalProductSlug(initialProduct, sku || '');
   if (canonicalId && locale !== DEFAULT_PUBLIC_LOCALE && !hasRequestedTranslation) {
@@ -263,6 +270,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         productSku={initialProduct?.sku || sku}
         initialProduct={initialProduct}
         contentLocale={hasRequestedTranslation ? locale : 'en'}
+        commercePolicy={commercePolicy}
       />
     </>
   );

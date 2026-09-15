@@ -127,7 +127,7 @@ export default function RegisterPage() {
           <div className="pt-4 text-white lg:sticky lg:top-28">
             <span className="site-hero-kicker">Trade account</span>
             <h1 className="mt-5 max-w-2xl text-4xl font-bold leading-tight sm:text-5xl">
-              Build a faster purchasing workflow for FANUC spare parts.
+              Build a faster purchasing workflow for industrial spare parts.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-blue-100">
               Create an account for repeat ordering, verified contact details, and cleaner communication with the Vibocnc team.

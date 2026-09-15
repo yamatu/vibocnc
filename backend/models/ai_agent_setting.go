@@ -26,7 +26,7 @@ type AIAgentSetting struct {
 	// propose catalog content, but it never supplies or overrides these fields.
 	DefaultProductPrice   float64 `json:"default_product_price" gorm:"type:decimal(10,2);default:0.00"`
 	DefaultWarrantyPeriod string  `json:"default_warranty_period" gorm:"size:50;default:'12 months'"`
-	DefaultLeadTime       string  `json:"default_lead_time" gorm:"size:50;default:'3-7 days'"`
+	DefaultLeadTime       string  `json:"default_lead_time" gorm:"size:50;default:'4-5 DAYS'"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

@@ -94,15 +94,17 @@ func findProductBySKUInternal(sku string) (models.Product, error) {
 		}
 	}
 	add(normalized)
-	if strings.HasPrefix(upper, "FANUC-") {
-		add(normalized[6:])
-	}
-	if strings.HasPrefix(upper, "FANUC ") {
-		add(normalized[6:])
+	// A legacy catalogue stores some SKUs with the brand name in the SKU. Accept
+	// both the stripped and the prefixed form for every known brand instead of
+	// special-casing FANUC.
+	if stripped, ok := services.StripKnownBrandPrefix(normalized); ok {
+		add(stripped)
 	}
 	add(upper)
-	add("FANUC-" + normalized)
-	add("FANUC " + normalized)
+	for _, brand := range services.KnownBrandDisplayNames() {
+		add(brand + "-" + normalized)
+		add(brand + " " + normalized)
+	}
 
 	// Step 1: exact SKU match
 	if err := withPublicProductPreloads(db).
@@ -707,22 +709,145 @@ func (pc *ProductController) GetProductBySKUQuery(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Product retrieved successfully", Data: productResponse})
 }
 
+// BulkUpdateReq is the payload for the product bulk update endpoint. Flag
+// updates and commerce-field fills share the same selection (explicit
+// IDs/SKUs or filters) so an operator can select a category and apply the
+// shipping/warranty promise in one action.
+type BulkUpdateReq struct {
+	IDs        []uint   `json:"ids"`
+	SKUs       []string `json:"skus"`
+	IsActive   *bool    `json:"is_active"`
+	IsFeatured *bool    `json:"is_featured"`
+	// Optional filters to select all matching records
+	Search             string `json:"search"`
+	CategoryID         string `json:"category_id"`
+	IncludeDescendants bool   `json:"include_descendants"`
+	Status             string `json:"status"`     // "active" | "inactive" | "all" | ""
+	Featured           string `json:"featured"`   // "true" | "false" | ""
+	BatchSize          int    `json:"batch_size"` // optional, default 500
+
+	// Optional commerce / commercial-promise columns. Nil means "leave as is".
+	WarrantyPeriod       *string `json:"warranty_period"`
+	LeadTime             *string `json:"lead_time"`
+	ConditionType        *string `json:"condition_type"`
+	OriginCountry        *string `json:"origin_country"`
+	Manufacturer         *string `json:"manufacturer"`
+	PackagingInfo        *string `json:"packaging_info"`
+	Certifications       *string `json:"certifications"`
+	Dimensions           *string `json:"dimensions"`
+	MinimumOrderQuantity *int    `json:"minimum_order_quantity"`
+	// FillFromCommercePolicy applies the admin-editable shipping / warranty
+	// promise (for example lead time "4-5 DAYS") to the whole selection.
+	FillFromCommercePolicy bool `json:"fill_from_commerce_policy"`
+	// OnlyIfEmpty fills blank columns only, so published copy is never replaced
+	// by a batch operation.
+	OnlyIfEmpty bool `json:"only_if_empty"`
+}
+
+// commerceBulkField is a single column/value pair applied by a batch fill. The
+// zero value carries no opinion, which is how "leave existing published copy
+// alone" is expressed (see onlyIfEmpty).
+type commerceBulkField struct {
+	Column string
+	Value  interface{}
+	// EmptyPredicate overrides how a "blank" value is detected.
+	EmptyPredicate string
+}
+
+// applyCommerceBulkFields writes each field as its own UPDATE so that, when
+// onlyIfEmpty is set, a column that already carries published content is never
+// overwritten. This keeps bulk SEO/commercial fills safe for indexed pages.
+func applyCommerceBulkFields(scope func(ids []uint) *gorm.DB, batchIDs []uint, fields []commerceBulkField, onlyIfEmpty bool) (int64, error) {
+	var total int64
+	for _, field := range fields {
+		query := scope(batchIDs)
+		if onlyIfEmpty {
+			predicate := field.EmptyPredicate
+			if predicate == "" {
+				predicate = field.Column + " IS NULL OR " + field.Column + " = ''"
+			}
+			query = query.Where(predicate)
+		}
+		res := query.Updates(map[string]interface{}{field.Column: field.Value})
+		if res.Error != nil {
+			return total, res.Error
+		}
+		total += res.RowsAffected
+	}
+	return total, nil
+}
+
+// commerceBulkFields collects the optional commerce/commercial-promise columns
+// from the request. Shipping parameters such as "4-5 DAYS" are filled this way.
+func (r *BulkUpdateReq) commerceBulkFields() []commerceBulkField {
+	fields := make([]commerceBulkField, 0, 10)
+	if r.WarrantyPeriod != nil {
+		fields = append(fields, commerceBulkField{Column: "warranty_period", Value: strings.TrimSpace(*r.WarrantyPeriod)})
+	}
+	if r.LeadTime != nil {
+		fields = append(fields, commerceBulkField{Column: "lead_time", Value: strings.TrimSpace(*r.LeadTime)})
+	}
+	if r.ConditionType != nil {
+		fields = append(fields, commerceBulkField{Column: "condition_type", Value: normalizeBulkConditionType(*r.ConditionType)})
+	}
+	if r.OriginCountry != nil {
+		fields = append(fields, commerceBulkField{Column: "origin_country", Value: strings.TrimSpace(*r.OriginCountry)})
+	}
+	if r.Manufacturer != nil {
+		fields = append(fields, commerceBulkField{Column: "manufacturer", Value: strings.TrimSpace(*r.Manufacturer)})
+	}
+	if r.PackagingInfo != nil {
+		fields = append(fields, commerceBulkField{Column: "packaging_info", Value: strings.TrimSpace(*r.PackagingInfo)})
+	}
+	if r.Certifications != nil {
+		fields = append(fields, commerceBulkField{Column: "certifications", Value: strings.TrimSpace(*r.Certifications)})
+	}
+	if r.Dimensions != nil {
+		fields = append(fields, commerceBulkField{Column: "dimensions", Value: strings.TrimSpace(*r.Dimensions)})
+	}
+	if r.MinimumOrderQuantity != nil && *r.MinimumOrderQuantity > 0 {
+		fields = append(fields, commerceBulkField{
+			Column:         "minimum_order_quantity",
+			Value:          *r.MinimumOrderQuantity,
+			EmptyPredicate: "minimum_order_quantity IS NULL OR minimum_order_quantity = 0",
+		})
+	}
+	if r.FillFromCommercePolicy {
+		policy := services.CurrentCommercePolicy()
+		if !r.hasField("warranty_period") {
+			fields = append(fields, commerceBulkField{Column: "warranty_period", Value: policy.DefaultWarrantyPeriod})
+		}
+		if !r.hasField("lead_time") {
+			fields = append(fields, commerceBulkField{Column: "lead_time", Value: policy.DefaultLeadTime})
+		}
+	}
+	return fields
+}
+
+func (r *BulkUpdateReq) hasField(column string) bool {
+	switch column {
+	case "warranty_period":
+		return r.WarrantyPeriod != nil
+	case "lead_time":
+		return r.LeadTime != nil
+	default:
+		return false
+	}
+}
+
+func normalizeBulkConditionType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "refurbished":
+		return "refurbished"
+	case "used":
+		return "used"
+	default:
+		return "new"
+	}
+}
+
 // BulkUpdateProducts allows updating is_active / is_featured for multiple products
 func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
-	type BulkUpdateReq struct {
-		IDs        []uint   `json:"ids"`
-		SKUs       []string `json:"skus"`
-		IsActive   *bool    `json:"is_active"`
-		IsFeatured *bool    `json:"is_featured"`
-		// Optional filters to select all matching records
-		Search             string `json:"search"`
-		CategoryID         string `json:"category_id"`
-		IncludeDescendants bool   `json:"include_descendants"`
-		Status             string `json:"status"`     // "active" | "inactive" | "all" | ""
-		Featured           string `json:"featured"`   // "true" | "false" | ""
-		BatchSize          int    `json:"batch_size"` // optional, default 500
-	}
-
 	var req BulkUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
@@ -743,7 +868,8 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	if req.IsFeatured != nil {
 		updates["is_featured"] = *req.IsFeatured
 	}
-	if len(updates) == 0 {
+	commerceFields := req.commerceBulkFields()
+	if len(updates) == 0 && len(commerceFields) == 0 {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
 			Message: "No fields to update",
@@ -753,58 +879,83 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	}
 
 	db := config.GetDB()
-	tx := db.Model(&models.Product{})
-	// Selection by IDs/SKUs
-	if len(req.IDs) > 0 {
-		tx = tx.Where("id IN ?", req.IDs)
-	}
-	if len(req.SKUs) > 0 {
-		tx = tx.Or("sku IN ?", req.SKUs)
-	}
-	// Or selection by filters (when no explicit IDs/SKUs are provided)
-	if len(req.IDs) == 0 && len(req.SKUs) == 0 {
+	hasExplicitSelection := len(req.IDs) > 0 || len(req.SKUs) > 0
+
+	// scope rebuilds the selection for every UPDATE so conditions are never
+	// leaked between statements.
+	scope := func(batchIDs []uint) *gorm.DB {
+		query := db.Model(&models.Product{})
+		if len(batchIDs) > 0 {
+			return query.Where("id IN ?", batchIDs)
+		}
+		if len(req.IDs) > 0 {
+			query = query.Where("id IN ?", req.IDs)
+		}
+		if len(req.SKUs) > 0 {
+			query = query.Or("sku IN ?", req.SKUs)
+		}
+		if hasExplicitSelection {
+			return query
+		}
 		if req.CategoryID != "" {
 			if req.IncludeDescendants {
 				rootID, err := strconv.ParseUint(req.CategoryID, 10, 32)
 				if err == nil && rootID > 0 {
 					ids, derr := getDescendantCategoryIDs(db, uint(rootID))
 					if derr == nil && len(ids) > 0 {
-						tx = tx.Where("category_id IN ?", ids)
+						query = query.Where("category_id IN ?", ids)
 					} else {
-						tx = tx.Where("category_id = ?", req.CategoryID)
+						query = query.Where("category_id = ?", req.CategoryID)
 					}
 				} else {
-					tx = tx.Where("category_id = ?", req.CategoryID)
+					query = query.Where("category_id = ?", req.CategoryID)
 				}
 			} else {
-				tx = tx.Where("category_id = ?", req.CategoryID)
+				query = query.Where("category_id = ?", req.CategoryID)
 			}
 		}
 		if req.Search != "" {
-			tx = applyProductSearchFilter(tx, req.Search)
+			query = applyProductSearchFilter(query, req.Search)
 		}
 		if req.Status == "active" {
-			tx = tx.Where("is_active = ?", true)
+			query = query.Where("is_active = ?", true)
 		} else if req.Status == "inactive" {
-			tx = tx.Where("is_active = ?", false)
+			query = query.Where("is_active = ?", false)
 		}
 		if req.Featured == "true" {
-			tx = tx.Where("is_featured = ?", true)
+			query = query.Where("is_featured = ?", true)
 		} else if req.Featured == "false" {
-			tx = tx.Where("is_featured = ?", false)
+			query = query.Where("is_featured = ?", false)
 		}
+		return query
 	}
 
 	// If explicit IDs/SKUs provided, run a single update
-	if len(req.IDs) > 0 || len(req.SKUs) > 0 {
-		res := tx.Updates(updates)
-		if res.Error != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse{
-				Success: false,
-				Message: "Failed to update products",
-				Error:   res.Error.Error(),
-			})
-			return
+	if hasExplicitSelection {
+		var updated int64
+		if len(updates) > 0 {
+			res := scope(nil).Updates(updates)
+			if res.Error != nil {
+				c.JSON(http.StatusInternalServerError, models.APIResponse{
+					Success: false,
+					Message: "Failed to update products",
+					Error:   res.Error.Error(),
+				})
+				return
+			}
+			updated += res.RowsAffected
+		}
+		if len(commerceFields) > 0 {
+			count, err := applyCommerceBulkFields(scope, nil, commerceFields, req.OnlyIfEmpty)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, models.APIResponse{
+					Success: false,
+					Message: "Failed to update product commerce fields",
+					Error:   err.Error(),
+				})
+				return
+			}
+			updated += count
 		}
 		// Keep the user-facing request fast; cache invalidation is best-effort.
 		go services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
@@ -812,10 +963,9 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		c.JSON(http.StatusOK, models.APIResponse{
 			Success: true,
 			Message: "Products updated successfully",
-			Data:    map[string]int64{"updated": res.RowsAffected},
+			Data:    map[string]int64{"updated": updated},
 		})
 		return
-
 	}
 
 	// Otherwise, apply filters in batches to avoid timeouts/locks
@@ -827,40 +977,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	var totalUpdated int64 = 0
 	var batch []models.Product
 
-	// Build a selector with same filters (without IDs/SKUs) to stream IDs
-	selector := db.Model(&models.Product{})
-	if req.CategoryID != "" {
-		if req.IncludeDescendants {
-			rootID, err := strconv.ParseUint(req.CategoryID, 10, 32)
-			if err == nil && rootID > 0 {
-				ids, derr := getDescendantCategoryIDs(db, uint(rootID))
-				if derr == nil && len(ids) > 0 {
-					selector = selector.Where("category_id IN ?", ids)
-				} else {
-					selector = selector.Where("category_id = ?", req.CategoryID)
-				}
-			} else {
-				selector = selector.Where("category_id = ?", req.CategoryID)
-			}
-		} else {
-			selector = selector.Where("category_id = ?", req.CategoryID)
-		}
-	}
-	if req.Search != "" {
-		selector = applyProductSearchFilter(selector, req.Search)
-	}
-	if req.Status == "active" {
-		selector = selector.Where("is_active = ?", true)
-	} else if req.Status == "inactive" {
-		selector = selector.Where("is_active = ?", false)
-	}
-	if req.Featured == "true" {
-		selector = selector.Where("is_featured = ?", true)
-	} else if req.Featured == "false" {
-		selector = selector.Where("is_featured = ?", false)
-	}
-
-	if err := selector.FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
+	if err := scope(nil).FindInBatches(&batch, batchSize, func(txBatch *gorm.DB, _ int) error {
 		// collect IDs
 		ids := make([]uint, 0, len(batch))
 		for _, p := range batch {
@@ -869,11 +986,20 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		if len(ids) == 0 {
 			return nil
 		}
-		res := db.Model(&models.Product{}).Where("id IN ?", ids).Updates(updates)
-		if res.Error != nil {
-			return res.Error
+		if len(updates) > 0 {
+			res := db.Model(&models.Product{}).Where("id IN ?", ids).Updates(updates)
+			if res.Error != nil {
+				return res.Error
+			}
+			totalUpdated += res.RowsAffected
 		}
-		totalUpdated += res.RowsAffected
+		if len(commerceFields) > 0 {
+			count, err := applyCommerceBulkFields(scope, ids, commerceFields, req.OnlyIfEmpty)
+			if err != nil {
+				return err
+			}
+			totalUpdated += count
+		}
 		return nil
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{

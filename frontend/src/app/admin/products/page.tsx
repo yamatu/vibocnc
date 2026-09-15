@@ -22,7 +22,7 @@ import {
 import AdminLayout from '@/components/admin/AdminLayout';
 import Pagination from '@/components/common/Pagination';
 import MediaPickerModal from '@/components/admin/MediaPickerModal';
-import { ProductService, CategoryService } from '@/services';
+import { ProductService, CategoryService, CommercePolicyService, ProductSpecService } from '@/services';
 import { AIAgentService, type AIAgentSEOFocus, type AIAgentSEOJob } from '@/services/ai-agent.service';
 import type {
   ProductImportResult,
@@ -31,6 +31,12 @@ import type {
 } from '@/services/product.service';
 import type { MediaAsset } from '@/services/media.service';
 import type { Product } from '@/types';
+import type { CommercePolicySetting } from '@/types';
+import {
+  FALLBACK_COMMERCE_POLICY,
+  resolveLeadTime,
+  resolveWarrantyPeriod,
+} from '@/lib/commerce-policy';
 import { queryKeys } from '@/lib/react-query';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl } from '@/lib/utils';
 import { useAdminI18n } from '@/lib/admin-i18n';
@@ -73,6 +79,9 @@ const AI_SEO_FOCUS_COPY: Record<AIAgentSEOFocus, { zh: string; en: string; instr
 };
 
 const BULK_UPDATE_BATCH_SIZE = 100;
+// Every researched product triggers a real public web lookup, so the batch stays
+// small and the button can be pressed again for the next slice.
+const SPEC_RESEARCH_BATCH_LIMIT = 20;
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -127,6 +136,20 @@ function AdminProductsContent() {
   const [showCategoryImagePicker, setShowCategoryImagePicker] = useState(false);
   const [categoryImageBrand, setCategoryImageBrand] = useState('');
   const [categoryImageMode, setCategoryImageMode] = useState<'fill_empty' | 'replace_all'>('fill_empty');
+  // Bulk commercial-fill panel: applies the admin-editable shipping/warranty
+  // promise (for example lead time "4-5 DAYS") to the current selection.
+  const [showCommerceFill, setShowCommerceFill] = useState(false);
+  const [commerceFillOnlyIfEmpty, setCommerceFillOnlyIfEmpty] = useState(true);
+  const [commerceFill, setCommerceFill] = useState({
+    lead_time: '',
+    warranty_period: '',
+    condition_type: '',
+    origin_country: '',
+    packaging_info: '',
+    certifications: '',
+    dimensions: '',
+    minimum_order_quantity: '',
+  });
   const [bulkUpdateProgress, setBulkUpdateProgress] = useState<BulkProgress>({
     status: 'idle',
     processed: 0,
@@ -138,6 +161,9 @@ function AdminProductsContent() {
     totalBatches: 0,
     message: '',
   });
+  // Model-number specification research runs on the server (public web search)
+  // and only ever produces review drafts.
+  const [specResearchRunning, setSpecResearchRunning] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -315,6 +341,54 @@ function AdminProductsContent() {
     queryFn: () => ProductService.getOptimizationStatus(),
     staleTime: 30_000,
   });
+
+  // Which model-derivable fields are still missing, worst first. Labels are kept
+  // here (not in the backend) so the report stays localised.
+  const coverageLabels: Record<string, { zh: string; en: string }> = {
+    name: { zh: '商品名称', en: 'Name' },
+    short_description: { zh: '简短描述', en: 'Short description' },
+    description: { zh: '详细描述', en: 'Description' },
+    meta_title: { zh: 'SEO 标题', en: 'Meta title' },
+    meta_description: { zh: 'SEO 描述', en: 'Meta description' },
+    meta_keywords: { zh: 'SEO 关键词', en: 'Meta keywords' },
+    compatibility_info: { zh: '兼容性说明', en: 'Compatibility' },
+    installation_guide: { zh: '安装指南', en: 'Installation guide' },
+    maintenance_tips: { zh: '维护建议', en: 'Maintenance tips' },
+    technical_specs: { zh: '技术参数表', en: 'Technical specs' },
+    warranty_period: { zh: '质保', en: 'Warranty' },
+    lead_time: { zh: '交期', en: 'Lead time' },
+    manufacturer: { zh: '制造商', en: 'Manufacturer' },
+    origin_country: { zh: '产地', en: 'Origin country' },
+  };
+  const coverageRows = Object.entries(optimizationStatus?.field_coverage ?? {})
+    .filter(([, count]) => count > 0)
+    .map(([key, count]) => ({
+      key,
+      count,
+      zh: coverageLabels[key]?.zh ?? key,
+      en: coverageLabels[key]?.en ?? key,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Admin-editable commercial promise; only fetched when the fill panel is open.
+  const { data: commercePolicy } = useQuery<CommercePolicySetting>({
+    queryKey: ['commerce-policy', 'settings'],
+    queryFn: () => CommercePolicyService.getSettings(),
+    enabled: showCommerceFill,
+    staleTime: 60_000,
+  });
+  const effectiveCommercePolicy = commercePolicy
+    ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy }
+    : FALLBACK_COMMERCE_POLICY;
+
+  useEffect(() => {
+    if (!showCommerceFill) return;
+    setCommerceFill((prev) => ({
+      ...prev,
+      lead_time: prev.lead_time || resolveLeadTime(undefined, effectiveCommercePolicy),
+      warranty_period: prev.warranty_period || resolveWarrantyPeriod(undefined, effectiveCommercePolicy),
+    }));
+  }, [showCommerceFill, effectiveCommercePolicy]);
 
   const categories = Array.isArray(categoriesData) ? categoriesData : [];
 
@@ -759,8 +833,174 @@ function AdminProductsContent() {
     void runBulkFlagUpdate('is_active', value);
   };
 
+  /**
+   * Apply the commerce policy (and any explicitly entered commercial fields) to
+   * the current selection in batches. Blank-only mode is the default so an
+   * indexed page is never rewritten by a batch action.
+   */
+  const runCommerceFill = async () => {
+    if (!selectAllResults && selectedIds.length === 0) {
+      toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
+      return;
+    }
+
+    const parseIds = async (): Promise<number[]> => {
+      if (!selectAllResults) return [...selectedIds];
+      const snapshot = await ProductService.getAdminProductSelectionIds(buildSelectAllPayload());
+      return snapshot.ids;
+    };
+
+    try {
+      setBulkUpdateProgress({
+        status: 'preparing',
+        processed: 0,
+        total: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        currentBatch: 0,
+        totalBatches: 0,
+        message: locale === 'zh' ? '正在准备批量填充...' : 'Preparing batch fill...',
+      });
+
+      const targetIds = await parseIds();
+      if (targetIds.length === 0) {
+        setBulkUpdateProgress({ status: 'idle', processed: 0, total: 0, updated: 0, skipped: 0, failed: 0, currentBatch: 0, totalBatches: 0, message: '' });
+        toast.error(t('products.bulk.noProducts', locale === 'zh' ? '没有可处理的产品' : 'No products to process'));
+        return;
+      }
+
+      const trimmed = Object.fromEntries(
+        Object.entries(commerceFill).filter(([, value]) => String(value).trim() !== '')
+      ) as Record<string, string>;
+
+      const basePayload: Record<string, unknown> = {
+        fill_from_commerce_policy: true,
+        only_if_empty: commerceFillOnlyIfEmpty,
+      };
+      for (const [key, value] of Object.entries(trimmed)) {
+        basePayload[key] = key === 'minimum_order_quantity' ? Number(value) : value.trim();
+      }
+
+      const total = targetIds.length;
+      const totalBatches = Math.ceil(total / BULK_UPDATE_BATCH_SIZE);
+      setBulkUpdateProgress({
+        status: 'running',
+        processed: 0,
+        total,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        currentBatch: 0,
+        totalBatches,
+        message: locale === 'zh'
+          ? `共 ${total} 个产品，开始分 ${totalBatches} 批填充`
+          : `Filling ${total} products across ${totalBatches} batches`,
+      });
+
+      for (let start = 0; start < total; start += BULK_UPDATE_BATCH_SIZE) {
+        const batchIds = targetIds.slice(start, start + BULK_UPDATE_BATCH_SIZE);
+        const batchIndex = Math.floor(start / BULK_UPDATE_BATCH_SIZE) + 1;
+        setBulkUpdateProgress((prev) => ({
+          ...prev,
+          status: 'running',
+          currentBatch: batchIndex,
+          totalBatches,
+          message: locale === 'zh'
+            ? `正在处理第 ${batchIndex}/${totalBatches} 批（${batchIds.length} 个产品）`
+            : `Processing batch ${batchIndex}/${totalBatches} (${batchIds.length} products)`,
+        }));
+
+        await ProductService.bulkUpdateProducts({ ids: batchIds, ...(basePayload as any) });
+
+        const processed = Math.min(start + batchIds.length, total);
+        setBulkUpdateProgress({
+          status: 'running',
+          processed,
+          total,
+          updated: processed,
+          skipped: 0,
+          failed: 0,
+          currentBatch: batchIndex,
+          totalBatches,
+          message: locale === 'zh' ? `已完成 ${processed}/${total} 个产品` : `${processed}/${total} products completed`,
+        });
+      }
+
+      setBulkUpdateProgress((prev) => ({
+        ...prev,
+        status: 'completed',
+        processed: total,
+        total,
+        updated: total,
+        currentBatch: totalBatches,
+        totalBatches,
+        message: locale === 'zh' ? '批量填充已完成' : 'Batch fill completed',
+      }));
+      setSelectedIds([]);
+      setSelectAllResults(false);
+      setShowCommerceFill(false);
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+      toast.success(
+        commerceFillOnlyIfEmpty
+          ? (locale === 'zh' ? `已为 ${total} 个产品的空白字段填充商务参数` : `Filled blank commercial fields on ${total} products`)
+          : (locale === 'zh' ? `已更新 ${total} 个产品的商务参数` : `Updated commercial fields on ${total} products`)
+      );
+    } catch (error: unknown) {
+      setBulkUpdateProgress((prev) => ({
+        ...prev,
+        status: 'failed',
+        message: getErrorMessage(error, t('products.toast.bulkFailed', locale === 'zh' ? '批量更新失败' : 'Bulk update failed')),
+      }));
+      toast.error(getErrorMessage(error, t('products.toast.bulkFailed', locale === 'zh' ? '批量更新失败' : 'Bulk update failed')));
+    }
+  };
+
   const bulkSetFeatured = (value: boolean) => {
     void runBulkFlagUpdate('is_featured', value);
+  };
+
+  /**
+   * Research product parameters from the model number (型号) of the selected
+   * products. The backend searches public manufacturer/distributor pages and
+   * stores the result as a *draft*; every value keeps its citation and needs an
+   * explicit approval in Admin → Spec Research before it reaches a live page.
+   */
+  const runSpecResearch = async () => {
+    if (!selectAllResults && selectedIds.length === 0) {
+      toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
+      return;
+    }
+    setSpecResearchRunning(true);
+    try {
+      let targetIds = [...selectedIds];
+      if (selectAllResults) {
+        const snapshot = await ProductService.getAdminProductSelectionIds(buildSelectAllPayload());
+        targetIds = snapshot.ids;
+      }
+      const requested = targetIds.slice(0, SPEC_RESEARCH_BATCH_LIMIT);
+      if (requested.length === 0) {
+        toast.error(t('products.bulk.noProducts', locale === 'zh' ? '没有可处理的产品' : 'No products to process'));
+        return;
+      }
+      const result = await ProductSpecService.researchBatch({
+        ids: requested,
+        limit: SPEC_RESEARCH_BATCH_LIMIT,
+        only_missing: true,
+      });
+      const created = result.results.filter((row) => row.status === 'pending_review').length;
+      const withParameters = result.results.filter((row) => row.candidates > 0).length;
+      toast.success(
+        locale === 'zh'
+          ? `已创建 ${created} 条待审核草稿（其中 ${withParameters} 条找到可核实参数）`
+          : `${created} draft(s) created for review (${withParameters} with verifiable parameters)`
+      );
+      queryClient.invalidateQueries({ queryKey: ['spec-drafts'] });
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '型号参数检索失败' : 'Specification research failed'));
+    } finally {
+      setSpecResearchRunning(false);
+    }
   };
 
   const runBulkFlagUpdate = async (field: 'is_active' | 'is_featured', value: boolean) => {
@@ -1314,6 +1554,36 @@ function AdminProductsContent() {
           </div>
         </div>
 
+        {/* Field coverage: which model-derivable fields are still empty. This is
+            the live check that "optimize by model number" has nothing left to do. */}
+        {coverageRows.length > 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div className="text-sm font-medium text-gray-900">
+                {locale === 'zh'
+                  ? `型号自动优化可补齐字段（共 ${optimizationStatus?.field_coverage_total ?? 0} 个在售产品）`
+                  : `Fields the model-number optimization can still fill (${optimizationStatus?.field_coverage_total ?? 0} active products)`}
+              </div>
+              <div className="text-xs text-gray-500">
+                {locale === 'zh'
+                  ? '数字为缺失该字段的产品数；自动优化只填空缺，不覆盖已发布内容'
+                  : 'Numbers are products missing that field; optimization only fills blanks and never rewrites published copy'}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {coverageRows.map((row) => (
+                <span
+                  key={row.key}
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-900"
+                >
+                  {locale === 'zh' ? row.zh : row.en}
+                  <span className="font-semibold">{row.count}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Bulk actions and Page Size Selector */}
         <div className="bg-white shadow rounded-lg border border-gray-200">
           {/* Top Row - Page Size and Bulk Actions Header */}
@@ -1443,6 +1713,33 @@ function AdminProductsContent() {
 				{t('products.bulk.unmarkFeatured', locale === 'zh' ? '取消推荐' : 'Unmark Featured')}
               </button>
 
+              <button
+                type="button"
+                onClick={() => setShowCommerceFill((prev) => !prev)}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={(bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running') || (!selectAllResults && selectedIds.length === 0)}
+                title={locale === 'zh'
+                  ? '按后台可配置的运费/保修承诺（如 4-5 DAYS）批量填充商务参数，默认只填空白字段。'
+                  : 'Bulk fill shipping/warranty parameters from the admin-editable commerce policy. Blank fields only by default.'}
+              >
+                {locale === 'zh' ? '填充商务参数' : 'Fill Commerce Fields'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void runSpecResearch()}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-700 hover:bg-indigo-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={specResearchRunning || (!selectAllResults && selectedIds.length === 0)}
+                title={locale === 'zh'
+                  ? '根据型号检索公开的厂家/代理页面，生成待审核的技术参数草稿（不会自动发布）。'
+                  : 'Search public manufacturer/distributor pages for each model number and queue the parameters for review (never auto-published).'}
+              >
+                <SparklesIcon className="mr-2 h-4 w-4" />
+                {specResearchRunning
+                  ? (locale === 'zh' ? '检索中…' : 'Researching…')
+                  : (locale === 'zh' ? `检索型号参数` : 'Research Specs')}
+              </button>
+
               {isAdmin && <button
                 type="button"
                 onClick={openCategoryOptimizationModal}
@@ -1541,6 +1838,91 @@ function AdminProductsContent() {
                 </div>
               )}
             </div>
+            {showCommerceFill && (
+              <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold text-teal-900">
+                      {locale === 'zh' ? '批量填充商务参数' : 'Bulk fill commerce fields'}
+                    </div>
+                    <div className="mt-1 text-xs text-teal-800">
+                      {locale === 'zh'
+                        ? `承运时间/交期来自后台 Commerce Policy（当前：${resolveLeadTime(undefined, effectiveCommercePolicy)}），不在代码里写死。`
+                        : `Lead time comes from the admin Commerce Policy (currently: ${resolveLeadTime(undefined, effectiveCommercePolicy)}), not from hard-coded copy.`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCommerceFill(false)}
+                    className="text-sm font-medium text-teal-800 hover:text-teal-900"
+                  >
+                    {locale === 'zh' ? '收起' : 'Close'}
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {([
+                    ['lead_time', locale === 'zh' ? '交期' : 'Lead time', resolveLeadTime(undefined, effectiveCommercePolicy)],
+                    ['warranty_period', locale === 'zh' ? '保修期' : 'Warranty', resolveWarrantyPeriod(undefined, effectiveCommercePolicy)],
+                    ['origin_country', locale === 'zh' ? '原产国' : 'Country of origin', ''],
+                    ['packaging_info', locale === 'zh' ? '包装' : 'Packaging', 'Original factory packaging'],
+                    ['certifications', locale === 'zh' ? '认证' : 'Certifications', 'CE'],
+                    ['dimensions', locale === 'zh' ? '尺寸' : 'Dimensions', ''],
+                    ['minimum_order_quantity', locale === 'zh' ? '最小起订量' : 'Min order qty', '1'],
+                  ] as Array<[keyof typeof commerceFill, string, string]>).map(([key, label, placeholder]) => (
+                    <label key={key} className="block">
+                      <span className="block text-xs font-medium text-teal-900">{label}</span>
+                      <input
+                        value={commerceFill[key]}
+                        onChange={(e) => setCommerceFill((prev) => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={placeholder}
+                        className="mt-1 w-full rounded-md border border-teal-300 px-3 py-1.5 text-sm text-gray-900 focus:border-teal-500 focus:outline-none"
+                      />
+                    </label>
+                  ))}
+                  <label className="block">
+                    <span className="block text-xs font-medium text-teal-900">{locale === 'zh' ? '成色' : 'Condition'}</span>
+                    <select
+                      value={commerceFill.condition_type}
+                      onChange={(e) => setCommerceFill((prev) => ({ ...prev, condition_type: e.target.value }))}
+                      className="mt-1 w-full rounded-md border border-teal-300 px-3 py-1.5 text-sm text-gray-900 focus:border-teal-500 focus:outline-none"
+                    >
+                      <option value="">{locale === 'zh' ? '不修改' : 'Leave unchanged'}</option>
+                      <option value="new">{locale === 'zh' ? '全新 new' : 'New'}</option>
+                      <option value="refurbished">{locale === 'zh' ? '翻新 refurbished' : 'Refurbished'}</option>
+                      <option value="used">{locale === 'zh' ? '二手 used' : 'Used'}</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-4">
+                  <label className="inline-flex items-center gap-2 text-sm text-teal-900">
+                    <input
+                      type="checkbox"
+                      checked={commerceFillOnlyIfEmpty}
+                      onChange={(e) => setCommerceFillOnlyIfEmpty(e.target.checked)}
+                      className="h-4 w-4 rounded border-teal-400"
+                    />
+                    {locale === 'zh'
+                      ? '只填空白字段（推荐，不动已收录内容）'
+                      : 'Only fill blank fields (recommended — never overwrites indexed copy)'}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void runCommerceFill()}
+                    disabled={bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running'}
+                    className="inline-flex items-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {bulkUpdateProgress.status === 'running'
+                      ? (locale === 'zh' ? '处理中…' : 'Applying…')
+                      : (locale === 'zh' ? '应用到所选产品' : 'Apply to selection')}
+                  </button>
+                  <Link href="/admin/commerce-policy" className="text-sm font-medium text-teal-800 underline hover:text-teal-900">
+                    {locale === 'zh' ? '编辑运费/保修承诺' : 'Edit shipping & warranty policy'}
+                  </Link>
+                </div>
+              </div>
+            )}
             {selectAllResults && (
               <p className="mt-3 text-sm text-amber-700">
                 {locale === 'zh'

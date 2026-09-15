@@ -82,7 +82,7 @@ export function baseTwoColumnTemplate(opts: {
             <tr>
               <td class="pad" style="padding:22px 24px;background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#111827;">
                 <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;">Vibocnc Spare Parts</div>
-                <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;opacity:0.9;margin-top:4px;">FANUC CNC Parts • Repair • Exchange</div>
+                <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;opacity:0.9;margin-top:4px;">Industrial Automation Parts • Repair • Exchange</div>
               </td>
             </tr>
 
@@ -179,7 +179,7 @@ export function defaultModule(type: EmailModuleType): Omit<EmailModule, 'id'> {
         type,
         title: 'New Arrivals (Ready to Ship)',
         badge: 'NEW',
-        body: 'We just added fresh FANUC stock. If you need quick delivery, reply with part numbers and quantities.',
+        body: 'We just added fresh automation stock. If you need quick delivery, reply with part numbers and quantities.',
         bullets: ['Servo drives / amplifiers', 'PCB boards', 'I/O modules', 'Motors & encoders'],
         ctaLabel: 'View new stock',
         ctaUrl: `${DEFAULT_SITE_URL}/products`,
@@ -208,10 +208,10 @@ export function defaultModule(type: EmailModuleType): Omit<EmailModule, 'id'> {
     case 'repair_quote':
       return {
         type,
-        title: 'Repair Quote (FANUC)',
+        title: 'Repair Quote',
         badge: 'REPAIR',
-        body: 'We provide repair service for FANUC drives/PCBs. Send photos of the label and fault description to get a quote.',
-        bullets: ['Diagnostics + repair', 'Turnaround 3-7 working days', 'Warranty after repair'],
+        body: 'We provide repair service for drives, PCBs and control boards across major automation brands. Send photos of the label and fault description to get a quote.',
+        bullets: ['Diagnostics + repair', 'Repair lead time confirmed per case', 'Repair warranty terms stated in the quote'],
         highlight: 'TIP: Add target model and symptoms here.',
         ctaLabel: 'Request repair quote',
         ctaUrl: `${DEFAULT_SITE_URL}/contact`,

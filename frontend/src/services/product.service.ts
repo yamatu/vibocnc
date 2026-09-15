@@ -70,6 +70,9 @@ export interface ProductOptimizationStatus {
   optimized_products: number;
   needs_optimization: number;
   average_seo_score: number;
+  /** Products missing each model-derivable field, keyed by field name. */
+  field_coverage?: Record<string, number>;
+  field_coverage_total?: number;
 }
 
 export interface ProductOptimizationResponse {
@@ -661,12 +664,27 @@ export class ProductService {
     throw new Error(response.data.message || 'Failed to toggle featured status');
   }
 
-  // Admin: Bulk update is_active / is_featured by IDs or SKUs
+  // Admin: Bulk update is_active / is_featured and commercial-promise columns
+  // by IDs, SKUs or a select-all filter snapshot.
   static async bulkUpdateProducts(payload: {
     ids?: number[];
     skus?: string[];
     is_active?: boolean;
     is_featured?: boolean;
+    // optional commerce fields (omit to leave the column untouched)
+    warranty_period?: string;
+    lead_time?: string;
+    condition_type?: 'new' | 'refurbished' | 'used' | string;
+    origin_country?: string;
+    manufacturer?: string;
+    packaging_info?: string;
+    certifications?: string;
+    dimensions?: string;
+    minimum_order_quantity?: number;
+    // apply the admin-editable commerce policy defaults (lead time / warranty)
+    fill_from_commerce_policy?: boolean;
+    // only fill blank columns, so published copy is never overwritten
+    only_if_empty?: boolean;
     // optional filters for select-all
     search?: string;
     category_id?: string;

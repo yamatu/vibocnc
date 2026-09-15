@@ -223,6 +223,10 @@ func applyProductUpdateData(product *models.Product, updateData map[string]any) 
 			if v, ok := value.(string); ok {
 				product.MaintenanceTips = v
 			}
+		case "technical_specs":
+			if v, ok := value.(string); ok {
+				product.TechnicalSpecs = v
+			}
 		case "warranty_period":
 			if v, ok := value.(string); ok {
 				product.WarrantyPeriod = v

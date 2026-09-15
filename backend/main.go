@@ -117,7 +117,7 @@ func main() {
 	address := host + ":" + port
 
 	// Start server
-	log.Printf("Starting FANUC Backend API server on %s", address)
+	log.Printf("Starting Vibocnc Backend API server on %s", address)
 	log.Printf("Backend will be accessible at: http://%s", address)
 
 	srv := &http.Server{

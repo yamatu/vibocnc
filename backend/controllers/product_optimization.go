@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"fanuc-backend/services"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // ProductOptimizationController handles product content optimization
@@ -236,7 +238,6 @@ func (poc *ProductOptimizationController) GetOptimizationStatus(c *gin.Context) 
 		NeedsOptimization int64   `json:"needs_optimization"`
 		AverageSEOScore   float64 `json:"average_seo_score"`
 	}
-
 	// Total products
 	db.Model(&models.Product{}).Where("is_active = ?", true).Count(&stats.TotalProducts)
 
@@ -255,17 +256,135 @@ func (poc *ProductOptimizationController) GetOptimizationStatus(c *gin.Context) 
 		Select("AVG(seo_score) as avg_score").Scan(&avgResult)
 	stats.AverageSEOScore = avgResult.AvgScore
 
+	// Which model-derivable fields are still missing, per field. This is the
+	// operator-facing "did the model-number pass fill everything?" check.
+	coverage := computeFieldCoverage(db)
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Optimization status retrieved",
-		Data:    stats,
+		Data: map[string]any{
+			"total_products":       stats.TotalProducts,
+			"optimized_products":   stats.OptimizedProducts,
+			"needs_optimization":   stats.NeedsOptimization,
+			"average_seo_score":    stats.AverageSEOScore,
+			"field_coverage":       coverage,
+			"field_coverage_total": stats.TotalProducts,
+		},
 	})
+}
+
+// modelDerivedField is one column that the model-driven optimization pass can
+// fill without inventing anything, together with its display order.
+type modelDerivedField struct {
+	Key    string
+	Column string
+	// JSON columns store an empty table as "{}" instead of "".
+	JSON bool
+}
+
+// modelDerivedFields mirrors enhanceProductContent + applyKnownTechnicalSpecs.
+// Keep both lists in sync: the coverage report is what tells the operator that
+// "optimize by model number" has nothing left to fill.
+var modelDerivedFields = []modelDerivedField{
+	{Key: "name", Column: "name"},
+	{Key: "short_description", Column: "short_description"},
+	{Key: "description", Column: "description"},
+	{Key: "meta_title", Column: "meta_title"},
+	{Key: "meta_description", Column: "meta_description"},
+	{Key: "meta_keywords", Column: "meta_keywords"},
+	{Key: "compatibility_info", Column: "compatibility_info"},
+	{Key: "installation_guide", Column: "installation_guide"},
+	{Key: "maintenance_tips", Column: "maintenance_tips"},
+	{Key: "technical_specs", Column: "technical_specs", JSON: true},
+	{Key: "warranty_period", Column: "warranty_period"},
+	{Key: "lead_time", Column: "lead_time"},
+	{Key: "manufacturer", Column: "manufacturer"},
+	{Key: "origin_country", Column: "origin_country"},
+}
+
+// fieldCoverageSelections renders the aggregate expressions used by the field
+// coverage report. One SUM per field keeps the report to a single query on both
+// MySQL and Postgres; the empty marker differs for JSON columns, which store an
+// empty table as "{}".
+func fieldCoverageSelections() []string {
+	selections := make([]string, 0, len(modelDerivedFields))
+	for _, field := range modelDerivedFields {
+		empty := "''"
+		if field.JSON {
+			empty = "'{}'"
+		}
+		selections = append(selections, fmt.Sprintf(
+			"SUM(CASE WHEN %s IS NULL OR %s = %s THEN 1 ELSE 0 END) AS %s",
+			field.Column, field.Column, empty, field.Key,
+		))
+	}
+	return selections
+}
+
+// computeFieldCoverage counts active products that still miss each
+// model-derivable field. It runs a single aggregate query and degrades to an
+// empty map instead of failing the whole status endpoint.
+func computeFieldCoverage(db *gorm.DB) map[string]int64 {
+	coverage := make(map[string]int64, len(modelDerivedFields))
+	if db == nil {
+		return coverage
+	}
+
+	selections := fieldCoverageSelections()
+
+	row := map[string]any{}
+	err := db.Model(&models.Product{}).
+		Where("is_active = ?", true).
+		Select(strings.Join(selections, ", ")).
+		Scan(&row).Error
+	if err != nil {
+		return coverage
+	}
+
+	for _, field := range modelDerivedFields {
+		if count, ok := numericCell(row[field.Key]); ok {
+			coverage[field.Key] = count
+		}
+	}
+	return coverage
+}
+
+// numericCell normalises the driver-specific aggregate result (MySQL returns
+// []byte, Postgres returns int64, some drivers return float64).
+func numericCell(value any) (int64, bool) {
+	switch v := value.(type) {
+	case nil:
+		return 0, true
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	case float64:
+		return int64(v), true
+	case []byte:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(string(v)), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
 }
 
 // calculateSEOScore calculates SEO score based on various factors
 func (poc *ProductOptimizationController) calculateSEOScore(product *models.Product) float64 {
 	score := 0.0
-	maxScore := 10.0
+	// 10.5 = the weighted maximum of every block below; keep in sync when a block
+	// is added so the reported score stays on the 0-5 scale.
+	maxScore := 10.5
 
 	// Name (1 point)
 	if len(product.Name) > 10 && len(product.Name) < 100 {
@@ -315,6 +434,11 @@ func (poc *ProductOptimizationController) calculateSEOScore(product *models.Prod
 		score += 1.0
 	}
 
+	// Compliance and logistics fields (0.5 points)
+	if product.ConditionType != "" || product.OriginCountry != "" || product.LeadTime != "" {
+		score += 0.5
+	}
+
 	// Warranty and certifications (0.5 points)
 	if product.WarrantyPeriod != "" || product.Certifications != "" {
 		score += 0.5
@@ -334,11 +458,11 @@ func shouldRefreshBrandSpecificContent(current string, brand string, minLen int)
 		return true
 	}
 
-	if services.CanonicalBrandName(brand) == "FANUC" {
-		return false
-	}
-
-	return strings.Contains(strings.ToUpper(current), "FANUC")
+	// Refresh whenever the stored copy names a brand other than the product's
+	// own. This used to be a FANUC-only check, which left a Siemens meta title
+	// saying "FANUC" in place forever; the generated skeleton never names a
+	// foreign brand, so any mention means the text predates the current rules.
+	return len(services.ForeignBrandMentions(current, brand)) > 0
 }
 
 func (poc *ProductOptimizationController) applyDefaultContentForDisabledAutoSEO(product *models.Product, updateData map[string]interface{}) bool {
@@ -382,7 +506,41 @@ func (poc *ProductOptimizationController) applyDefaultContentForDisabledAutoSEO(
 		contentUpdated = true
 	}
 
+	// Publish the specification table built from fields the catalogue already
+	// owns (brand, part number, weight, dimensions, condition, packaging,
+	// certifications). Nothing is invented and an existing table is never
+	// overwritten, so indexed pages keep their content.
+	if poc.applyKnownTechnicalSpecs(product, updateData) {
+		contentUpdated = true
+	}
+
 	return contentUpdated
+}
+
+// applyKnownTechnicalSpecs writes the JSON specification table into the pending
+// update when the product has none yet. Every value comes from a column the
+// catalogue already owns, or from an approved research draft, which is why the
+// generator can safely double as the "fill the specs from the model number"
+// step without inventing parameters.
+func (poc *ProductOptimizationController) applyKnownTechnicalSpecs(product *models.Product, updateData map[string]interface{}) bool {
+	if product == nil || updateData == nil {
+		return false
+	}
+	if current := strings.TrimSpace(product.TechnicalSpecs); current != "" && current != "{}" {
+		// A published table stays untouched; approving a research draft is the
+		// only path that replaces it.
+		return false
+	}
+	specs := services.KnownTechnicalSpecs(product, services.CurrentCommercePolicy())
+	if len(specs) == 0 {
+		return false
+	}
+	encoded := strings.TrimSpace(services.TechnicalSpecsJSON(specs))
+	if encoded == "" || encoded == "{}" {
+		return false
+	}
+	updateData["technical_specs"] = encoded
+	return true
 }
 
 // enhanceProductContent enhances product content with category-aware SEO optimization
@@ -416,9 +574,19 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	// Category-aware keyword phrases for meta content
 	categoryKeyword := poc.getCategoryKeyword(categoryName)
 	categoryBenefit := poc.getCategoryBenefit(categoryName)
-	enriched, _ := services.EnrichProductByBrand(brand, model)
+	enriched := services.EnrichProductForRecord(product)
 	if categoryKeyword == "CNC Spare Part" && strings.TrimSpace(enriched.PartType) != "" {
 		categoryKeyword = enriched.PartType
+	}
+
+	// A record captured from a model number alone still has no title. Generate
+	// one from the brand + model + inferred component type, and only when empty
+	// so an existing (indexed) title is never rewritten.
+	if strings.TrimSpace(product.Name) == "" {
+		if name := strings.TrimSpace(enriched.Name); name != "" {
+			updateData["name"] = name
+			contentUpdated = true
+		}
 	}
 
 	// Enhance meta title if missing or too short (target: 50-60 chars)
@@ -443,11 +611,18 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 		if product.StockQuantity <= 0 {
 			stockPhrase = "Available to order."
 		}
+		// The commercial promise in the meta description is admin-editable.
+		policy := services.CurrentCommercePolicy()
+		shipScope := "worldwide"
+		if !services.CommercePolicyShipsWorldwide(policy) {
+			shipScope = "to " + strings.Join(services.CommercePolicyCountryList(policy), ", ")
+		}
 		metaDesc := services.BuildSafeMetaDescription(
 			strings.TrimSpace(enriched.MetaDescription),
 			fmt.Sprintf(
-				"%s %s %s for %s. %s Compatibility support, 12-month warranty, and fast worldwide shipping.",
+				"%s %s %s for %s. %s Compatibility support, %s warranty, and fast shipping %s.",
 				brandDisplay, product.SKU, categoryKeyword, categoryBenefit, stockPhrase,
+				services.CommercePolicyWarrantyText(policy), shipScope,
 			),
 			fmt.Sprintf("%s %s %s for CNC repair and replacement. %s", brandDisplay, product.SKU, categoryKeyword, stockPhrase),
 		)
@@ -486,8 +661,9 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 				stockText = "Available for order with fast handling."
 			}
 			shortDesc = fmt.Sprintf(
-				"%s %s %s for %s. %s Quality tested with 12-month warranty.",
+				"%s %s %s for %s. %s Quality tested with %s warranty.",
 				brandDisplay, product.SKU, categoryKeyword, categoryBenefit, stockText,
+				services.CommercePolicyWarrantyText(services.CurrentCommercePolicy()),
 			)
 		}
 		if len(shortDesc) > 200 {
@@ -517,9 +693,17 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 		contentUpdated = true
 	}
 
+	// Publish the specification table the model number + catalogue columns can
+	// already support (see applyKnownTechnicalSpecs): brand, model/part number,
+	// SKU, component type, condition, weight, dimensions, origin, MOQ, warranty,
+	// lead time, packaging and certifications.
+	if poc.applyKnownTechnicalSpecs(product, updateData) {
+		contentUpdated = true
+	}
+
 	// Set default values for new fields if empty
 	if product.WarrantyPeriod == "" {
-		updateData["warranty_period"] = "12 months"
+		updateData["warranty_period"] = services.CurrentCommercePolicy().DefaultWarrantyPeriod
 		contentUpdated = true
 	}
 
@@ -536,7 +720,7 @@ func (poc *ProductOptimizationController) enhanceProductContent(product *models.
 	}
 
 	if product.LeadTime == "" {
-		updateData["lead_time"] = "3-7 days"
+		updateData["lead_time"] = services.CurrentCommercePolicy().DefaultLeadTime
 		contentUpdated = true
 	}
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,9 +15,16 @@ import SeoPreview from '@/components/admin/SeoPreview';
 import CategoryCombobox from '@/components/admin/CategoryCombobox';
 import ShippingQuoteCalculator from '@/components/admin/ShippingQuoteCalculator';
 import TranslationEditor from '@/components/admin/TranslationEditor';
-import { ProductService, CategoryService } from '@/services';
-import { ProductCreateRequest, type Category } from '@/types';
+import { ProductService, CategoryService, CommercePolicyService } from '@/services';
+import { ProductCreateRequest, type Category, type CommercePolicySetting } from '@/types';
 import { getErrorMessage } from '@/lib/errors';
+import { stripBrandPrefixFromModel } from '@/lib/utils';
+import {
+  FALLBACK_COMMERCE_POLICY,
+  commercePolicyDestinationCountries,
+  resolveLeadTime,
+  resolveWarrantyPeriod,
+} from '@/lib/commerce-policy';
 import { queryKeys } from '@/lib/react-query';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
@@ -53,9 +60,7 @@ function normalizeModel(value?: string): string {
   let text = normalizeWhitespace(value);
   if (!text) return '';
   text = text.replace(/[\\/]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toUpperCase();
-  if (text.startsWith('FANUC-')) text = text.slice(6);
-  if (text.startsWith('FANUC ')) text = text.slice(6).trim();
-  return text;
+  return stripBrandPrefixFromModel(text);
 }
 
 function toBooleanFlag(value: unknown): boolean {
@@ -68,6 +73,7 @@ function buildDefaultSeoValues(input: {
   brand?: string;
   partNumber?: string;
   categoryName?: string;
+  policy?: CommercePolicySetting;
 }) {
   const brand = normalizeWhitespace(input.brand);
   const sku = normalizeModel(input.sku);
@@ -77,8 +83,12 @@ function buildDefaultSeoValues(input: {
   const titleBase = [brand, model, categoryName].filter(Boolean).join(' ') || normalizeWhitespace(input.name) || 'Product';
   const metaTitle = trimMetaTitle(`${titleBase} | Vibocnc`);
   const subject = [brand, model].filter(Boolean).join(' ') || model || normalizeWhitespace(input.name) || 'This product';
+  // Warranty and destination come from Admin -> Commerce Policy, never a literal.
+  const warranty = resolveWarrantyPeriod(undefined, input.policy);
+  const destinations = commercePolicyDestinationCountries(input.policy);
+  const shipScope = destinations.length === 0 ? 'worldwide' : `to ${destinations.join(', ')}`;
   const metaDescription = trimMetaDescription(
-    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, 12-month warranty, and fast worldwide shipping from Vibocnc.`
+    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, ${warranty} warranty, and fast shipping ${shipScope} from Vibocnc.`
   );
   const metaKeywords = [
     normalizeWhitespace(input.sku),
@@ -108,6 +118,7 @@ export default function NewProductPage() {
     handleSubmit,
     watch,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<ProductFormData>({
     defaultValues: {
@@ -115,12 +126,36 @@ export default function NewProductPage() {
       is_featured: false,
       stock_quantity: 0,
       brand: '',
-      warranty_period: '12 months',
-      lead_time: '3-7 days',
+      // Commercial promises come from Admin → Commerce Policy, never from a
+      // literal in this form (see lib/commerce-policy.ts).
+      warranty_period: FALLBACK_COMMERCE_POLICY.default_warranty_period,
+      lead_time: FALLBACK_COMMERCE_POLICY.default_lead_time,
       disable_auto_seo: false,
       translations: [],
     }
   });
+
+  // Admin-editable shipping/warranty promise; used to prefill empty fields.
+  const { data: commercePolicy } = useQuery<CommercePolicySetting>({
+    queryKey: ['commerce-policy', 'settings'],
+    queryFn: () => CommercePolicyService.getSettings(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const effectiveCommercePolicy = commercePolicy
+    ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy }
+    : FALLBACK_COMMERCE_POLICY;
+
+  // Fill the promise fields from the policy, but never overwrite what the
+  // operator already typed.
+  useEffect(() => {
+    if (!commercePolicy) return;
+    if (!String(getValues('lead_time') || '').trim()) {
+      setValue('lead_time', resolveLeadTime(undefined, effectiveCommercePolicy));
+    }
+    if (!String(getValues('warranty_period') || '').trim()) {
+      setValue('warranty_period', resolveWarrantyPeriod(undefined, effectiveCommercePolicy));
+    }
+  }, [commercePolicy]);
 
 	const watchedWeight = Number(watch('weight') || 0);
 	const watchedPrice = Number(watch('price') || 0);
@@ -168,8 +203,8 @@ export default function NewProductPage() {
 		brand: (data.brand || '').trim(),
 		model: (data.model || data.sku).trim(),
 		part_number: (data.part_number || data.sku).trim(),
-		warranty_period: (data.warranty_period || '12 months').trim(),
-		lead_time: (data.lead_time || '3-7 days').trim(),
+		warranty_period: resolveWarrantyPeriod(data.warranty_period, effectiveCommercePolicy).trim(),
+		lead_time: resolveLeadTime(data.lead_time, effectiveCommercePolicy).trim(),
         category_id: catId,
         is_active: data.is_active,
         is_featured: data.is_featured,
@@ -202,6 +237,7 @@ export default function NewProductPage() {
       brand: watch('brand'),
       partNumber: watch('part_number'),
       categoryName,
+      policy: effectiveCommercePolicy,
     });
 
     setValue('meta_title', defaults.metaTitle, { shouldDirty: true });
@@ -381,7 +417,7 @@ export default function NewProductPage() {
 						{...register('warranty_period')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder={locale === 'zh' ? '例如：12 months' : 'e.g., 12 months'}
+						placeholder={locale === 'zh' ? `例如：${FALLBACK_COMMERCE_POLICY.default_warranty_period}` : `e.g., ${resolveWarrantyPeriod(undefined, effectiveCommercePolicy)}`}
 					/>
 				  </div>
 
@@ -393,7 +429,7 @@ export default function NewProductPage() {
 						{...register('lead_time')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder={locale === 'zh' ? '例如：3-7 days' : 'e.g., 3-7 days'}
+						placeholder={locale === 'zh' ? `例如：${FALLBACK_COMMERCE_POLICY.default_lead_time}` : `e.g., ${resolveLeadTime(undefined, effectiveCommercePolicy)}`}
 					/>
 				  </div>
 
@@ -449,8 +485,8 @@ export default function NewProductPage() {
                 <input type="hidden" {...register('disable_auto_seo')} />
                 <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   {watch('disable_auto_seo')
-                    ? (locale === 'zh' ? '新产品已关闭自动品牌 SEO 覆盖，创建后不会再自动写入 FANUC 风格的 SEO/兼容性说明。' : 'Automatic brand SEO override is disabled for this new product. Creation will not inject FANUC-style SEO or compatibility content.')
-                    : (locale === 'zh' ? '新产品默认仍允许自动 SEO 覆盖。若这是非 FANUC 产品，建议关闭。' : 'Automatic SEO override is still enabled by default. Disable it for non-FANUC products.')}
+                    ? (locale === 'zh' ? '新产品已关闭自动品牌 SEO 覆盖，创建后不会再自动写入通用 SEO/兼容性说明。' : 'Automatic brand SEO override is disabled for this new product. Creation will not inject generated SEO or compatibility content.')
+                    : (locale === 'zh' ? '新产品默认仍允许自动 SEO 覆盖。若产品已经手动写好 SEO 内容，建议关闭。' : 'Automatic SEO override is still enabled by default. Disable it when the SEO copy is already written by hand.')}
                 </div>
                 <label className="mb-4 flex items-center gap-2 text-sm text-gray-700">
                   <input

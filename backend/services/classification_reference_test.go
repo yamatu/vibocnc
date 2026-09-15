@@ -153,3 +153,47 @@ func newDryRunServiceDB(t *testing.T) *gorm.DB {
 	}
 	return db
 }
+
+// Legacy SKUs sometimes carry the brand name. The lookup helpers must work for
+// every brand, not only FANUC.
+func TestStripKnownBrandPrefixIsBrandAgnostic(t *testing.T) {
+	cases := []struct {
+		in       string
+		want     string
+		stripped bool
+	}{
+		{"FANUC-A06B-6089-H105", "A06B-6089-H105", true},
+		{"FANUC A06B-6089-H105", "A06B-6089-H105", true},
+		{"Mitsubishi-MR-J4-40A", "MR-J4-40A", true},
+		{"SIEMENS_6ES7215-1AG40", "6ES7215-1AG40", true},
+		{"A06B-6089-H105", "", false},
+		{"FANUC-", "", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		got, ok := StripKnownBrandPrefix(tc.in)
+		if ok != tc.stripped {
+			t.Errorf("StripKnownBrandPrefix(%q) stripped=%v, want %v", tc.in, ok, tc.stripped)
+			continue
+		}
+		if ok && got != tc.want {
+			t.Errorf("StripKnownBrandPrefix(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestKnownBrandDisplayNamesCoversMultipleBrands(t *testing.T) {
+	names := KnownBrandDisplayNames()
+	if len(names) < 10 {
+		t.Fatalf("expected the known brand list, got %v", names)
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		seen[name] = true
+	}
+	for _, want := range []string{"FANUC", "Mitsubishi", "Siemens", "Allen-Bradley", "Yaskawa"} {
+		if !seen[want] {
+			t.Errorf("brand %q missing from KnownBrandDisplayNames()", want)
+		}
+	}
+}

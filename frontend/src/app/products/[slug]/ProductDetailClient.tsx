@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -23,7 +23,13 @@ import ProductImageViewer from '@/components/product/ProductImageViewer';
 import ProductSEO from '@/components/seo/ProductSEO';
 import { ProductService, CategoryService, ShippingRateService } from '@/services';
 import type { ShippingRatePublic, ShippingQuote } from '@/services/shipping-rate.service';
-import type { PaginationResponse, Product, ProductFAQ, ProductImage, ProductReview, Category } from '@/types';
+import type { PaginationResponse, Product, ProductFAQ, ProductImage, ProductReview, Category, CommercePolicySetting } from '@/types';
+import {
+  FALLBACK_COMMERCE_POLICY,
+  commercePolicyReturnShippingText,
+  resolveLeadTime,
+  resolveWarrantyPeriod,
+} from '@/lib/commerce-policy';
 import { queryKeys } from '@/lib/react-query';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
@@ -36,6 +42,8 @@ interface ProductDetailClientProps {
   productSku: string;
   initialProduct?: Product;
   contentLocale?: string;
+  /** Admin-editable shipping / warranty / returns promise (server supplied). */
+  commercePolicy?: CommercePolicySetting;
 }
 
 function parseTechnicalSpecs(raw?: string): Record<string, string> | null {
@@ -66,11 +74,14 @@ function normalizeComparisonText(text?: string): string {
 
 function FAQAccordionItem({ question, answer }: { question: string; answer: string }) {
   const [open, setOpen] = useState(false);
+  const answerId = useId();
   return (
     <div>
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls={answerId}
         className="flex w-full items-center justify-between px-6 py-4 text-left text-sm font-semibold text-slate-950 hover:bg-slate-50"
       >
         <span>{question}</span>
@@ -78,17 +89,32 @@ function FAQAccordionItem({ question, answer }: { question: string; answer: stri
           className={`h-5 w-5 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
-      {open && (
-        <div className="px-6 pb-4 text-sm text-slate-700 leading-relaxed">
-          {answer}
-        </div>
-      )}
+      {/*
+        The answer stays in the DOM when collapsed (hidden, not unmounted) so
+        crawlers and AI answer engines can read it. Unmounting on toggle was the
+        reason FAQ text never reached the index while the FAQPage markup claimed
+        it existed.
+      */}
+      <div
+        id={answerId}
+        hidden={!open}
+        className="px-6 pb-4 text-sm text-slate-700 leading-relaxed"
+      >
+        {answer}
+      </div>
     </div>
   );
 }
 
-export default function ProductDetailClient({ productSku, initialProduct, contentLocale }: ProductDetailClientProps) {
+export default function ProductDetailClient({ productSku, initialProduct, contentLocale, commercePolicy }: ProductDetailClientProps) {
   const { locale, t, href: localizedHref } = usePublicI18n();
+  // Every commercial promise shown on the page comes from the admin-editable
+  // commerce policy, so nothing here has to be edited in code.
+  const policy = commercePolicy ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy } : FALLBACK_COMMERCE_POLICY;
+  const shownLeadTime = resolveLeadTime(initialProduct?.lead_time, policy);
+  const shownWarranty = resolveWarrantyPeriod(initialProduct?.warranty_period, policy);
+  const shownReturnWindow = policy.return_window_text;
+  const shownReturnShipping = commercePolicyReturnShippingText(policy);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity] = useState(1);
 
@@ -402,7 +428,7 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
     ? product.description
     : getFallbackDescription();
   const introBrandPrefix = brandName ? `${brandName} ` : '';
-  const introParagraph = `${computedHeading} is a ${introBrandPrefix}${categoryName.toLowerCase()} supplied by Vibocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? 'This item is in stock and ready to ship worldwide.' : `This item is available to order with ${product.lead_time || '3-7 days'} lead time.`}`.replace(/\s+/g, ' ').trim();
+  const introParagraph = `${computedHeading} is a ${introBrandPrefix}${categoryName.toLowerCase()} supplied by Vibocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? `This item is in stock and ready to ship worldwide with ${policy.shipping_transit_time_text} transit time.` : `This item is available to order with ${shownLeadTime} lead time.`}`.replace(/\s+/g, ' ').trim();
   const normalizedIntro = normalizeComparisonText(introParagraph);
   const normalizedDescription = normalizeComparisonText(descriptionToShow);
   const shouldRenderIntroParagraph = normalizedIntro !== '' && !normalizedDescription.includes(normalizedIntro);
@@ -421,7 +447,11 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
             question: `${product.sku} 目前有库存吗？`,
             answer: product.stock_quantity > 0
               ? `${product.sku} 目前有库存，可安排发货。`
-              : `${product.sku} 可订购，预计交货期为 ${product.lead_time || '3–7 天'}。`,
+              : `${product.sku} 可订购，预计交货期为 ${shownLeadTime}。`,
+          },
+          {
+            question: `${product.sku} 的保修和退换政策是什么？`,
+            answer: `我们提供 ${shownWarranty} 保修，支持 ${shownReturnWindow} 内退换（${shownReturnShipping}）。`,
           },
           {
             question: `如何确认 ${product.sku} 是否兼容？`,
@@ -439,7 +469,11 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
             question: `Is ${product.sku} in stock?`,
             answer: product.stock_quantity > 0
               ? `${product.sku} is currently in stock and ready for shipment.`
-              : `${product.sku} is available to order with ${product.lead_time || '3-7 days'} lead time.`,
+              : `${product.sku} is available to order with ${shownLeadTime} lead time.`,
+          },
+          {
+            question: `What warranty and return terms apply to ${product.sku}?`,
+            answer: `${shownWarranty} warranty with ${shownReturnWindow} returns (${shownReturnShipping}).`,
           },
           {
             question: `How can I confirm compatibility for ${product.sku}?`,
@@ -452,8 +486,8 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
     product.part_number && product.part_number !== product.sku ? `Part number: ${product.part_number}` : '',
     categoryName ? `Category: ${categoryName}` : '',
     product.condition_type ? `Condition: ${product.condition_type}` : 'Condition: new',
-    product.warranty_period ? `Warranty: ${product.warranty_period}` : 'Warranty: 12 months',
-    product.lead_time ? `Lead time: ${product.lead_time}` : 'Lead time: 3-7 days',
+    product.warranty_period ? `Warranty: ${product.warranty_period}` : `Warranty: ${shownWarranty}`,
+    product.lead_time ? `Lead time: ${product.lead_time}` : `Lead time: ${shownLeadTime}`,
     product.origin_country ? `Origin: ${product.origin_country}` : '',
   ].filter(Boolean);
   const resourceLinks = [
@@ -465,8 +499,8 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
     `${productSummarySubject} is supplied for CNC maintenance, replacement, and industrial automation support.`,
     product.stock_quantity > 0
       ? 'Current status: in stock and ready for worldwide shipment.'
-      : `Current status: available to order with ${product.lead_time || '3-7 days'} lead time.`,
-    `Standard supply terms: ${product.warranty_period || '12 months'} warranty and technical confirmation on request.`,
+      : `Current status: available to order with ${shownLeadTime} lead time.`,
+    `Standard supply terms: ${shownWarranty} warranty, ${shownReturnWindow} returns (${shownReturnShipping}) and technical confirmation on request.`,
     product.compatibility_info
       ? 'Compatibility information is available for this part. Share your machine model or original part number for final confirmation before ordering.'
       : `Compatibility should be checked against your original part number, controller model, and machine configuration before ordering.`,
@@ -600,11 +634,11 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
                 </div>
                 <div className="text-sm">
                   <div className="text-xs text-slate-500">{t('product.warranty')}</div>
-                  <div className="font-semibold text-slate-900">{product.warranty_period || '12 months'}</div>
+                  <div className="font-semibold text-slate-900">{shownWarranty}</div>
                 </div>
                 <div className="text-sm">
                   <div className="text-xs text-slate-500">{t('product.leadTime')}</div>
-                  <div className="font-semibold text-slate-900">{product.lead_time || '3-7 days'}</div>
+                  <div className="font-semibold text-slate-900">{shownLeadTime}</div>
                 </div>
               </div>
 
@@ -715,7 +749,7 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
                     <>
                       <ClockIcon className="h-4 w-4 text-[#c46a2d] mr-2 flex-shrink-0" />
                       <span className="font-medium text-[#8a421d]">{t('product.availableToOrder')}</span>
-                      <span className="text-slate-500 ml-1">- {product.lead_time || '3-7 days'} lead time</span>
+                      <span className="text-slate-500 ml-1">- {shownLeadTime} lead time</span>
                     </>
                   )}
                 </div>
@@ -729,7 +763,7 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
               <div className="mt-6 grid grid-cols-3 gap-3">
                 <div className="site-subtle-card flex flex-col items-center text-center p-3">
                   <ShieldCheckIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
-                  <span className="text-xs font-medium text-slate-700">{product.warranty_period || '12 Month'} Warranty</span>
+                  <span className="text-xs font-medium text-slate-700">{shownWarranty} Warranty</span>
                 </div>
                 <div className="site-subtle-card flex flex-col items-center text-center p-3">
                   <GlobeAltIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
@@ -826,7 +860,7 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
                   </div>
                   <div>
                     <dt className="text-sm text-slate-500">{t('product.warranty')}</dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950">{product.warranty_period || '12 months'}</dd>
+                    <dd className="mt-1 text-sm font-semibold text-slate-950">{shownWarranty}</dd>
                   </div>
                   {product.origin_country && (
                     <div>

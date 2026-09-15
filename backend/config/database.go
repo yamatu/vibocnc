@@ -179,6 +179,10 @@ func ConnectDatabase() {
 			&models.ShippingAllowedCountry{},
 			// Shipping free shipping settings
 			&models.ShippingFreeSetting{},
+			// Storefront commercial promise (shipping / warranty / returns)
+			&models.CommercePolicySetting{},
+			// Model-number spec research review queue (never published directly)
+			&models.ProductSpecDraft{},
 			// Legacy flat shipping rate table (kept for compatibility; not used by new flow)
 			&models.ShippingRate{},
 			&models.WatermarkSetting{},
@@ -236,6 +240,9 @@ func ConnectDatabase() {
 	// Create default company profile
 	createDefaultCompanyProfile()
 
+	// Create the storefront commercial promise (shipping / warranty / returns)
+	createDefaultCommercePolicy()
+
 	// Clean legacy brand/domain text left by older imports or previous SEO generation.
 	sanitizeLegacyBrandReferences()
 
@@ -281,7 +288,8 @@ func migrateLegacyAIAgentProfile() {
 			setting = models.AIAgentSetting{
 				ID: 1, BaseURL: "https://api.openai.com/v1", Model: "gpt-5.6-terra", APIMode: "standard_chat",
 				ReasoningEffort: "medium", TimeoutSeconds: 75, SEOJobConcurrency: 2, SEOCandidateLimit: 30000,
-				DefaultWarrantyPeriod: "12 months", DefaultLeadTime: "3-7 days",
+				DefaultWarrantyPeriod: models.DefaultCommercePolicy().DefaultWarrantyPeriod,
+				DefaultLeadTime:       models.DefaultCommercePolicy().DefaultLeadTime,
 			}
 			if err := tx.Create(&setting).Error; err != nil {
 				return err
@@ -1030,6 +1038,22 @@ func createDefaultCategories() {
 	}
 
 	log.Println("Default categories created successfully")
+}
+
+func createDefaultCommercePolicy() {
+	var count int64
+	DB.Model(&models.CommercePolicySetting{}).Count(&count)
+	if count > 0 {
+		log.Println("Commerce policy already exists, skipping creation")
+		return
+	}
+
+	defaults := models.DefaultCommercePolicy()
+	if err := DB.Create(&defaults).Error; err != nil {
+		log.Printf("Failed to create default commerce policy: %v", err)
+		return
+	}
+	log.Println("Default commerce policy created")
 }
 
 func createDefaultCompanyProfile() {

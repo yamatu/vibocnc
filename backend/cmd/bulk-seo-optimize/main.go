@@ -246,7 +246,7 @@ func (bo bulkOptimizer) buildSEOUpdates(p models.Product, brand string, model st
 	setIfNeeded("maintenance_tips", p.MaintenanceTips, enriched.MaintenanceTips, 80)
 
 	if bo.forceUpdate || strings.TrimSpace(p.WarrantyPeriod) == "" {
-		updates["warranty_period"] = "12 months"
+		updates["warranty_period"] = services.CurrentCommercePolicy().DefaultWarrantyPeriod
 	}
 	if bo.forceUpdate || strings.TrimSpace(p.Manufacturer) == "" {
 		if canonicalManufacturer := services.CanonicalBrandName(brand); canonicalManufacturer != "" {
@@ -257,7 +257,7 @@ func (bo bulkOptimizer) buildSEOUpdates(p models.Product, brand string, model st
 		updates["origin_country"] = "China"
 	}
 	if bo.forceUpdate || strings.TrimSpace(p.LeadTime) == "" {
-		updates["lead_time"] = "3-7 days"
+		updates["lead_time"] = services.CurrentCommercePolicy().DefaultLeadTime
 	}
 
 	if partType != "" && strings.TrimSpace(p.Name) == "" && strings.TrimSpace(enriched.Name) == "" {
@@ -327,11 +327,17 @@ func localUpsertGeneratedProductFAQs(db *gorm.DB, product *models.Product, partT
 		heading = strings.TrimSpace(strings.Join([]string{product.Brand, product.SKU, partType}, " "))
 	}
 
+	// Shipping scope / lead time are admin-editable (Admin -> Commerce Policy).
+	policy := services.CurrentCommercePolicy()
+	shipScope := "worldwide"
+	if !services.CommercePolicyShipsWorldwide(policy) {
+		shipScope = "to " + strings.Join(services.CommercePolicyCountryList(policy), ", ")
+	}
 	stockAnswer := ""
 	if product.StockQuantity > 0 {
-		stockAnswer = fmt.Sprintf("%s is currently in stock and ready for worldwide shipment.", product.SKU)
+		stockAnswer = fmt.Sprintf("%s is currently in stock and ready for %s shipment.", product.SKU, shipScope)
 	} else {
-		stockAnswer = fmt.Sprintf("%s is available to order with %s lead time.", product.SKU, localDefaultString(product.LeadTime, "3-7 days"))
+		stockAnswer = fmt.Sprintf("%s is available to order with %s lead time.", product.SKU, localDefaultString(product.LeadTime, services.CommercePolicyLeadTimeText(policy)))
 	}
 
 	faqs := []struct {

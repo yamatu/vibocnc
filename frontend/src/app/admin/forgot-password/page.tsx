@@ -124,7 +124,7 @@ export default function AdminForgotPasswordPage() {
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <div className="flex justify-center mb-6">
-            <div className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold text-2xl">FANUC</div>
+            <div className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold text-2xl">Vibocnc</div>
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
             {t('admin.forgot.title', locale === 'zh' ? '找回管理员密码' : 'Reset admin password')}

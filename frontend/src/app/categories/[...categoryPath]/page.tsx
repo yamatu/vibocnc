@@ -5,14 +5,23 @@ import PublicLayout from '@/components/layout/PublicLayout';
 import CategoryProductsClient from '@/components/categories/CategoryProductsClient';
 import CategorySidebarTree from '@/components/categories/CategorySidebarTree';
 import ScrollRestorer from '@/components/common/ScrollRestorer';
-import { CategoryService } from '@/services';
+import { CategoryService, ProductService } from '@/services';
 import { getSiteUrl } from '@/lib/url';
 import { withSiteName } from '@/lib/seo';
 import { getLocalizedMetadataPaths, getRequestPublicLocale } from '@/lib/i18n/server';
-import { getAvailableTranslationLocales, hasTranslationForLocale, localizeCategoryContent } from '@/lib/i18n/content';
+import { getAvailableTranslationLocales, hasTranslationForLocale, localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
+import { toProductPathId } from '@/lib/utils';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
-import type { Category, CategoryNavigationNode } from '@/types';
+import type { Category, CategoryNavigationNode, CommercePolicySetting } from '@/types';
+import {
+  FALLBACK_COMMERCE_POLICY,
+  commercePolicyCarriers,
+  commercePolicyDestinationCountries,
+  commercePolicyReturnShippingText,
+  resolveWarrantyPeriod,
+} from '@/lib/commerce-policy';
+import { getCommercePolicyCached } from '@/services/commerce-policy.server';
 
 interface CategoryPathPageProps {
   params: Promise<{ categoryPath: string[] }>;
@@ -70,23 +79,36 @@ function trimMetaText(value: string, maxLength: number): string {
 }
 
 // Category-specific meta description templates
-function getCategoryMetaDescription(categoryName: string, baseDescription?: string, brandName = 'Industrial Automation'): string {
+function getCategoryMetaDescription(
+  categoryName: string,
+  baseDescription: string | undefined,
+  brandName: string,
+  commercePolicy?: CommercePolicySetting,
+): string {
   const name = categoryName.toLowerCase();
   const titleSuffix = getCategoryTitleSuffix(brandName);
+  // The warranty / delivery promise is admin-editable, never hard-coded here.
+  const policy = commercePolicy ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy } : FALLBACK_COMMERCE_POLICY;
+  const warranty = resolveWarrantyPeriod(undefined, policy);
+  const transit = policy.shipping_transit_time_text;
+  const carriers = commercePolicyCarriers(policy).slice(0, 2).join('/');
+  // Destination scope also comes from the policy: an empty list means worldwide.
+  const destinations = commercePolicyDestinationCountries(policy);
+  const shipScope = destinations.length === 0 ? 'worldwide' : `to ${destinations.join(', ')}`;
   const templates: Record<string, string> = {
-    'servo': `Shop ${brandName} ${categoryName} for precise motion control. Tested parts, 12-month warranty, and fast worldwide shipping from Vibocnc.`,
-    'motor': `Buy ${brandName} ${categoryName} for industrial automation and CNC maintenance. Quality tested with 12-month warranty and worldwide shipping from Vibocnc.`,
-    'pcb': `Find ${brandName} ${categoryName} for reliable CNC signal processing. Quality-tested boards with 12-month warranty and worldwide delivery from Vibocnc.`,
-    'board': `Browse ${brandName} ${categoryName} for CNC and automation control systems. Quality-tested circuit boards with 12-month warranty from Vibocnc.`,
-    'power': `Shop ${brandName} ${categoryName} for stable industrial power delivery. Tested units with 12-month warranty and worldwide shipping from Vibocnc.`,
-    'i/o': `Buy ${brandName} ${categoryName} for robust automation I/O control. Tested modules with 12-month warranty and worldwide express shipping from Vibocnc.`,
-    'interface': `Find ${brandName} ${categoryName} for reliable industrial communication. Quality-tested parts with 12-month warranty from Vibocnc.`,
-    'encoder': `Shop ${brandName} ${categoryName} for accurate position feedback. Tested encoders with 12-month warranty and fast worldwide delivery from Vibocnc.`,
-    'cable': `Buy ${brandName} ${categoryName} for reliable industrial connections. Quality cables with 12-month warranty and fast express shipping from Vibocnc.`,
-    'display': `Find ${brandName} ${categoryName} for clear machine operator interfaces. Tested displays with 12-month warranty and worldwide shipping from Vibocnc.`,
-    'spindle': `Shop ${brandName} ${categoryName} for high-speed CNC spindle control. Tested drives with 12-month warranty and express global shipping from Vibocnc.`,
-    'controller': `Buy ${brandName} ${categoryName} for advanced machine control. Tested controllers with 12-month warranty and fast worldwide delivery from Vibocnc.`,
-    'robot': `Find ${brandName} ${categoryName} for industrial robot automation. Tested parts with 12-month warranty and fast DHL/FedEx shipping worldwide from Vibocnc.`,
+    'servo': `Shop ${brandName} ${categoryName} for precise motion control. Tested parts, ${warranty} warranty, and ${transit} ${shipScope} shipping from Vibocnc.`,
+    'motor': `Buy ${brandName} ${categoryName} for industrial automation and CNC maintenance. Quality tested with ${warranty} warranty and ${shipScope} shipping from Vibocnc.`,
+    'pcb': `Find ${brandName} ${categoryName} for reliable CNC signal processing. Quality-tested boards with ${warranty} warranty and ${shipScope} delivery from Vibocnc.`,
+    'board': `Browse ${brandName} ${categoryName} for CNC and automation control systems. Quality-tested circuit boards with ${warranty} warranty from Vibocnc.`,
+    'power': `Shop ${brandName} ${categoryName} for stable industrial power delivery. Tested units with ${warranty} warranty and ${shipScope} shipping from Vibocnc.`,
+    'i/o': `Buy ${brandName} ${categoryName} for robust automation I/O control. Tested modules with ${warranty} warranty and ${transit} express shipping ${shipScope} from Vibocnc.`,
+    'interface': `Find ${brandName} ${categoryName} for reliable industrial communication. Quality-tested parts with ${warranty} warranty from Vibocnc.`,
+    'encoder': `Shop ${brandName} ${categoryName} for accurate position feedback. Tested encoders with ${warranty} warranty and ${transit} delivery ${shipScope} from Vibocnc.`,
+    'cable': `Buy ${brandName} ${categoryName} for reliable industrial connections. Quality cables with ${warranty} warranty and fast express shipping from Vibocnc.`,
+    'display': `Find ${brandName} ${categoryName} for clear machine operator interfaces. Tested displays with ${warranty} warranty and ${shipScope} shipping from Vibocnc.`,
+    'spindle': `Shop ${brandName} ${categoryName} for high-speed CNC spindle control. Tested drives with ${warranty} warranty and express shipping ${shipScope} from Vibocnc.`,
+    'controller': `Buy ${brandName} ${categoryName} for advanced machine control. Tested controllers with ${warranty} warranty and ${transit} delivery ${shipScope} from Vibocnc.`,
+    'robot': `Find ${brandName} ${categoryName} for industrial robot automation. Tested parts with ${warranty} warranty and fast ${carriers} shipping ${shipScope} from Vibocnc.`,
   };
 
   for (const [key, template] of Object.entries(templates)) {
@@ -95,7 +117,41 @@ function getCategoryMetaDescription(categoryName: string, baseDescription?: stri
 
   if (baseDescription && baseDescription.length > 50) return trimMetaText(baseDescription, 160);
 
-  return trimMetaText(`Browse ${categoryName} from Vibocnc. Quality ${titleSuffix}, tested with 12-month warranty and fast worldwide shipping via DHL and FedEx.`, 160);
+  return trimMetaText(`Browse ${categoryName} from Vibocnc. Quality ${titleSuffix}, tested with ${warranty} warranty and fast shipping ${shipScope} via ${carriers}.`, 160);
+}
+
+/**
+ * The category FAQ copy is defined once and used twice: as visible page content
+ * and as FAQPage structured data. Google only grants the FAQ rich result when
+ * the answers are actually visible, so the two must stay in sync.
+ */
+function buildCategoryFaqEntries(
+  brandName: string,
+  categoryName: string,
+  policy: CommercePolicySetting,
+): Array<{ question: string; answer: string }> {
+  const warranty = resolveWarrantyPeriod(undefined, policy);
+  const carriers = commercePolicyCarriers(policy).join(', ');
+  const destinations = commercePolicyDestinationCountries(policy);
+  const shipScope = destinations.length === 0 ? 'worldwide' : `to ${destinations.join(', ')}`;
+  return [
+    {
+      question: `Where can I buy ${brandName} ${categoryName} online?`,
+      answer: `You can buy quality-tested ${brandName} ${categoryName} online at Vibocnc (vibocnc.com). We support ${warranty} warranty terms, ${policy.return_window_text} returns and express shipping ${shipScope} via ${carriers}.`,
+    },
+    {
+      question: `Do you offer warranty on ${brandName} ${categoryName}?`,
+      answer: `Yes, ${brandName} ${categoryName} supplied by Vibocnc include ${warranty} warranty support. Every part is quality checked before shipment, and ${commercePolicyReturnShippingText(policy)} if a return is required within ${policy.return_window_text}.`,
+    },
+    {
+      question: `How fast is shipping for ${brandName} ${categoryName}?`,
+      answer: `We ship ${shipScope} via ${carriers}. Orders are handled in ${policy.shipping_handling_time_text} and transit time is typically ${policy.shipping_transit_time_text}, subject to customs and local service availability.`,
+    },
+    {
+      question: `How do I confirm the right part number for my machine?`,
+      answer: `Send the machine builder, controller model, amplifier or drive reference and the alarm code to sales@vibocnc.com, or use the product enquiry form. Our team verifies interchangeability before dispatch so a compatible ${categoryName} is shipped the first time.`,
+    },
+  ];
 }
 
 export async function generateMetadata({ params }: CategoryPathPageProps): Promise<Metadata> {
@@ -118,7 +174,8 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
       : `${getSiteUrl()}${localizePublicPath(urlPath, 'en')}`;
     const brandName = getCategoryBrandName(category, breadcrumb);
     const titleSuffix = getCategoryTitleSuffix(brandName);
-    const metaDescription = getCategoryMetaDescription(category.name, category.description, brandName);
+    const commercePolicy = await getCommercePolicyCached();
+    const metaDescription = getCategoryMetaDescription(category.name, category.description, brandName, commercePolicy);
     return {
       // The root layout appends "| Vibocnc". Leave room for that suffix so
       // category titles stay within the ~70-character SERP display limit.
@@ -144,8 +201,8 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
   }
 }
 
-// CollectionPage + FAQ JSON-LD for category pages
-function CategoryStructuredData({ category, breadcrumb, baseUrl, locale }: { category: any; breadcrumb: any[]; baseUrl: string; locale: Awaited<ReturnType<typeof getRequestPublicLocale>> }) {
+// CollectionPage + FAQ + ItemList JSON-LD for category pages
+function CategoryStructuredData({ category, breadcrumb, baseUrl, locale, commercePolicy, items }: { category: any; breadcrumb: any[]; baseUrl: string; locale: Awaited<ReturnType<typeof getRequestPublicLocale>>; commercePolicy: CommercePolicySetting; items?: Array<{ name: string; url: string }> }) {
   const urlPath = category.path ? `/categories/${category.path}` : `/categories/${category.slug}`;
   const categoryUrl = `${baseUrl}${localizePublicPath(urlPath, locale)}`;
   const brandName = getCategoryBrandName(category, breadcrumb);
@@ -157,9 +214,7 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl, locale }: { cat
     "description": getCategoryMetaDescription(category.name, category.description, brandName),
     "url": categoryUrl,
     "isPartOf": {
-      "@type": "WebSite",
-      "name": "Vibocnc",
-      "url": baseUrl
+      "@id": `${baseUrl}/#website`
     },
     "breadcrumb": {
       "@type": "BreadcrumbList",
@@ -181,36 +236,36 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl, locale }: { cat
   };
 
   const catName = category.name;
+  const faqEntries = buildCategoryFaqEntries(brandName, catName, commercePolicy);
   const faqData = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": `Where can I buy ${brandName} ${catName} online?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `You can buy quality-tested ${brandName} ${catName} online at Vibocnc (vibocnc.com). We offer 12-month warranty support and worldwide express shipping via DHL and FedEx.`
-        }
-      },
-      {
-        "@type": "Question",
-        "name": `Do you offer warranty on ${brandName} ${catName}?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `Yes, ${brandName} ${catName} supplied by Vibocnc include 12-month warranty support. Every part is quality checked before shipment.`
-        }
-      },
-      {
-        "@type": "Question",
-        "name": `How fast is shipping for ${brandName} ${catName}?`,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": `We offer worldwide express shipping via DHL, FedEx, and UPS. Most in-stock ${catName} ship within 1-3 business days with delivery in 3-7 business days.`
-        }
+    "mainEntity": faqEntries.map((entry) => ({
+      "@type": "Question",
+      "name": entry.question,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": entry.answer
       }
-    ]
+    }))
   };
+
+  // ItemList of the products rendered in the grid on this page.
+  const itemListData = items && items.length > 0
+    ? {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "name": `${brandName} ${catName}`,
+      "url": categoryUrl,
+      "numberOfItems": items.length,
+      "itemListElement": items.map((item, index) => ({
+        "@type": "ListItem",
+        "position": index + 1,
+        "name": item.name,
+        "url": item.url
+      }))
+    }
+    : null;
 
   return (
     <>
@@ -222,6 +277,12 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl, locale }: { cat
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqData) }}
       />
+      {itemListData && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListData) }}
+        />
+      )}
     </>
   );
 }
@@ -266,6 +327,35 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
     .filter((n: number) => Number.isFinite(n) && n > 0);
   const baseUrl = getSiteUrl();
 
+  // The admin-editable shipping / warranty / returns promise drives both the
+  // visible copy and the structured data on this page.
+  const commercePolicy = await getCommercePolicyCached();
+  const categoryBrandName = getCategoryBrandName(resolved.category, resolved.breadcrumb || []);
+  const categoryFaqEntries = buildCategoryFaqEntries(categoryBrandName, resolved.category.name, commercePolicy);
+
+  // ItemList entries mirror the first page of products shown in the grid below.
+  let categoryItemList: Array<{ name: string; url: string }> = [];
+  try {
+    const listed = await ProductService.getProducts({
+      category_id: String(resolved.category.id),
+      include_descendants: 'true',
+      is_active: 'true',
+      sort_by: 'created_at',
+      sort_dir: 'desc',
+      page: 1,
+      page_size: 24,
+    });
+    categoryItemList = (listed.data || []).map((item: any) => {
+      const localized = localizeProductContent(item, locale);
+      return {
+        name: localized.name || localized.sku,
+        url: `${baseUrl}${localizePublicPath(`/products/${toProductPathId(localized.sku)}`, locale)}`,
+      };
+    });
+  } catch {
+    categoryItemList = [];
+  }
+
   return (
     <PublicLayout>
       <CategoryStructuredData
@@ -273,6 +363,8 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
         breadcrumb={resolved.breadcrumb || []}
         baseUrl={baseUrl}
         locale={locale}
+        commercePolicy={commercePolicy}
+        items={categoryItemList}
       />
       <ScrollRestorer storageKey="category-scroll-y" />
       <div className="site-page-shell min-h-screen">
@@ -341,6 +433,25 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
               >
                 <CategoryProductsClient category={resolved.category} initialSearchParams={searchParamsResolved} />
               </Suspense>
+
+              {/* Visible FAQ: same questions and answers as the FAQPage markup
+                  above. Google only shows the FAQ rich result when the content
+                  is actually on the page. */}
+              <section className="site-panel mt-8 p-6" aria-labelledby="category-faq-heading">
+                <h2 id="category-faq-heading" className="text-xl font-semibold text-slate-900">
+                  {categoryBrandName} {resolved.category.name}: frequently asked questions
+                </h2>
+                <div className="mt-4 divide-y divide-slate-200">
+                  {categoryFaqEntries.map((entry) => (
+                    <details key={entry.question} className="group py-4">
+                      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">
+                        {entry.question}
+                      </summary>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-700">{entry.answer}</p>
+                    </details>
+                  ))}
+                </div>
+              </section>
             </section>
           </div>
         </div>

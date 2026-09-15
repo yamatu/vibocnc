@@ -63,7 +63,7 @@ To the extent permitted by law, liability is limited to the amount paid for the 
 Questions may be sent to [sales@vibocnc.com](mailto:sales@vibocnc.com).` },
   { pageKey: 'warranty-policy', title: 'Warranty Policy', summary: 'Coverage, exclusions, and claims process for products supplied by Vibocnc.', metaDescription: 'Review warranty coverage, exclusions, and the claims process for Vibocnc industrial automation and CNC parts.', metaKeywords: 'warranty policy, FANUC parts warranty, CNC repair claim', content: `## Coverage
 
-- Standard coverage is 12 months unless the quotation or product page states otherwise
+- Standard coverage is 12 months (1 year) unless the quotation or product page states otherwise
 - Coverage applies to verified functional defects under normal operating conditions
 - Repair, replacement, or another appropriate remedy is determined after inspection
 
@@ -90,11 +90,11 @@ Do not return an item until return instructions are issued. See our [Returns & R
 Email [sales@vibocnc.com](mailto:sales@vibocnc.com) for warranty support.` },
   { pageKey: 'shipping-policy', title: 'Shipping Policy', summary: 'Shipping destinations, handling times, carriers, tracking, and customs information.', metaDescription: 'Shipping policy for Vibocnc orders, including handling, worldwide delivery, tracking, packaging, duties, and customs.', metaKeywords: 'shipping policy, CNC parts delivery, worldwide industrial parts shipping', content: `## Handling Times
 
-In-stock items are normally dispatched within 1-2 business days after payment and order verification. Lead times for backordered or special-order products are confirmed separately.
+In-stock items are normally dispatched within 1-2 days after payment and order verification, with an estimated transit time of 4-5 DAYS. Lead times for backordered or special-order products are confirmed separately.
 
 ## Destinations and Carriers
 
-We ship worldwide using established express and freight carriers selected according to destination, package size, and urgency. Tracking details are provided when available.
+We ship worldwide using established express and freight carriers such as DHL, FedEx, and UPS, selected according to destination, package size, and urgency. Tracking details are provided when available.
 
 ## Packaging
 
@@ -109,11 +109,11 @@ Contact us before returning any product. Unauthorized returns may be refused. Pr
 
 ## Eligibility
 
-Unused standard-stock products may be eligible for return when requested within 30 days of delivery. Special-order, configured, damaged, installed, opened, or used products may not be returnable unless defective.
+Unused standard-stock products may be eligible for return when requested within 1 year of delivery; return shipping costs are shared between the buyer and Vibocnc. Special-order, configured, damaged, installed, opened, or used products may not be returnable unless defective.
 
 ## Inspection and Refunds
 
-Returned products are inspected before a refund or credit is approved. Original shipping charges, import costs, and return shipping are generally non-refundable unless the return results from our error or a confirmed defect.
+Returned products are inspected before a refund or credit is approved. Return shipping is shared between the buyer and Vibocnc; original shipping charges and import costs are non-refundable unless the return results from our error or a confirmed defect.
 
 ## Packaging
 

@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
         <div className="text-center">
           <div className="flex justify-center mb-6">
             <div className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold text-2xl">
-              FANUC
+              Vibocnc
             </div>
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
@@ -160,7 +160,7 @@ export default function AdminLoginPage() {
         {/* Footer */}
         <div className="text-center">
           <p className="text-sm text-gray-600">
-            {t('admin.login.footer', '© 2024 FANUC Sales. All rights reserved.')}
+            {t('admin.login.footer', '© Vibocnc. All rights reserved.')}
           </p>
         </div>
       </div>

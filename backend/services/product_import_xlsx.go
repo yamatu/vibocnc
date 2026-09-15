@@ -1107,15 +1107,17 @@ func findProductByModelOrSKU(db *gorm.DB, model string) (models.Product, bool, e
 		}
 	}
 	add(normalized)
-	if strings.HasPrefix(upper, "FANUC-") {
-		add(normalized[6:])
-	}
-	if strings.HasPrefix(upper, "FANUC ") {
-		add(normalized[6:])
+	// Imported catalogues store some SKUs with the brand name baked in. Accept
+	// both the stripped and the prefixed form for every known brand instead of
+	// special-casing FANUC.
+	if stripped, ok := StripKnownBrandPrefix(normalized); ok {
+		add(stripped)
 	}
 	add(upper)
-	add("FANUC-" + normalized)
-	add("FANUC " + normalized)
+	for _, brand := range KnownBrandDisplayNames() {
+		add(brand + "-" + normalized)
+		add(brand + " " + normalized)
+	}
 
 	if err := db.Model(&models.Product{}).Where("sku IN ?", candidates).Order(gorm.Expr("FIELD(sku, ?) DESC, updated_at DESC", candidates)).First(&product).Error; err == nil {
 		return product, true, nil

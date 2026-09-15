@@ -15,10 +15,17 @@ import SeoPreview from '@/components/admin/SeoPreview';
 import CategoryCombobox from '@/components/admin/CategoryCombobox';
 import ShippingQuoteCalculator from '@/components/admin/ShippingQuoteCalculator';
 import TranslationEditor from '@/components/admin/TranslationEditor';
-import { ProductService, CategoryService } from '@/services';
+import { ProductService, CategoryService, CommercePolicyService, ProductSpecService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
-import { ProductCreateRequest, type Product, type Category } from '@/types';
+import { ProductCreateRequest, type Product, type Category, type CommercePolicySetting } from '@/types';
 import { getErrorMessage } from '@/lib/errors';
+import { stripBrandPrefixFromModel } from '@/lib/utils';
+import {
+  FALLBACK_COMMERCE_POLICY,
+  commercePolicyDestinationCountries,
+  resolveLeadTime,
+  resolveWarrantyPeriod,
+} from '@/lib/commerce-policy';
 import { useAdminI18n } from '@/lib/admin-i18n';
 
 interface ProductFormData extends Omit<ProductCreateRequest, 'images'> {
@@ -53,9 +60,7 @@ function normalizeModel(value?: string): string {
   let text = normalizeWhitespace(value);
   if (!text) return '';
   text = text.replace(/[\\/]+/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toUpperCase();
-  if (text.startsWith('FANUC-')) text = text.slice(6);
-  if (text.startsWith('FANUC ')) text = text.slice(6).trim();
-  return text;
+  return stripBrandPrefixFromModel(text);
 }
 
 function toBooleanFlag(value: unknown): boolean {
@@ -68,6 +73,7 @@ function buildDefaultSeoValues(input: {
   brand?: string;
   partNumber?: string;
   categoryName?: string;
+  policy?: CommercePolicySetting;
 }) {
   const brand = normalizeWhitespace(input.brand);
   const sku = normalizeModel(input.sku);
@@ -77,8 +83,12 @@ function buildDefaultSeoValues(input: {
   const titleBase = [brand, model, categoryName].filter(Boolean).join(' ') || normalizeWhitespace(input.name) || 'Product';
   const metaTitle = trimMetaTitle(`${titleBase} | Vibocnc`);
   const subject = [brand, model].filter(Boolean).join(' ') || model || normalizeWhitespace(input.name) || 'This product';
+  // Warranty and destination come from Admin -> Commerce Policy, never a literal.
+  const warranty = resolveWarrantyPeriod(undefined, input.policy);
+  const destinations = commercePolicyDestinationCountries(input.policy);
+  const shipScope = destinations.length === 0 ? 'worldwide' : `to ${destinations.join(', ')}`;
   const metaDescription = trimMetaDescription(
-    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, 12-month warranty, and fast worldwide shipping from Vibocnc.`
+    `${subject} ${categoryName} for industrial automation repair and replacement. Compatibility support, ${warranty} warranty, and fast shipping ${shipScope} from Vibocnc.`
   );
   const metaKeywords = [
     normalizeWhitespace(input.sku),
@@ -115,6 +125,33 @@ export default function EditProductPage() {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<ProductFormData>();
+
+  // Admin-editable shipping/warranty promise (Admin → Commerce Policy).
+  const { data: commercePolicy } = useQuery<CommercePolicySetting>({
+    queryKey: ['commerce-policy', 'settings'],
+    queryFn: () => CommercePolicyService.getSettings(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const effectiveCommercePolicy = commercePolicy
+    ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy }
+    : FALLBACK_COMMERCE_POLICY;
+
+  // Model-number (型号) specification research. Results always land in the review
+  // queue at /admin/spec-drafts — nothing is written to this product here.
+  const specResearchMutation = useMutation({
+    mutationFn: () => ProductSpecService.research({ product_id: productId, use_ai: true }),
+    onSuccess: (draft) => {
+      toast.success(
+        locale === 'zh'
+          ? `已生成参数草稿 #${draft.id} — 请先在“型号参数检索”中审核后再应用`
+          : `Draft #${draft.id} created for ${draft.model || draft.sku || 'this model'} — review it under Spec Research before applying`,
+      );
+      queryClient.invalidateQueries({ queryKey: ['spec-drafts'] });
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, locale === 'zh' ? '型号参数检索失败' : 'Specification research failed'));
+    },
+  });
 
 	const watchedWeight = Number(watch('weight') || 0);
 	const watchedPrice = Number(watch('price') || 0);
@@ -169,8 +206,8 @@ export default function EditProductPage() {
       setValue('brand', product.brand || '');
       setValue('model', product.model || product.sku);
       setValue('part_number', product.part_number || product.sku);
-      setValue('warranty_period', product.warranty_period || '12 months');
-      setValue('lead_time', product.lead_time || '3-7 days');
+      setValue('warranty_period', resolveWarrantyPeriod(product.warranty_period, effectiveCommercePolicy));
+      setValue('lead_time', resolveLeadTime(product.lead_time, effectiveCommercePolicy));
 	  setValue('translations', (product.translations || []).map((translation) => ({
 		language_code: translation.language_code,
 		name: translation.name,
@@ -287,8 +324,8 @@ export default function EditProductPage() {
 			brand: (data.brand || '').trim(),
 			model: (data.model || data.sku).trim(),
 			part_number: (data.part_number || data.sku).trim(),
-			warranty_period: (data.warranty_period || '12 months').trim(),
-			lead_time: (data.lead_time || '3-7 days').trim(),
+			warranty_period: resolveWarrantyPeriod(data.warranty_period, effectiveCommercePolicy).trim(),
+			lead_time: resolveLeadTime(data.lead_time, effectiveCommercePolicy).trim(),
 			category_id: catId,
 			is_active: data.is_active,
 			is_featured: data.is_featured,
@@ -350,6 +387,7 @@ export default function EditProductPage() {
       brand: watch('brand') || product.brand,
       partNumber: watch('part_number') || product.part_number,
       categoryName,
+      policy: effectiveCommercePolicy,
     });
 
     setValue('meta_title', defaults.metaTitle, { shouldDirty: true });
@@ -523,6 +561,20 @@ export default function EditProductPage() {
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
 						placeholder={locale === 'zh' ? '例如：A06B-0215-B805' : 'e.g., A06B-0215-B805'}
 					/>
+					<button
+						type="button"
+						onClick={() => specResearchMutation.mutate()}
+						disabled={specResearchMutation.isPending || !productId}
+						className="mt-2 inline-flex items-center rounded-md border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						{specResearchMutation.isPending
+							? locale === 'zh'
+								? '检索中…'
+								: 'Researching…'
+							: locale === 'zh'
+								? '按型号检索参数（需审核）'
+								: 'Research specs by model number (review required)'}
+					</button>
 				  </div>
 
 				  <div>
@@ -545,7 +597,7 @@ export default function EditProductPage() {
 						{...register('warranty_period')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder={locale === 'zh' ? '例如：12 months' : 'e.g., 12 months'}
+						placeholder={locale === 'zh' ? `例如：${FALLBACK_COMMERCE_POLICY.default_warranty_period}` : `e.g., ${resolveWarrantyPeriod(undefined, effectiveCommercePolicy)}`}
 					/>
 				  </div>
 
@@ -557,7 +609,7 @@ export default function EditProductPage() {
 						{...register('lead_time')}
 						type="text"
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-						placeholder={locale === 'zh' ? '例如：3-7 days' : 'e.g., 3-7 days'}
+						placeholder={locale === 'zh' ? `例如：${FALLBACK_COMMERCE_POLICY.default_lead_time}` : `e.g., ${resolveLeadTime(undefined, effectiveCommercePolicy)}`}
 					/>
 				  </div>
 

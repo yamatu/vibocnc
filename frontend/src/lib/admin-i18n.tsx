@@ -94,6 +94,8 @@ const DICT: Record<AdminLocale, Record<string, string>> = {
     'nav.sitePages': 'Site Pages',
     'nav.aiAssistant': 'AI Assistant',
     'nav.aiSeo': 'AI SEO / Category Jobs',
+    'nav.commercePolicy': 'Commerce Policy',
+    'nav.specResearch': 'Spec Research',
     'action.signOut': 'Sign out',
     'action.language': 'Language',
     'common.save': 'Save',
@@ -455,6 +457,8 @@ const DICT: Record<AdminLocale, Record<string, string>> = {
     'nav.sitePages': '站点页面',
     'nav.aiAssistant': 'AI 助手',
     'nav.aiSeo': 'AI SEO / 分类任务',
+    'nav.commercePolicy': '商务承诺设置',
+    'nav.specResearch': '型号参数检索',
     'action.signOut': '退出登录',
     'action.language': '语言',
     'common.save': '保存',
@@ -802,7 +806,7 @@ const DICT: Record<AdminLocale, Record<string, string>> = {
 	'admin.login.signingIn': '登录中...',
 	'admin.login.signIn': '登录',
 	'admin.login.failed': '登录失败，请重试。',
-	'admin.login.footer': '© 2024 FANUC Sales. 保留所有权利。',
+	'admin.login.footer': '© Vibocnc. 保留所有权利。',
   },
 };
 

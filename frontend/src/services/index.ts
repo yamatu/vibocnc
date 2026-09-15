@@ -24,6 +24,8 @@ import SocialMediaServiceDefault from './social-media.service';
 import SocialLinksServiceDefault from './social-links.service';
 import EbayImportDraftServiceDefault from './ebay-import-draft.service';
 import AIAgentServiceDefault from './ai-agent.service';
+import { CommercePolicyService as CommercePolicyServiceDefault } from './commerce-policy.service';
+import { ProductSpecService as ProductSpecServiceDefault } from './product-spec.service';
 
 // Export all services
 export const AuthService = AuthServiceDefault;
@@ -51,6 +53,8 @@ export const SocialMediaService = SocialMediaServiceDefault;
 export const SocialLinksService = SocialLinksServiceDefault;
 export const EbayImportDraftService = EbayImportDraftServiceDefault;
 export const AIAgentService = AIAgentServiceDefault;
+export const CommercePolicyService = CommercePolicyServiceDefault;
+export const ProductSpecService = ProductSpecServiceDefault;
 
 // Export types
 export type { ProductFilters } from './product.service';

@@ -51,11 +51,68 @@ const seoAuditSampleLimit = 100
 var genericSEOMarkers = []string{"industrial automation", "unidentified", "uncategorized", "generic spare"}
 
 // registrySEOBrands are the canonical display names used for cross-brand
-// contamination checks ("FANUC ..." meta title on a Siemens product).
+// contamination checks ("FANUC ..." meta title on a Siemens product). The list
+// is merged with services.KnownBrandDisplayNames so every supported brand is
+// covered, not just FANUC.
 var registrySEOBrands = []string{
 	"FANUC", "Mitsubishi", "Siemens", "ABB", "Allen-Bradley", "OMRON", "SICK",
 	"Tamagawa", "FLUKE", "Schneider Electric", "Yaskawa", "Panasonic", "KEYENCE",
 	"Delta", "Bosch Rexroth",
+}
+
+// ambiguousBrandWords are brand names that are also ordinary technical words.
+// They are skipped by the contamination check so that phrasing such as "delta
+// configuration" is not mistaken for the Delta brand. The exact brand spelling
+// in a title is still caught by the AI SEO brand-mismatch audit.
+var ambiguousBrandWords = map[string]bool{
+	"delta": true,
+	"sigma": true,
+}
+
+// ForeignBrandMentions reports which supported brands other than the product's
+// own brand appear in the given text. Generated copy must never name a
+// competitor brand: a non-FANUC page that says FANUC (or a FANUC page that says
+// Siemens) is treated as needing a content refresh.
+func ForeignBrandMentions(text string, brand string) []string {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return nil
+	}
+	own := NormalizeBrandKey(brand)
+
+	names := append([]string(nil), registrySEOBrands...)
+	names = append(names, KnownBrandDisplayNames()...)
+
+	seen := make(map[string]bool, len(names))
+	mentions := make([]string, 0, 2)
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		key := NormalizeBrandKey(name)
+		if key == "" || key == own || seen[key] || ambiguousBrandWords[key] {
+			continue
+		}
+		seen[key] = true
+		if textMentionsBrand(trimmed, name) {
+			mentions = append(mentions, name)
+		}
+	}
+	return mentions
+}
+
+// textMentionsBrand matches a brand name by whole-word tokens, so "ABB" is not
+// found inside "cable" and "SICK" is not found inside "sickness".
+func textMentionsBrand(text, brand string) bool {
+	expected := taxonomyTokens(brand)
+	if len(expected) == 0 {
+		return false
+	}
+	tokens := taxonomyTokenSet(text)
+	for _, token := range expected {
+		if !tokens[token] {
+			return false
+		}
+	}
+	return true
 }
 
 // evaluateProductSEO decides whether one product's public SEO metadata is

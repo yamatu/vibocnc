@@ -184,7 +184,8 @@ func getOrCreateAIAgentSetting(db *gorm.DB) (*models.AIAgentSetting, error) {
 	setting = models.AIAgentSetting{
 		ID: 1, BaseURL: "https://api.openai.com/v1", Model: "gpt-5.6-terra", APIMode: aiAgentAPIModeStandard,
 		ReasoningEffort: "medium", TimeoutSeconds: 75, SEOJobConcurrency: 2, SEOCandidateLimit: 30000,
-		DefaultWarrantyPeriod: "12 months", DefaultLeadTime: "3-7 days",
+		DefaultWarrantyPeriod: models.DefaultCommercePolicy().DefaultWarrantyPeriod,
+		DefaultLeadTime:       models.DefaultCommercePolicy().DefaultLeadTime,
 	}
 	if err := db.Create(&setting).Error; err != nil {
 		return nil, err

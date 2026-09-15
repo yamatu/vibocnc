@@ -26,7 +26,10 @@ import {
   AIAgentToolProbeResult,
   notifyAIAgentConfigChanged,
 } from '@/services/ai-agent.service';
+import { CommercePolicyService } from '@/services';
 import { useAdminI18n } from '@/lib/admin-i18n';
+import { FALLBACK_COMMERCE_POLICY } from '@/lib/commerce-policy';
+import type { CommercePolicySetting } from '@/types';
 
 type GlobalFormState = {
   enabled: boolean;
@@ -57,8 +60,9 @@ const blankGlobalForm: GlobalFormState = {
   seo_job_concurrency: 2,
   seo_candidate_limit: 30000,
   default_product_price: 0,
-  default_warranty_period: '12 months',
-  default_lead_time: '3-7 days',
+  // Commercial promises fall back to Admin → Commerce Policy, never a literal.
+  default_warranty_period: FALLBACK_COMMERCE_POLICY.default_warranty_period,
+  default_lead_time: FALLBACK_COMMERCE_POLICY.default_lead_time,
 };
 
 const modelSuggestions = [
@@ -112,14 +116,17 @@ function errorMessage(error: unknown) {
   return '';
 }
 
-function globalFormFromSettings(settings: AIAgentSettings): GlobalFormState {
+function globalFormFromSettings(
+  settings: AIAgentSettings,
+  policy: CommercePolicySetting = FALLBACK_COMMERCE_POLICY,
+): GlobalFormState {
   return {
     enabled: settings.enabled,
     seo_job_concurrency: settings.seo_job_concurrency || 2,
     seo_candidate_limit: settings.seo_candidate_limit || 30000,
     default_product_price: settings.default_product_price || 0,
-    default_warranty_period: settings.default_warranty_period || '12 months',
-    default_lead_time: settings.default_lead_time || '3-7 days',
+    default_warranty_period: settings.default_warranty_period || policy.default_warranty_period,
+    default_lead_time: settings.default_lead_time || policy.default_lead_time,
   };
 }
 
@@ -188,6 +195,7 @@ export default function AIAssistantSettingsPage() {
   const [settings, setSettings] = useState<AIAgentSettings | null>(null);
   const [profiles, setProfiles] = useState<AIAgentProfile[]>([]);
   const [globalForm, setGlobalForm] = useState<GlobalFormState>(blankGlobalForm);
+  const [policyDefaults, setPolicyDefaults] = useState<CommercePolicySetting>(FALLBACK_COMMERCE_POLICY);
   const [profileForm, setProfileForm] = useState<ProfileFormState | null>(null);
   const [savedProfileFingerprint, setSavedProfileFingerprint] = useState('');
   const [loading, setLoading] = useState(true);
@@ -225,10 +233,19 @@ export default function AIAssistantSettingsPage() {
   }, [providerFingerprint]);
 
   useEffect(() => {
-    Promise.all([AIAgentService.getSettings(), AIAgentService.listProfiles()])
-      .then(([loadedSettings, loadedProfiles]) => {
+    Promise.all([
+      AIAgentService.getSettings(),
+      AIAgentService.listProfiles(),
+      // The two promise fields below mirror the admin-editable commerce policy.
+      CommercePolicyService.getSettings().catch(() => null),
+    ])
+      .then(([loadedSettings, loadedProfiles, loadedPolicy]) => {
+        const policy: CommercePolicySetting = loadedPolicy
+          ? { ...FALLBACK_COMMERCE_POLICY, ...loadedPolicy }
+          : FALLBACK_COMMERCE_POLICY;
+        setPolicyDefaults(policy);
         setSettings(loadedSettings);
-        setGlobalForm(globalFormFromSettings(loadedSettings));
+        setGlobalForm(globalFormFromSettings(loadedSettings, policy));
         setProfiles(loadedProfiles);
         const selected = loadedProfiles.find((profile) => profile.is_active) || loadedProfiles[0];
         const nextForm = selected ? profileFormFromProfile(selected) : newProfileForm();
@@ -457,7 +474,7 @@ export default function AIAssistantSettingsPage() {
         default_lead_time: globalForm.default_lead_time,
       });
       setSettings(saved);
-      setGlobalForm(globalFormFromSettings(saved));
+      setGlobalForm(globalFormFromSettings(saved, policyDefaults));
       notifyAIAgentConfigChanged();
       toast.success(zh ? 'AI 全局设置已保存' : 'Global AI settings saved');
     } catch (error: unknown) {

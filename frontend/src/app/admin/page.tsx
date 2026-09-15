@@ -145,7 +145,7 @@ export default function AdminDashboard() {
           <p className="mt-1 text-sm text-gray-500">
             {t(
               'dashboard.welcome',
-              locale === 'zh' ? '欢迎回来！这里是今天店铺的最新情况。' : "Welcome back! Here's what's happening with your FANUC store today."
+              locale === 'zh' ? '欢迎回来！这里是今天店铺的最新情况。' : "Welcome back! Here's what's happening with your store today."
             )}
           </p>
         </div>
@@ -369,7 +369,7 @@ export default function AdminDashboard() {
                     {t('nav.products', 'Products')}
                   </h3>
                   <p className="mt-2 text-sm text-gray-500">
-                    {t('dashboard.quick.addProduct', locale === 'zh' ? '新增一个 FANUC 产品到库存' : 'Add a new FANUC product to your inventory')}
+                    {t('dashboard.quick.addProduct', locale === 'zh' ? '新增一个产品到库存' : 'Add a new product to your inventory')}
                   </p>
                 </div>
               </Link>

@@ -825,6 +825,55 @@ func CanonicalBrandName(brand string) string {
 	}
 }
 
+// knownBrandKeys is the brand key order used by the public helpers below.
+var knownBrandKeys = []string{
+	"fanuc", "mitsubishi", "siemens", "abb", "allen-bradley", "omron", "sick",
+	"tamagawa", "fluke", "schneider", "yaskawa", "panasonic", "keyence", "delta",
+	"bosch-rexroth", "heidenhain", "lenze", "danfoss",
+}
+
+// KnownBrandDisplayNames lists the canonical display name of every brand the
+// catalogue recognises. Callers use it to build lookups that used to be
+// hardcoded to FANUC alone (legacy SKU prefixes, URL path ids, analytics keys).
+func KnownBrandDisplayNames() []string {
+	names := make([]string, 0, len(knownBrandKeys))
+	for _, key := range knownBrandKeys {
+		if name := CanonicalBrandName(key); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// StripKnownBrandPrefix removes a leading "<BRAND>-" or "<BRAND> " segment from
+// a SKU or URL path id, for example "FANUC-A06B-6089-H105" ->
+// "A06B-6089-H105". It reports false when no brand prefix is present. This is
+// what keeps legacy brand-prefixed URLs resolving for every brand, not just
+// FANUC.
+func StripKnownBrandPrefix(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", false
+	}
+	for _, name := range KnownBrandDisplayNames() {
+		upper := strings.ToUpper(trimmed)
+		prefixes := []string{strings.ToUpper(strings.ReplaceAll(name, " ", "-")), strings.ToUpper(name)}
+		for _, prefix := range prefixes {
+			for _, separator := range []string{"-", " ", "_"} {
+				candidate := prefix + separator
+				if !strings.HasPrefix(upper, candidate) {
+					continue
+				}
+				stripped := strings.TrimSpace(trimmed[len(candidate):])
+				if stripped != "" {
+					return stripped, true
+				}
+			}
+		}
+	}
+	return "", false
+}
+
 func InferProductCategory(brand string, model string) ProductCategoryInference {
 	brandKey := NormalizeBrandKey(brand)
 	if brandKey == "" || brandKey == "unknown" {

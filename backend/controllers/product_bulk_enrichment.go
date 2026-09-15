@@ -117,11 +117,17 @@ func upsertGeneratedProductFAQs(db *gorm.DB, product *models.Product, partType s
 		heading = strings.TrimSpace(strings.Join([]string{product.Brand, product.SKU, partType}, " "))
 	}
 
+	// Destination scope and lead time come from Admin -> Commerce Policy.
+	faqPolicy := services.CurrentCommercePolicy()
+	faqShipScope := "worldwide"
+	if !services.CommercePolicyShipsWorldwide(faqPolicy) {
+		faqShipScope = "to " + strings.Join(services.CommercePolicyCountryList(faqPolicy), ", ")
+	}
 	stockAnswer := ""
 	if product.StockQuantity > 0 {
-		stockAnswer = fmt.Sprintf("%s is currently in stock and ready for worldwide shipment.", product.SKU)
+		stockAnswer = fmt.Sprintf("%s is currently in stock and ready for %s shipment.", product.SKU, faqShipScope)
 	} else {
-		stockAnswer = fmt.Sprintf("%s is available to order with %s lead time.", product.SKU, strings.TrimSpace(defaultString(product.LeadTime, "3-7 days")))
+		stockAnswer = fmt.Sprintf("%s is available to order with %s lead time.", product.SKU, strings.TrimSpace(defaultString(product.LeadTime, services.CommercePolicyLeadTimeText(services.CurrentCommercePolicy()))))
 	}
 
 	faqs := []struct {

@@ -852,8 +852,8 @@ func (r *productSKUResolver) resolve(candidate string) string {
 		return sku
 	}
 
-	if strings.HasPrefix(pathID, "FANUC-") {
-		trimmed := strings.TrimPrefix(pathID, "FANUC-")
+	if stripped, ok := services.StripKnownBrandPrefix(pathID); ok {
+		trimmed := stripped
 		if sku, ok := r.byPathID[trimmed]; ok {
 			return sku
 		}

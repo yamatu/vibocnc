@@ -58,7 +58,7 @@ type Product struct {
 	ConditionType           string     `json:"condition_type" gorm:"type:enum('new','refurbished','used');default:'new'"`
 	OriginCountry           string     `json:"origin_country" gorm:"size:50;default:'China'"`
 	Manufacturer            string     `json:"manufacturer" gorm:"size:100"`
-	LeadTime                string     `json:"lead_time" gorm:"size:50;default:'3-7 days'"`
+	LeadTime                string     `json:"lead_time" gorm:"size:50;default:'4-5 DAYS'"`
 	MinimumOrderQuantity    int        `json:"minimum_order_quantity" gorm:"default:1"`
 	PackagingInfo           string     `json:"packaging_info" gorm:"type:text"`
 	Certifications          string     `json:"certifications" gorm:"type:text"`

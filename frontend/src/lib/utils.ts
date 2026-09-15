@@ -328,7 +328,56 @@ export function toProductPathId(sku: string): string {
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+  // The FANUC- prefix strip is intentional: it keeps previously indexed
+  // /products/FANUC-A06B-... URLs resolving to the same record. Do not change it
+  // without a redirect plan.
   return encodeURIComponent(normalized.replace(/^FANUC-/i, ''));
+}
+
+// Brand names that are commonly baked into a part number or SKU. Kept as plain
+// strings so this module stays free of backend imports.
+const MODEL_BRAND_PREFIXES = [
+  'FANUC',
+  'Mitsubishi',
+  'Siemens',
+  'ABB',
+  'Allen-Bradley',
+  'Allen Bradley',
+  'Rockwell',
+  'Omron',
+  'SICK',
+  'Tamagawa',
+  'Fluke',
+  'Schneider Electric',
+  'Schneider',
+  'Yaskawa',
+  'Panasonic',
+  'Keyence',
+  'Delta',
+  'Bosch Rexroth',
+  'Heidenhain',
+  'Lenze',
+  'Danfoss',
+];
+
+// stripBrandPrefixFromModel removes a leading manufacturer name from a model or
+// part number ("MITSUBISHI-MR-J4-40A" -> "MR-J4-40A"). The previous behaviour
+// only recognised the FANUC- prefix, so multi-brand catalogues kept the brand
+// inside the model field.
+export function stripBrandPrefixFromModel(value: string): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return '';
+  const upper = trimmed.toUpperCase();
+  for (const brand of MODEL_BRAND_PREFIXES) {
+    const prefix = brand.toUpperCase();
+    for (const separator of ['-', ' ', '_']) {
+      const candidate = `${prefix}${separator}`;
+      if (!upper.startsWith(candidate)) continue;
+      const rest = trimmed.slice(candidate.length).trim();
+      if (rest) return rest;
+    }
+  }
+  return trimmed;
 }
 
 // Get file extension

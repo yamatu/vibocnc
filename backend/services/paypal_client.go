@@ -143,7 +143,7 @@ func (client *PayPalAPIClient) CreateOrder(ctx context.Context, amount float64, 
 			{
 				"reference_id": referenceID,
 				"custom_id":    referenceID,
-				"description":  "FANUC Parts Order " + referenceID,
+				"description":  "Industrial Automation Parts Order " + referenceID,
 				"amount": map[string]string{
 					"currency_code": currency,
 					"value":         formatPayPalAmount(amount),

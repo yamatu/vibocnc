@@ -40,7 +40,7 @@ func main() {
 		{"condition_type", "ENUM('new','refurbished','used') NOT NULL DEFAULT 'new'"},
 		{"origin_country", "VARCHAR(50) NOT NULL DEFAULT 'China'"},
 		{"manufacturer", "VARCHAR(100) NOT NULL DEFAULT 'FANUC'"},
-		{"lead_time", "VARCHAR(50) NOT NULL DEFAULT '3-7 days'"},
+		{"lead_time", "VARCHAR(50) NOT NULL DEFAULT '4-5 DAYS'"},
 		{"minimum_order_quantity", "INT NOT NULL DEFAULT 1"},
 		{"packaging_info", "TEXT NULL"},
 		{"certifications", "TEXT NULL"},

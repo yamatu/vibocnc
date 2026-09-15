@@ -814,3 +814,121 @@ export interface ArticleTranslationReq {
   meta_description?: string;
   meta_keywords?: string;
 }
+
+/**
+ * Storefront commercial promise, editable in the admin panel under
+ * Settings → Commerce Policy. It drives the visible shipping / warranty /
+ * returns copy and the schema.org Offer (shippingDetails,
+ * hasMerchantReturnPolicy).
+ */
+export interface CommercePolicySetting {
+  id?: number;
+  shipping_handling_time_text: string;
+  shipping_handling_days_min: number;
+  shipping_handling_days_max: number;
+  shipping_transit_time_text: string;
+  shipping_transit_days_min: number;
+  shipping_transit_days_max: number;
+  shipping_carriers: string;
+  shipping_destination_countries: string;
+  shipping_rate_amount: number;
+  shipping_currency: string;
+  shipping_notes: string;
+  default_warranty_period: string;
+  default_lead_time: string;
+  return_window_days: number;
+  return_window_text: string;
+  return_shipping_payer: 'shared' | 'customer' | 'merchant' | string;
+  return_policy_country: string;
+  return_policy_notes: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Model-number specification research (admin review queue).
+ *
+ * A draft is produced from public web evidence for one model number (型号). It is
+ * never published automatically: every value carries the page it was copied from
+ * and an administrator approves it explicitly.
+ */
+export interface SpecResearchCandidate {
+  label: string;
+  value: string;
+  source_url?: string;
+  source_title?: string;
+  source_type?: string;
+  evidence?: string;
+  /** 'extracted' = pattern match, 'ai' = language model proposal that passed the verbatim check. */
+  origin?: 'extracted' | 'ai' | string;
+}
+
+export interface ProductWebEvidence {
+  title: string;
+  url: string;
+  snippet: string;
+  source_type?: string;
+  evidence_level?: string;
+}
+
+export interface ProductSpecDraft {
+  id: number;
+  product_id: number;
+  sku?: string;
+  brand?: string;
+  model: string;
+  status: 'pending' | 'approved' | 'rejected' | 'superseded' | string;
+  confidence?: 'high' | 'medium' | 'low' | string;
+  specs_json?: string;
+  candidates_json?: string;
+  evidence_json?: string;
+  notes?: string;
+  job_id?: string;
+  requested_by?: number;
+  reviewed_by?: number;
+  reviewed_at?: string | null;
+  applied_at?: string | null;
+  reject_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductSpecDraftDetail {
+  draft: ProductSpecDraft;
+  candidates: SpecResearchCandidate[];
+  confidence?: string;
+  notes?: string;
+  evidence: ProductWebEvidence[];
+}
+
+export interface SpecResearchRequest {
+  product_id?: number;
+  brand?: string;
+  model?: string;
+  sku?: string;
+  use_ai?: boolean;
+  force?: boolean;
+}
+
+export interface SpecResearchBatchRequest {
+  ids: number[];
+  limit?: number;
+  use_ai?: boolean;
+  force?: boolean;
+  only_missing?: boolean;
+}
+
+export interface SpecResearchBatchOutcome {
+  product_id: number;
+  sku?: string;
+  model?: string;
+  draft_id?: number;
+  candidates: number;
+  status: string;
+  message?: string;
+}
+
+export interface SpecDraftApproveRequest {
+  candidates?: SpecResearchCandidate[];
+  overwrite?: boolean;
+}

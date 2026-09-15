@@ -56,7 +56,7 @@ function LoginForm() {
         <div className="text-white">
           <span className="site-hero-kicker">Customer portal</span>
           <h1 className="mt-5 max-w-2xl text-4xl font-bold leading-tight sm:text-5xl">
-            Access orders, quotes, and FANUC parts support in one place.
+            Access orders, quotes, and parts support in one place.
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-blue-100">
             Sign in to review order history, track purchasing activity, and keep your industrial spare-parts requests moving.
