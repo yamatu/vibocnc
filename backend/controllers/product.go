@@ -433,6 +433,19 @@ func (pc *ProductController) LookupSEO(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Imported SEO suggestions", Data: suggestion})
 }
 
+// preferExistingDescription returns the administrator-authored description when
+// one is present. Imported copy is offered as a suggestion instead of being
+// appended, which used to publish the same text twice side by side.
+func preferExistingDescription(current, imported string) string {
+	if strings.TrimSpace(imported) == "" {
+		return current
+	}
+	if strings.TrimSpace(current) == "" {
+		return imported
+	}
+	return current
+}
+
 // AutoImportSEO fetches SEO/content info from a competitor site for the given product (by ID or SKU)
 // POST /api/v1/admin/products/:id/auto-seo
 // Body (JSON): { "source_base_url": "https://fanucworld.com", "apply": false }
@@ -531,12 +544,10 @@ func (pc *ProductController) AutoImportSEO(c *gin.Context) {
 		product.MetaKeywords = extracted.MetaKeywords
 	}
 	if extracted.DescriptionHTML != "" {
-		// Append if description exists but differs; otherwise replace
-		if strings.TrimSpace(product.Description) == "" {
-			product.Description = extracted.DescriptionHTML
-		} else if !strings.Contains(product.Description, extracted.DescriptionHTML) {
-			product.Description = product.Description + "\n\n" + extracted.DescriptionHTML
-		}
+		// The administrator's description wins. The imported copy stays available
+		// in the suggestion payload, but it is never appended next to existing
+		// text: doing so published the same description twice on the page.
+		product.Description = preferExistingDescription(product.Description, extracted.DescriptionHTML)
 	}
 	// Auto category is read-only and database-authoritative. A web source may
 	// suggest a label, but it cannot create a taxonomy node or publish an
@@ -1047,7 +1058,9 @@ func (pc *ProductController) CreateProduct(c *gin.Context) {
 	}
 
 	product := result.Product
-	if _, err := optimizeProductAfterSave(db, product.ID); err != nil {
+	// Manual admin saves are authoritative: an operator who enables a product
+	// keeps it enabled even when the model-only classifier is unresolved.
+	if _, err := optimizeProductAfterSaveWithCategoryMap(db, product.ID, nil, automaticProductOptimizationOptions{PreserveActivation: true}); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Product created but automatic SEO optimization failed",
@@ -1110,7 +1123,7 @@ func (pc *ProductController) UpdateProduct(c *gin.Context) {
 	}
 
 	product := result.Product
-	if _, err := optimizeProductAfterSave(db, product.ID); err != nil {
+	if _, err := optimizeProductAfterSaveWithCategoryMap(db, product.ID, nil, automaticProductOptimizationOptions{PreserveActivation: true}); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Product updated but automatic SEO optimization failed",
@@ -1580,11 +1593,7 @@ func (pc *ProductController) BulkAutoImportSEO(c *gin.Context) {
 				product.MetaKeywords = extracted.MetaKeywords
 			}
 			if extracted.DescriptionHTML != "" {
-				if strings.TrimSpace(product.Description) == "" {
-					product.Description = extracted.DescriptionHTML
-				} else if !strings.Contains(product.Description, extracted.DescriptionHTML) {
-					product.Description += "\n\n" + extracted.DescriptionHTML
-				}
+				product.Description = preferExistingDescription(product.Description, extracted.DescriptionHTML)
 			}
 			if req.AutoCategory {
 				model := services.NormalizeProductModel(product.Model)

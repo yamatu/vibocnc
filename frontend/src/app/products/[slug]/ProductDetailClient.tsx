@@ -37,6 +37,7 @@ import { useRouter } from 'next/navigation';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { hasTranslationForLocale, localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
 import { buildSemanticProductName, inferProductTypeLabel } from '@/lib/product-seo';
+import { stripDuplicateGeneratedSections } from '@/lib/product-description';
 
 interface ProductDetailClientProps {
   productSku: string;
@@ -424,16 +425,23 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
     return key ? templates[key] : `${brandName ? brandName + ' ' : ''}${sku} ${categoryName} for CNC and industrial automation. ${stockText}`;
   };
 
-  const descriptionToShow = product.description && product.description.trim().length > 0
+  const specs = parseTechnicalSpecs(product.technical_specs);
+  const rawDescription = product.description && product.description.trim().length > 0
     ? product.description
     : getFallbackDescription();
+  // Legacy generated copy repeated facts that already have their own sections.
+  // Strip those blocks here so an old product stops showing them twice; the
+  // stored description is never modified.
+  const descriptionToShow = stripDuplicateGeneratedSections(rawDescription, {
+    hasSpecifications: !!specs,
+    hasCompatibility: !!product.compatibility_info?.trim(),
+  });
   const introBrandPrefix = brandName ? `${brandName} ` : '';
   const introParagraph = `${computedHeading} is a ${introBrandPrefix}${categoryName.toLowerCase()} supplied by Vibocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? `This item is in stock and ready to ship worldwide with ${policy.shipping_transit_time_text} transit time.` : `This item is available to order with ${shownLeadTime} lead time.`}`.replace(/\s+/g, ' ').trim();
   const normalizedIntro = normalizeComparisonText(introParagraph);
   const normalizedDescription = normalizeComparisonText(descriptionToShow);
   const shouldRenderIntroParagraph = normalizedIntro !== '' && !normalizedDescription.includes(normalizedIntro);
   const categoryHref = resolveCategoryHref();
-  const specs = parseTechnicalSpecs(product.technical_specs);
   const activeFaqs: Array<{ id?: number; question: string; answer: string }> =
     product.faqs && product.faqs.filter((f: ProductFAQ) => f.is_active).length > 0
       ? product.faqs.filter((f: ProductFAQ) => f.is_active)

@@ -263,6 +263,12 @@ type skeletonNarrative struct {
 }
 
 func buildSkeletonDescription(n skeletonNarrative) string {
+	// The storefront renders brand/model/condition/warranty/lead time in the
+	// "Part Details" panel, the specifications table in its own section and the
+	// compatibility text in another section. Repeating those blocks inside the
+	// body copy made a single page show the same facts three times, so the
+	// description now carries only the information that has no dedicated
+	// section: the narrative, applications and supplier notes.
 	lines := []string{
 		strings.TrimSpace(fmt.Sprintf("%s %s", n.Subject, n.PartType)),
 		"",
@@ -277,42 +283,9 @@ func buildSkeletonDescription(n skeletonNarrative) string {
 			"Because %s assemblies differ between machine builds, the model is confirmed against the original unit label before dispatch.",
 			n.BrandName,
 		),
-		"",
-		"Key details",
-		fmt.Sprintf("- Brand: %s", n.BrandName),
-	}
-	if n.Model != "" {
-		lines = append(lines, fmt.Sprintf("- Part number: %s", n.Model))
-	}
-	lines = append(lines, fmt.Sprintf("- Type: %s", n.PartType))
-	if n.CategoryName != "" {
-		lines = append(lines, fmt.Sprintf("- Category: %s", n.CategoryName))
-	}
-	lines = append(lines,
-		fmt.Sprintf("- Condition: %s", n.Condition),
-		fmt.Sprintf("- Warranty: %s", n.Warranty),
-		fmt.Sprintf("- Lead time: %s", n.LeadTime),
-		fmt.Sprintf("- %s", n.ShippingLine),
-		fmt.Sprintf("- Returns: %s return window, %s", n.Policy.ReturnWindowText, CommercePolicyReturnShippingText(n.Policy)),
-	)
-
-	if len(n.Specs) > 0 {
-		lines = append(lines, "", "Technical specifications")
-		for _, key := range sortedSpecKeys(n.Specs) {
-			lines = append(lines, fmt.Sprintf("- %s: %s", key, n.Specs[key]))
-		}
-		lines = append(lines,
-			"",
-			"Values above are taken from the catalogue record and the original unit label. Send a photo of your existing nameplate if you need the specification confirmed before dispatch.",
-		)
 	}
 
 	lines = append(lines,
-		"",
-		"Compatibility and ordering guidance",
-		fmt.Sprintf("- %s", partTypeSelectionSentence(n.PartType)),
-		fmt.Sprintf("- %s availability is confirmed against stock and the manufacturer lead time before payment is captured.", n.Subject),
-		"- Share the machine builder, controller model, amplifier or drive reference and the alarm code so interchangeability can be verified.",
 		"",
 		"Typical applications",
 		fmt.Sprintf("- %s", partTypeApplicationSentence(n.PartType)),

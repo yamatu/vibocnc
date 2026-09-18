@@ -32,9 +32,17 @@ func TestContentSkeletonIsBrandAgnostic(t *testing.T) {
 		if tc.wantPartType != "" && enriched.PartType != tc.wantPartType {
 			t.Fatalf("part type mismatch for %s: got %q want %q", tc.model, enriched.PartType, tc.wantPartType)
 		}
-		for _, section := range []string{"Overview", "Key details", "Compatibility and ordering guidance", "Typical applications"} {
+		for _, section := range []string{"Overview", "Typical applications", "Why buy from Vibocnc"} {
 			if !strings.Contains(enriched.Description, section) {
 				t.Fatalf("expected section %q in generated copy for %s", section, tc.model)
+			}
+		}
+		// The page renders Part Details, the specification table and the
+		// compatibility text in dedicated sections, so the body copy must not
+		// repeat them (that was the reported triple-display bug).
+		for _, duplicated := range []string{"Key details", "Technical specifications", "Compatibility and ordering guidance"} {
+			if strings.Contains(enriched.Description, duplicated) {
+				t.Fatalf("description must not duplicate the %q section for %s:\n%s", duplicated, tc.model, enriched.Description)
 			}
 		}
 		if enriched.CompatibilityInfo == "" || enriched.InstallationGuide == "" || enriched.MaintenanceTips == "" {
@@ -59,13 +67,18 @@ func TestContentSkeletonUsesCommercePolicyPromise(t *testing.T) {
 	})
 
 	for _, want := range []string{"4-5 DAYS", "18 months", "1 year", "shared between buyer and Vibocnc"} {
-		if !strings.Contains(enriched.Description, want) {
+		found := strings.Contains(enriched.Description, want) ||
+			strings.Contains(enriched.CompatibilityInfo, want) ||
+			strings.Contains(enriched.ShortDescription, want) ||
+			strings.Contains(enriched.MetaDescription, want)
+		if !found {
 			t.Fatalf("expected policy value %q in generated copy:\n%s", want, enriched.Description)
 		}
 	}
 	for _, hardcoded := range []string{"3-7 days", "12 months"} {
-		if strings.Contains(enriched.Description, hardcoded) {
-			t.Fatalf("hard-coded promise %q still present in generated copy:\n%s", hardcoded, enriched.Description)
+		combined := enriched.Description + enriched.CompatibilityInfo + enriched.ShortDescription + enriched.MetaDescription
+		if strings.Contains(combined, hardcoded) {
+			t.Fatalf("hard-coded promise %q still present in generated copy:\n%s", hardcoded, combined)
 		}
 	}
 }
@@ -229,9 +242,9 @@ func TestCommercePolicyTextHelpers(t *testing.T) {
 	}
 }
 
-// The specification table is the only place AI-researched parameters live, so an
-// approved draft must reach regenerated copy through the record — this is the
-// link that closes the "model number -> params -> published content" loop.
+// The specification table is the single place AI-researched parameters live, so
+// an approved draft must reach regenerated published copy through the record —
+// the rendered spec table — without being duplicated into the body text.
 func TestApprovedSpecsReachGeneratedCopyForRecord(t *testing.T) {
 	product := &models.Product{
 		SKU:            "A06B-0123-B077",
@@ -244,11 +257,11 @@ func TestApprovedSpecsReachGeneratedCopyForRecord(t *testing.T) {
 
 	enriched := EnrichProductForRecord(product)
 	for _, want := range []string{"Rated output", "7.5 kW", "Reviewed parameter", "42 V"} {
-		if !strings.Contains(enriched.Description, want) {
-			t.Fatalf("approved parameter %q must appear in the generated body copy", want)
-		}
 		if !strings.Contains(enriched.TechnicalSpecs, want) {
 			t.Fatalf("approved parameter %q must appear in the generated specification table", want)
+		}
+		if strings.Contains(enriched.Description, want) {
+			t.Fatalf("approved parameter %q must not be duplicated inside the body copy", want)
 		}
 	}
 	// Catalogue-owned values must survive the merge instead of being replaced.

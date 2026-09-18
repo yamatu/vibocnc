@@ -21,6 +21,11 @@ type automaticProductOptimizationResult struct {
 type automaticProductOptimizationOptions struct {
 	ForceCategory bool
 	BrandOverride string
+	// PreserveActivation keeps an administrator's explicit is_active choice.
+	// The automatic classification gate must never silently unpublish a product
+	// the operator just enabled in the admin form: the model number alone may be
+	// unresolved while the operator confirmed the category and identity by hand.
+	PreserveActivation bool
 }
 
 func optimizeProductAfterSave(db *gorm.DB, productID uint) (automaticProductOptimizationResult, error) {
@@ -55,6 +60,10 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 		model = strings.TrimSpace(product.SKU)
 	}
 
+	// An active product saved from the admin form keeps its published state even
+	// when the automatic classifier cannot confirm the model.
+	preserveActivation := opts.PreserveActivation && product.IsActive
+
 	inference := services.InferProductCategory(brandInput, model)
 	if !services.IsConfirmedProductCategory(inference, model) {
 		searchCtx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
@@ -86,7 +95,7 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	// path instead.
 	if !services.IsConfirmedProductCategory(inference, model) {
 		_, categoryChanged := updateData["category_id"]
-		if product.IsActive || categoryChanged {
+		if autoClassificationForcesInactive(product.IsActive, categoryChanged, preserveActivation) {
 			updateData["is_active"] = false
 			product.IsActive = false
 		}
@@ -95,7 +104,7 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 		if categoryErr != nil || categoryID == 0 {
 			// A recognized model is still not publishable unless the active
 			// taxonomy contains a compatible leaf. Keep the record for review.
-			if product.IsActive {
+			if autoClassificationForcesInactive(product.IsActive, false, preserveActivation) {
 				updateData["is_active"] = false
 				product.IsActive = false
 			}
@@ -131,7 +140,7 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 		updateData["last_optimized_at"] = &now
 		updateData["updated_at"] = now
 
-		if err := persistAutomaticProductUpdates(db, product, updateData, inference, model); err != nil {
+		if err := persistAutomaticProductUpdates(db, product, updateData, inference, model, !preserveActivation); err != nil {
 			return result, err
 		}
 
@@ -149,7 +158,7 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	updateData["last_optimized_at"] = &now
 	updateData["updated_at"] = now
 
-	if err := persistAutomaticProductUpdates(db, product, updateData, inference, model); err != nil {
+	if err := persistAutomaticProductUpdates(db, product, updateData, inference, model, !preserveActivation); err != nil {
 		return result, err
 	}
 
@@ -163,12 +172,14 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	return result, nil
 }
 
-func persistAutomaticProductUpdates(db *gorm.DB, product models.Product, updateData map[string]any, inference services.ProductCategoryInference, model string) error {
+func persistAutomaticProductUpdates(db *gorm.DB, product models.Product, updateData map[string]any, inference services.ProductCategoryInference, model string, enforcePublicationGate bool) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		// Recheck the taxonomy at the final write boundary. If this product is
 		// going to remain public, the selected category must still be an active
-		// matching leaf after any concurrent administrator edits.
-		if product.IsActive {
+		// matching leaf after any concurrent administrator edits. An explicitly
+		// enabled product skips the gate: the administrator confirmed the
+		// category, so a weak model match must not re-hide it.
+		if shouldEnforcePublicationGate(product, enforcePublicationGate) {
 			if !services.IsConfirmedProductCategory(inference, model) {
 				return errors.New("product classification is unresolved")
 			}
@@ -178,6 +189,22 @@ func persistAutomaticProductUpdates(db *gorm.DB, product models.Product, updateD
 		}
 		return tx.Model(&models.Product{}).Where("id = ?", product.ID).Updates(updateData).Error
 	})
+}
+
+// autoClassificationForcesInactive reports whether the model-only classifier
+// must unpublish the record. An explicit manual activation (PreserveActivation)
+// opts out so the admin form stays authoritative.
+func autoClassificationForcesInactive(productWasActive bool, categoryChanged bool, preserveActivation bool) bool {
+	if preserveActivation {
+		return false
+	}
+	return productWasActive || categoryChanged
+}
+
+// shouldEnforcePublicationGate reports whether the automatic pipeline must run
+// the taxonomy gate before writing. A manually activated product skips it.
+func shouldEnforcePublicationGate(product models.Product, enforcePublicationGate bool) bool {
+	return product.IsActive && enforcePublicationGate
 }
 
 func applyProductUpdateData(product *models.Product, updateData map[string]any) {
