@@ -126,6 +126,28 @@ function isAdminTokenUsable(token: string | undefined): boolean {
   return expiry > Date.now();
 }
 
+// The admin UI mirrors the session into two JS-readable cookies
+// (`auth_session` / `auth_token_expires`, set from src/lib/api.ts on login and
+// refresh) so client-side guards can decide what to render. This replicates
+// authUtils.isAuthenticated() on the server: when it returns false while the
+// HttpOnly admin_token is still usable, the two layers disagree about being
+// logged in — the exact mismatch that bounces the browser between /admin and
+// /admin/login forever, so treat it as a broken half-session.
+function hasClientAdminSession(request: NextRequest): boolean {
+  const expiresRaw = request.cookies.get('auth_token_expires')?.value;
+  if (expiresRaw) {
+    let expiresValue = expiresRaw;
+    try {
+      expiresValue = decodeURIComponent(expiresRaw);
+    } catch {
+      // Keep the raw value; Date.parse below decides.
+    }
+    const expiresAt = Date.parse(expiresValue);
+    if (!Number.isNaN(expiresAt)) return expiresAt > Date.now();
+  }
+  return request.cookies.get('auth_session')?.value === '1';
+}
+
 export async function middleware(request: NextRequest) {
   const rawPathname = request.nextUrl.pathname;
   if (rawPathname === '/en' || rawPathname.startsWith('/en/')) {
@@ -301,9 +323,17 @@ export async function middleware(request: NextRequest) {
   // Check if the current path is an auth route
   const isAuthRoute = authRoutes.some(route => pathname.startsWith(route));
 
-  // If accessing a protected route without a usable token, redirect to login
-  // and drop the stale cookie so the login page is reachable immediately.
-  if (isProtectedRoute && !token) {
+  // Broken half-session: the HttpOnly admin_token is still usable but the
+  // JS-visible mirror is gone/expired, so the client treats the visit as
+  // "logged out" while this middleware keeps treating it as "logged in".
+  // That mismatch ping-pongs the browser between /admin and /admin/login —
+  // normalise it below by clearing the stale cookies instead of bouncing.
+  const isBrokenAdminSession = Boolean(token) && !hasClientAdminSession(request);
+
+  // If accessing a protected route without a usable token — or in the broken
+  // half-session state — redirect to login and drop the stale cookies so the
+  // login page is reachable immediately.
+  if (isProtectedRoute && (!token || isBrokenAdminSession)) {
     const loginUrl = new URL('/admin/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     const redirectResponse = NextResponse.redirect(loginUrl);
@@ -315,8 +345,10 @@ export async function middleware(request: NextRequest) {
     return redirectResponse;
   }
 
-  // If accessing auth route with a token, redirect to admin dashboard
-  if (isAuthRoute && token) {
+  // If accessing auth route with a token and an agreeing client session,
+  // redirect to admin dashboard. In the broken half-session case fall through
+  // instead so the login page renders (stale cookies are cleared below).
+  if (isAuthRoute && token && !isBrokenAdminSession) {
     return NextResponse.redirect(new URL('/admin', request.url));
   }
 
@@ -335,6 +367,14 @@ export async function middleware(request: NextRequest) {
         { request: { headers: requestHeaders } },
       )
     : NextResponse.next({ request: { headers: requestHeaders } });
+
+  // The broken half-session reached the login page: clear the stale HttpOnly
+  // cookie on this response so the next login starts from a clean slate.
+  if (isAuthRoute && isBrokenAdminSession) {
+    response.cookies.delete('admin_token');
+    response.cookies.delete('auth_session');
+    response.cookies.delete('auth_token_expires');
+  }
 
   // Explicit language selection is persisted by useLocaleNavigation and the
   // site_locale redirect above. Plain locale URL requests do not need Set-Cookie;
