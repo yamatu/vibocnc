@@ -54,3 +54,4 @@ tmpfiles/
 
 # Windows 重定向误产生的空文件
 nul
+*.yaws-backup-*
