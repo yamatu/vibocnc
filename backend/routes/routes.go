@@ -175,6 +175,11 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.GET("/status", aiAgentController.Status)
 				aiAgent.POST("/chat", aiAgentController.Chat)
 				aiAgent.POST("/chat/stream", aiAgentController.ChatStream)
+				// Persisted chat sessions: history, resume-after-refresh, per-conversation locking.
+				aiAgent.GET("/conversations", aiAgentController.ListConversations)
+				aiAgent.GET("/conversations/:id", aiAgentController.GetConversation)
+				aiAgent.GET("/conversations/:id/stream", aiAgentController.ResumeConversationStream)
+				aiAgent.DELETE("/conversations/:id", aiAgentController.DeleteConversation)
 				aiAgent.POST("/article-draft", aiAgentController.GenerateArticleDraft)
 				aiAgent.POST("/prices/preview", aiAgentController.PreviewPrices)
 				aiAgent.POST("/apply", aiAgentController.Apply)

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   ArrowsPointingInIcon,
@@ -8,20 +8,24 @@ import {
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
   ChevronDownIcon,
+  ClockIcon,
   CurrencyDollarIcon,
   ExclamationTriangleIcon,
   PaperAirplaneIcon,
   SparklesIcon,
+  TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import {
   AIAgentAction,
   AI_AGENT_CONFIG_CHANGED_EVENT,
+  AIAgentConversationSummary,
   AIAgentMessage,
   AIAgentReply,
   AIAgentService,
   AIAgentStatus,
+  AIAgentStreamHandlers,
   AIAgentStreamStep,
 } from '@/services/ai-agent.service';
 import ReactMarkdown from 'react-markdown';
@@ -33,6 +37,28 @@ import AIPriceSyncPanel from '@/components/admin/AIPriceSyncPanel';
 
 // Remembered per browser so the widget stays where the administrator parked it.
 const AI_AGENT_POSITION_STORAGE_KEY = 'vibocnc.ai-assistant.position';
+
+// The widget's open state and active conversation are remembered per browser
+// tab so a route change (every page mounts its own AdminLayout copy) no longer
+// collapses the panel or loses the chat, and a refresh can re-attach.
+const AI_AGENT_SESSION_STORAGE_KEY = 'vibocnc.ai-assistant.session';
+
+type StoredAssistantSession = { open: boolean; conversationId: number | null };
+
+function readStoredAssistantSession(): StoredAssistantSession | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(AI_AGENT_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredAssistantSession>;
+    return {
+      open: Boolean(parsed.open),
+      conversationId: typeof parsed.conversationId === 'number' && parsed.conversationId > 0 ? parsed.conversationId : null,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const SUGGESTED_PROMPTS = [
   'A06B-XXXX（如果不存在，创建未发布产品草稿；只能使用现有品牌和产品类型分类）',
@@ -75,6 +101,13 @@ const emptyLiveState = (): LiveAssistantState => ({ stage: 'thinking', steps: []
 function formatStepDuration(durationMs: number) {
   if (durationMs >= 1000) return `${(durationMs / 1000).toFixed(1)}s`;
   return `${durationMs}ms`;
+}
+
+function formatConversationTime(value: string | undefined) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function StepStatusIcon({ status }: { status: AIAgentStreamStep['status'] }) {
@@ -259,6 +292,11 @@ export default function AIAgentAssistant() {
   const { locale } = useAdminI18n();
   const zh = locale === 'zh';
   const [open, setOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState<AIAgentConversationSummary[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [mode, setMode] = useState<'assistant' | 'prices'>('assistant');
   const [status, setStatus] = useState<AIAgentStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -271,6 +309,9 @@ export default function AIAgentAssistant() {
   const liveRef = useRef<LiveAssistantState | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const drag = useDraggableWidget(AI_AGENT_POSITION_STORAGE_KEY);
+  const abortRef = useRef<AbortController | null>(null);
+  const sendingRef = useRef(false);
+  const lastLoadedConversationRef = useRef<number | null>(null);
 
   // Streaming state mirrors the in-flight run so it can become the completed
   // message (including its step timeline) once the final proposal arrives.
@@ -279,6 +320,157 @@ export default function AIAgentAssistant() {
     liveRef.current = mutate(liveRef.current);
     setLive(liveRef.current);
   };
+
+  // Rebuilds the handler set for a streamed run; shared by first sends and by
+  // re-attaches after a refresh.
+  const streamHandlers = (): AIAgentStreamHandlers => ({
+    onStage: (stage) => updateLive((current) => ({ ...current, stage })),
+    onStepStart: (step) => updateLive((current) => ({ ...current, steps: [...current.steps, { ...step, status: 'running' as const }] })),
+    onStepEnd: (step) => updateLive((current) => ({
+      ...current,
+      steps: current.steps.map((item) => (item.id === step.id ? { ...item, status: step.status, duration_ms: step.duration_ms, error: step.error } : item)),
+    })),
+    onNote: (noteText) => updateLive((current) => ({ ...current, notes: [...current.notes, noteText] })),
+    onDelta: (deltaText) => updateLive((current) => ({ ...current, text: current.text + deltaText })),
+  });
+
+  const messageFromReply = (reply: AIAgentReply, steps: AIAgentStreamStep[]): AIAgentMessage => ({
+    role: 'assistant',
+    content: reply.reply,
+    suggestions: reply.suggestions || [],
+    toolCalls: reply.tool_calls || [],
+    steps,
+  });
+
+  const resumeConversation = async (id: number) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setSending(true);
+    liveRef.current = emptyLiveState();
+    setLive(liveRef.current);
+    try {
+      const reply = await AIAgentService.resumeStream(id, 0, streamHandlers(), controller.signal);
+      if (reply) {
+        setMessages((previous) => [...previous, messageFromReply(reply, liveRef.current?.steps || [])]);
+      } else {
+        // The run finished while reconnecting; reload the stored messages.
+        const data = await AIAgentService.conversation(id);
+        setMessages(data.messages.map((item) => ({ role: item.role, content: item.content, suggestions: item.suggestions || [], toolCalls: item.tool_calls || [], steps: item.steps || [] })));
+      }
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) {
+        toast.error(errorMessage(error) || (zh ? 'AI 回答恢复失败，请重试' : 'Could not resume the AI answer'));
+      }
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        liveRef.current = null;
+        setLive(null);
+        setSending(false);
+      }
+    }
+  };
+
+  const loadConversation = async (id: number) => {
+    try {
+      const data = await AIAgentService.conversation(id);
+      setMessages(data.messages.map((item) => ({ role: item.role, content: item.content, suggestions: item.suggestions || [], toolCalls: item.tool_calls || [], steps: item.steps || [] })));
+      setAppliedKeys([]);
+      if (data.status === 'generating') {
+        await resumeConversation(id);
+      }
+    } catch (error: unknown) {
+      // The conversation disappeared (deleted in another tab); drop the pointer.
+      lastLoadedConversationRef.current = null;
+      setConversationId(null);
+      toast.error(errorMessage(error) || (zh ? '无法读取历史会话' : 'Could not load the conversation'));
+    }
+  };
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      setHistoryItems(await AIAgentService.conversations());
+    } catch (error: unknown) {
+      toast.error(errorMessage(error) || (zh ? '无法读取历史会话' : 'Could not load chat history'));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const toggleHistory = () => {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next) {
+      setHistoryItems(null);
+      void loadHistory();
+    }
+  };
+
+  const selectConversation = (id: number) => {
+    if (sending) return;
+    setHistoryOpen(false);
+    if (id === conversationId) return;
+    setMessages([]);
+    setAppliedKeys([]);
+    setConversationId(id);
+  };
+
+  const removeConversation = async (id: number) => {
+    if (sending) return;
+    if (typeof window !== 'undefined' && !window.confirm(zh ? '删除这个会话？此操作不可撤销。' : 'Delete this conversation? This cannot be undone.')) return;
+    try {
+      await AIAgentService.deleteConversation(id);
+      setHistoryItems((previous) => (previous ? previous.filter((item) => item.id !== id) : previous));
+      if (id === conversationId) {
+        lastLoadedConversationRef.current = null;
+        setMessages([]);
+        setConversationId(null);
+      }
+    } catch (error: unknown) {
+      toast.error(errorMessage(error) || (zh ? '删除会话失败' : 'Could not delete the conversation'));
+    }
+  };
+
+  // Session state survives route changes: every admin page mounts its own
+  // AdminLayout copy, so the widget restores its open flag and conversation
+  // from per-tab storage instead of collapsing.
+  useEffect(() => {
+    const stored = readStoredAssistantSession();
+    if (stored) {
+      setOpen(stored.open);
+      setConversationId(stored.conversationId);
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.sessionStorage.setItem(AI_AGENT_SESSION_STORAGE_KEY, JSON.stringify({ open, conversationId }));
+    } catch {
+      // Storage disabled (private mode); the widget still works within a page.
+    }
+  }, [hydrated, open, conversationId]);
+
+  useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  useEffect(() => {
+    if (!hydrated || conversationId === null) {
+      if (conversationId === null) lastLoadedConversationRef.current = null;
+      return;
+    }
+    if (lastLoadedConversationRef.current === conversationId) return;
+    if (sendingRef.current) return;
+    lastLoadedConversationRef.current = conversationId;
+    void loadConversation(conversationId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, conversationId]);
 
   // Opening the panel replaces the compact launcher with a much larger surface,
   // so the stored spot has to be re-anchored and re-checked against the viewport.
@@ -314,26 +506,34 @@ export default function AIAgentAssistant() {
     setMessages((previous) => [...previous, userMessage]);
     setInput('');
     setSending(true);
+    setHistoryOpen(false);
     liveRef.current = emptyLiveState();
     setLive(liveRef.current);
 
     const finalize = (reply: AIAgentReply) => {
       const steps = liveRef.current?.steps || [];
-      setMessages((previous) => [...previous, { role: 'assistant', content: reply.reply, suggestions: reply.suggestions || [], toolCalls: reply.tool_calls || [], steps }]);
+      setMessages((previous) => [...previous, messageFromReply(reply, steps)]);
     };
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const requestedConversation = conversationId;
 
     try {
       let reply: AIAgentReply;
       try {
-        reply = await AIAgentService.chatStream(text, messages, {
-          onStage: (stage) => updateLive((current) => ({ ...current, stage })),
-          onStepStart: (step) => updateLive((current) => ({ ...current, steps: [...current.steps, { ...step, status: 'running' as const }] })),
-          onStepEnd: (step) => updateLive((current) => ({
-            ...current,
-            steps: current.steps.map((item) => (item.id === step.id ? { ...item, status: step.status, duration_ms: step.duration_ms, error: step.error } : item)),
-          })),
-          onNote: (noteText) => updateLive((current) => ({ ...current, notes: [...current.notes, noteText] })),
-          onDelta: (deltaText) => updateLive((current) => ({ ...current, text: current.text + deltaText })),
+        reply = await AIAgentService.chatStream(text, {
+          conversationId: requestedConversation,
+          signal: controller.signal,
+          handlers: {
+            ...streamHandlers(),
+            onHello: (info) => {
+              if (Number.isFinite(info.conversation_id) && info.conversation_id > 0) {
+                setConversationId(info.conversation_id);
+              }
+            },
+          },
         });
       } catch (streamError) {
         // A stream that failed before anything was shown (older backend,
@@ -343,18 +543,32 @@ export default function AIAgentAssistant() {
         const partial = liveRef.current;
         const hadOutput = Boolean(partial && (partial.text || partial.steps.length > 0 || partial.notes.length > 0));
         if (hadOutput) throw streamError;
-        reply = await AIAgentService.chat(text, messages);
+        reply = await AIAgentService.chat(text, { conversationId: requestedConversation, history: messages });
       }
+      if (reply.conversation_id) setConversationId(reply.conversation_id);
       finalize(reply);
     } catch (error: unknown) {
+      if (controller.signal.aborted) return;
       const detail = errorMessage(error);
       toast.error(detail || (zh ? 'AI 暂时无法生成建议' : 'AI could not generate a proposal'));
       setMessages((previous) => previous.filter((item) => item !== userMessage));
     } finally {
-      liveRef.current = null;
-      setLive(null);
-      setSending(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        liveRef.current = null;
+        setLive(null);
+        setSending(false);
+      }
     }
+  };
+
+  // Enter sends and Shift+Enter inserts a newline; both keys are ignored while
+  // an IME composition is being committed (Chinese input).
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    event.preventDefault();
+    void send();
   };
 
   const apply = async (action: AIAgentAction, key: string) => {
@@ -402,9 +616,13 @@ export default function AIAgentAssistant() {
   };
 
   const reset = () => {
+    abortRef.current?.abort();
     setMessages([]);
     setAppliedKeys([]);
     setInput('');
+    setHistoryOpen(false);
+    lastLoadedConversationRef.current = null;
+    setConversationId(null);
     liveRef.current = null;
     setLive(null);
   };
@@ -460,6 +678,7 @@ export default function AIAgentAssistant() {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {mode === 'assistant' && <button type="button" onClick={toggleHistory} className={`rounded p-1.5 hover:bg-white/15 ${historyOpen ? 'bg-white/15' : ''}`} title={zh ? '历史会话' : 'Chat history'} aria-label={zh ? '历史会话' : 'Chat history'}><ClockIcon className="h-4 w-4" /></button>}
               {mode === 'assistant' && <button type="button" onClick={reset} className="rounded p-1.5 hover:bg-white/15" title={zh ? '新对话' : 'New conversation'} aria-label={zh ? '新对话' : 'New conversation'}><ArrowPathIcon className="h-4 w-4" /></button>}
               <button type="button" onClick={drag.resetPosition} className="rounded p-1.5 hover:bg-white/15" title={zh ? '窗口归位到右下角' : 'Reset window position'} aria-label={zh ? '窗口归位到右下角' : 'Reset window position'}><ArrowsPointingInIcon className="h-4 w-4" /></button>
               <button type="button" onClick={() => { drag.captureAnchor(); setOpen(false); }} className="rounded p-1.5 hover:bg-white/15" aria-label={zh ? '关闭' : 'Close'}><XMarkIcon className="h-5 w-5" /></button>
@@ -471,6 +690,23 @@ export default function AIAgentAssistant() {
             <button type="button" role="tab" aria-selected={mode === 'prices'} onClick={() => setMode('prices')} className={`inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold ${mode === 'prices' ? 'bg-emerald-100 text-emerald-800' : 'text-gray-600 hover:bg-gray-50'}`}><CurrencyDollarIcon className="h-4 w-4" />{zh ? '价格同步' : 'Price sync'}</button>
           </div>
 
+          {mode === 'assistant' && historyOpen && (
+            <div className="max-h-56 overflow-y-auto border-b border-gray-200 bg-white p-2" aria-label={zh ? '历史会话' : 'Chat history'}>
+              {historyLoading && <p className="px-2 py-3 text-center text-xs text-gray-500">{zh ? '正在加载历史会话…' : 'Loading chat history…'}</p>}
+              {!historyLoading && historyItems && historyItems.length === 0 && (
+                <p className="px-2 py-3 text-center text-xs text-gray-500">{zh ? '暂无历史会话' : 'No conversations yet'}</p>
+              )}
+              {!historyLoading && historyItems && historyItems.map((item) => (
+                <div key={item.id} className={`flex items-center gap-1 rounded-md px-1 ${item.id === conversationId ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                  <button type="button" onClick={() => selectConversation(item.id)} className="min-w-0 flex-1 px-1.5 py-2 text-left">
+                    <span className="block truncate text-xs font-medium text-gray-800">{item.title || (zh ? '未命名会话' : 'Untitled conversation')}</span>
+                    <span className="mt-0.5 block text-[10px] text-gray-400">{formatConversationTime(item.updated_at)}{item.status === 'generating' ? ` · ${zh ? '生成中…' : 'generating…'}` : ''}</span>
+                  </button>
+                  <button type="button" onClick={() => removeConversation(item.id)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-500" aria-label={zh ? '删除会话' : 'Delete conversation'}><TrashIcon className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+            </div>
+          )}
           {mode === 'prices' ? <AIPriceSyncPanel zh={zh} /> : <>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3" role="tabpanel">
             {statusLoading && <p className="pt-6 text-center text-sm text-gray-500">{zh ? '正在检查 AI 配置…' : 'Checking AI configuration…'}</p>}
@@ -561,10 +797,11 @@ export default function AIAgentAssistant() {
 
           <form onSubmit={send} className="border-t border-gray-200 bg-white p-3">
             <div className="flex items-end gap-2 rounded-xl border border-gray-300 bg-white p-1.5 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-100">
-              <textarea value={input} onChange={(event) => setInput(event.target.value)} disabled={!status?.configured || sending} rows={2} maxLength={4000} aria-label={zh ? 'AI 优化指令' : 'AI optimization instruction'} placeholder={zh ? '直接输入型号，例如 A06B-xxxx' : 'Enter a model, for example A06B-xxxx'} className="min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed" />
+              <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleInputKeyDown} disabled={!status?.configured || sending} rows={2} maxLength={4000} aria-label={zh ? 'AI 优化指令' : 'AI optimization instruction'} placeholder={zh ? '直接输入型号，例如 A06B-xxxx' : 'Enter a model, for example A06B-xxxx'} className="min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed" />
               <button type="submit" disabled={!input.trim() || !status?.configured || sending} className="rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-gray-300" aria-label={zh ? '发送' : 'Send'}><PaperAirplaneIcon className="h-4 w-4" /></button>
             </div>
             <p className="mt-1.5 text-[11px] text-gray-400">{status?.product_creation_ready ? (zh ? `产品草稿默认售价 ${status.default_product_price} USD；确认后创建但不发布。` : `Product draft default: ${status.default_product_price} USD; created only after confirmation and kept unpublished.`) : (zh ? '尚未设置默认售价；AI 可分析，但不会创建产品。' : 'No default price is configured; AI can analyze but cannot create products.')}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">{zh ? 'Enter 发送，Shift+Enter 换行' : 'Enter to send, Shift+Enter for a new line'}</p>
           </form>
           </>}
         </section>

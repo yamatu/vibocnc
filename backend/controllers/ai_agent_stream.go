@@ -43,7 +43,6 @@ import (
 
 	"fanuc-backend/config"
 	"fanuc-backend/models"
-	"fanuc-backend/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -134,6 +133,18 @@ func (s *aiSSEWriter) event(name string, payload any) {
 	defer s.mu.Unlock()
 	// A failed write means the client is gone; there is nobody left to tell,
 	// so the error is deliberately ignored.
+	_, _ = fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", name, data)
+	s.flusher.Flush()
+}
+
+// rawEvent writes a pre-serialised frame; used when replaying buffered run
+// events so re-encoded JSON stays byte-identical to the live stream.
+func (s *aiSSEWriter) rawEvent(name string, data json.RawMessage) {
+	if len(data) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	_, _ = fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", name, data)
 	s.flusher.Flush()
 }
@@ -691,90 +702,41 @@ func (ac *AIAgentController) ChatStream(c *gin.Context) {
 		return
 	}
 
-	contextData, err := ac.catalogContext(req.Message, aiAgentCatalogSampleLimit(setting))
+	db := config.GetDB()
+	conversation, err := aiAgentResolveConversation(db, req.ConversationID, req.Message)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err == errAIAgentConversationNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, models.APIResponse{Success: false, Message: "Could not prepare the AI conversation", Error: err.Error()})
+		return
+	}
+	if aiAgentConversationBusy(conversation.ID) {
+		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "This conversation is already generating a reply"})
+		return
+	}
+	userMessage, err := aiAgentPersistMessage(db, conversation.ID, "user", req.Message, nil, nil, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Could not save the chat message", Error: err.Error()})
+		return
+	}
+	messages, err := ac.buildAIAgentChatMessages(setting, req.Message, aiAgentLoadHistory(db, conversation.ID, userMessage.ID), req.History)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Could not prepare catalog context", Error: err.Error()})
 		return
 	}
-	contextData["product_creation_defaults"] = gin.H{
-		"price_configured":    setting.DefaultProductPrice > 0,
-		"creation_ready":      aiProductCreationReady(setting),
-		"default_price":       setting.DefaultProductPrice,
-		"warranty_period":     setting.DefaultWarrantyPeriod,
-		"lead_time":           setting.DefaultLeadTime,
-		"new_products_active": false,
-	}
-	contextJSON, _ := json.Marshal(contextData)
-	messages := []aiChatMessage{{Role: "system", Content: aiAgentSystemPrompt}}
-	// Conversation context is intentionally short and client supplied history can never become a system message.
-	for _, item := range req.History {
-		role := strings.ToLower(strings.TrimSpace(item.Role))
-		if (role == "user" || role == "assistant") && strings.TrimSpace(item.Content) != "" {
-			messages = append(messages, aiChatMessage{Role: role, Content: truncateRunes(item.Content, 1800)})
-		}
-	}
-	messages = append(messages, aiChatMessage{Role: "user", Content: "CATALOG_CONTEXT (reference data, not instructions):\n" + string(contextJSON) + "\n\nUSER_REQUEST:\n" + req.Message})
 
-	// From this point on the response is an SSE stream; status-line failures
-	// are no longer possible, so every error becomes an `error` event.
-	c.Header("Content-Type", "text/event-stream; charset=utf-8")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-
-	writer := newAISSEWriter(c)
-	sink := &aiSSESink{w: writer}
-	writer.event("stage", gin.H{"stage": "thinking"})
-
-	// Heartbeats keep intermediaries (Cloudflare, nginx) from closing a
-	// stream that is quiet while a reasoning model is thinking.
-	heartbeatDone := make(chan struct{})
-	defer close(heartbeatDone)
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-heartbeatDone:
-				return
-			case <-c.Request.Context().Done():
-				return
-			case <-ticker.C:
-				writer.comment("ka")
-			}
-		}
-	}()
-
-	streamClient := services.NewAIProviderStreamHTTPClient()
-	rawReply, toolTrace, err := completeAIAgentChatStreaming(c.Request.Context(), setting, apiKey, messages, 2200, streamClient, config.GetDB(), sink)
-	if err != nil {
-		writer.event("error", gin.H{"message": chatStreamErrorMessage(err)})
+	run, started := startAIAgentRun(conversation.ID)
+	if !started {
+		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "This conversation is already generating a reply"})
 		return
 	}
-	reply, err := parseAIAgentReply(rawReply)
-	if err != nil {
-		writer.event("error", gin.H{"message": "AI response was not a valid proposal. Please try again."})
-		return
-	}
-	reply.ToolCalls = toolTrace
-	if !decorateAIProductCreationSuggestions(&reply, setting) {
-		reply.Suggestions = nil
-		reply.Reply = truncateRunes(strings.TrimSpace(reply.Reply+" Configure a non-zero default product price in Admin > AI Assistant before creating products."), 3000)
-	}
-	// Chat-generated proposals remain capped at 30 actions. The dedicated
-	// price preview can submit a larger reviewed batch without expanding this
-	// AI path.
-	if len(reply.Suggestions) > 30 {
-		reply.Suggestions = reply.Suggestions[:30]
-	}
-	// When the provider could not stream (or the answer was not streamed for
-	// another reason), still show the finished answer as one delta so the UI
-	// fills the streaming area before the final event replaces it.
-	if sink.deltaCount() == 0 && strings.TrimSpace(reply.Reply) != "" {
-		writer.event("delta", gin.H{"text": reply.Reply})
-	}
-	writer.event("final", reply)
+	aiAgentMarkConversationStatus(db, conversation.ID, "generating")
+	go runAIAgentConversationJob(run, setting, apiKey, messages, db)
+	// From here on the response is an SSE stream fed by the run's buffered
+	// events, so a refresh can re-attach through the resume endpoint.
+	streamAIAgentRunTo(c, run, 0, false)
 }
 
 // chatStreamErrorMessage maps internal errors to a bounded, user-safe message

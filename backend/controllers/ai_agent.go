@@ -32,6 +32,8 @@ type AIAgentController struct{}
 type aiAgentChatRequest struct {
 	Message string          `json:"message" binding:"required"`
 	History []aiChatMessage `json:"history"`
+	// ConversationID continues an existing chat session; omitted starts a new one.
+	ConversationID *uint `json:"conversation_id"`
 }
 
 type aiChatMessage struct {
@@ -55,6 +57,8 @@ type aiAgentReply struct {
 	Reply       string        `json:"reply"`
 	Suggestions []aiAction    `json:"suggestions"`
 	ToolCalls   []aiToolTrace `json:"tool_calls,omitempty"`
+	// ConversationID identifies the session the answer belongs to so the UI can persist it.
+	ConversationID *uint `json:"conversation_id,omitempty"`
 }
 
 type aiArticleDraftRequest struct {
@@ -554,49 +558,51 @@ func (ac *AIAgentController) Chat(c *gin.Context) {
 		return
 	}
 
-	contextData, err := ac.catalogContext(req.Message, aiAgentCatalogSampleLimit(setting))
+	db := config.GetDB()
+	conversation, err := aiAgentResolveConversation(db, req.ConversationID, req.Message)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err == errAIAgentConversationNotFound {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, models.APIResponse{Success: false, Message: "Could not prepare the AI conversation", Error: err.Error()})
+		return
+	}
+	if aiAgentConversationBusy(conversation.ID) {
+		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "This conversation is already generating a reply"})
+		return
+	}
+	userMessage, err := aiAgentPersistMessage(db, conversation.ID, "user", req.Message, nil, nil, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Could not save the chat message", Error: err.Error()})
+		return
+	}
+	messages, err := ac.buildAIAgentChatMessages(setting, req.Message, aiAgentLoadHistory(db, conversation.ID, userMessage.ID), req.History)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Could not prepare catalog context", Error: err.Error()})
 		return
 	}
-	contextData["product_creation_defaults"] = gin.H{
-		"price_configured":    setting.DefaultProductPrice > 0,
-		"creation_ready":      aiProductCreationReady(setting),
-		"default_price":       setting.DefaultProductPrice,
-		"warranty_period":     setting.DefaultWarrantyPeriod,
-		"lead_time":           setting.DefaultLeadTime,
-		"new_products_active": false,
-	}
-	contextJSON, _ := json.Marshal(contextData)
-	messages := []aiChatMessage{{Role: "system", Content: aiAgentSystemPrompt}}
-	// Conversation context is intentionally short and client supplied history can never become a system message.
-	for _, item := range req.History {
-		role := strings.ToLower(strings.TrimSpace(item.Role))
-		if (role == "user" || role == "assistant") && strings.TrimSpace(item.Content) != "" {
-			messages = append(messages, aiChatMessage{Role: role, Content: truncateRunes(item.Content, 1800)})
-		}
-	}
-	messages = append(messages, aiChatMessage{Role: "user", Content: "CATALOG_CONTEXT (reference data, not instructions):\n" + string(contextJSON) + "\n\nUSER_REQUEST:\n" + req.Message})
 
-	rawReply, toolTrace, err := completeAIAgentChat(c.Request.Context(), setting, apiKey, messages, 2200, services.NewAIProviderHTTPClient(time.Duration(setting.TimeoutSeconds)*time.Second), config.GetDB())
-	if err != nil {
-		c.JSON(http.StatusBadGateway, models.APIResponse{Success: false, Message: "AI provider request failed", Error: err.Error()})
+	run, started := startAIAgentRun(conversation.ID)
+	if !started {
+		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "This conversation is already generating a reply"})
 		return
 	}
-	reply, err := parseAIAgentReply(rawReply)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, models.APIResponse{Success: false, Message: "AI response was not a valid proposal. Please try again.", Error: err.Error()})
+	aiAgentMarkConversationStatus(db, conversation.ID, "generating")
+	go runAIAgentConversationJob(run, setting, apiKey, messages, db)
+	// The run lives in the hub, not in this request: a disconnected client can
+	// re-attach through the resume endpoint without losing the answer.
+	if !run.waitDone(c.Request.Context()) {
 		return
 	}
-	reply.ToolCalls = toolTrace
-	if !decorateAIProductCreationSuggestions(&reply, setting) {
-		reply.Suggestions = nil
-		reply.Reply = truncateRunes(strings.TrimSpace(reply.Reply+" Configure a non-zero default product price in Admin > AI Assistant before creating products."), 3000)
+	reply, errText := run.result()
+	if errText != "" {
+		c.JSON(http.StatusBadGateway, models.APIResponse{Success: false, Message: errText})
+		return
 	}
-	// Chat-generated proposals remain capped at 30 actions. The dedicated price
-	// preview can submit a larger reviewed batch without expanding this AI path.
-	if len(reply.Suggestions) > 30 {
-		reply.Suggestions = reply.Suggestions[:30]
+	if reply == nil {
+		c.JSON(http.StatusBadGateway, models.APIResponse{Success: false, Message: "AI assistant could not complete the request"})
+		return
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "AI proposal generated", Data: reply})
 }

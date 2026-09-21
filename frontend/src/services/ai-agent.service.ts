@@ -163,12 +163,41 @@ export interface AIAgentStreamHandlers {
   onStepEnd?: (step: { id: string; tool: string; status: 'ok' | 'error'; duration_ms: number; error?: string }) => void;
   onNote?: (text: string) => void;
   onDelta?: (text: string) => void;
+  onHello?: (info: { conversation_id: number; resumed?: boolean }) => void;
+  onIdle?: () => void;
 }
 
 export interface AIAgentReply {
   reply: string;
   suggestions: AIAgentAction[];
   tool_calls?: AIAgentToolCall[];
+  conversation_id?: number;
+}
+
+/** One persisted chat session shown in the history panel. */
+export interface AIAgentConversationSummary {
+  id: number;
+  title: string;
+  status: string;
+  updated_at: string;
+}
+
+/** One stored message of a conversation, as returned by the backend. */
+export interface AIAgentStoredMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  steps?: AIAgentStreamStep[];
+  suggestions?: AIAgentAction[];
+  tool_calls?: AIAgentToolCall[];
+  created_at?: string;
+}
+
+export interface AIAgentConversation {
+  id: number;
+  title: string;
+  status: string;
+  messages: AIAgentStoredMessage[];
 }
 
 export interface AIAgentArticleDraftRequest {
@@ -450,6 +479,96 @@ export interface AIClassificationReviewDecision {
   status?: string;
 }
 
+interface AIAgentStreamState {
+  final: AIAgentReply | null;
+  error: string;
+}
+
+type AIAgentSSECallback = (event: string, payload: Record<string, unknown>) => void;
+
+function dispatchAIAgentSSEBlock(block: string, onEvent: AIAgentSSECallback) {
+  let eventName = '';
+  const dataLines: string[] = [];
+  for (const rawLine of block.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    if (line === '' || line.startsWith(':')) continue;
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).replace(/^ /, ''));
+    }
+  }
+  if (!eventName || dataLines.length === 0) return;
+  try {
+    onEvent(eventName, JSON.parse(dataLines.join('\n')) as Record<string, unknown>);
+  } catch {
+    // Ignore malformed frames; the final event remains the source of truth.
+  }
+}
+
+async function readAIAgentSSE(response: Response, onEvent: AIAgentSSECallback): Promise<void> {
+  if (!response.body) throw new Error('AI stream is unavailable in this browser');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let separator = buffer.indexOf('\n\n');
+    while (separator !== -1) {
+      dispatchAIAgentSSEBlock(buffer.slice(0, separator), onEvent);
+      buffer = buffer.slice(separator + 2);
+      separator = buffer.indexOf('\n\n');
+    }
+  }
+  if (buffer.trim()) dispatchAIAgentSSEBlock(buffer.trim(), onEvent);
+}
+
+function handleAIAgentStreamEvent(name: string, payload: Record<string, unknown>, state: AIAgentStreamState, handlers: AIAgentStreamHandlers) {
+  switch (name) {
+    case 'hello':
+      handlers.onHello?.({ conversation_id: Number(payload.conversation_id ?? 0), resumed: Boolean(payload.resumed) });
+      break;
+    case 'idle':
+      handlers.onIdle?.();
+      break;
+    case 'stage':
+      if (typeof payload.stage === 'string') handlers.onStage?.(payload.stage);
+      break;
+    case 'note':
+      if (typeof payload.text === 'string') handlers.onNote?.(payload.text);
+      break;
+    case 'delta':
+      if (typeof payload.text === 'string') handlers.onDelta?.(payload.text);
+      break;
+    case 'step_start':
+      handlers.onStepStart?.({
+        id: String(payload.id ?? ''),
+        tool: String(payload.tool ?? ''),
+        detail: typeof payload.detail === 'string' ? payload.detail : '',
+      });
+      break;
+    case 'step_end':
+      handlers.onStepEnd?.({
+        id: String(payload.id ?? ''),
+        tool: String(payload.tool ?? ''),
+        status: payload.status === 'error' ? 'error' : 'ok',
+        duration_ms: typeof payload.duration_ms === 'number' ? payload.duration_ms : 0,
+        error: typeof payload.error === 'string' && payload.error ? payload.error : undefined,
+      });
+      break;
+    case 'final':
+      state.final = payload as unknown as AIAgentReply;
+      break;
+    case 'error':
+      if (typeof payload.message === 'string') state.error = payload.message;
+      break;
+    default:
+      break;
+  }
+}
+
 export class AIAgentService {
   static async status(): Promise<AIAgentStatus> {
     const response = await apiClient.get<APIResponse<AIAgentStatus>>('/admin/ai-agent/status');
@@ -522,28 +641,30 @@ export class AIAgentService {
     throw new Error(response.data.message || 'Unable to probe tool calling support');
   }
 
-  static async chat(message: string, history: AIAgentMessage[]): Promise<AIAgentReply> {
-    const response = await apiClient.post<APIResponse<AIAgentReply>>('/admin/ai-agent/chat', {
-      message,
-      history: history.slice(-8).map(({ role, content }) => ({ role, content })),
-    });
+  static async chat(message: string, options: { conversationId?: number | null; history?: AIAgentMessage[] } = {}): Promise<AIAgentReply> {
+    const body: Record<string, unknown> = { message };
+    if (options.conversationId) body.conversation_id = options.conversationId;
+    if (options.history?.length) {
+      body.history = options.history.slice(-8).map(({ role, content }) => ({ role, content }));
+    }
+    const response = await apiClient.post<APIResponse<AIAgentReply>>('/admin/ai-agent/chat', body);
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'AI assistant could not create a proposal');
   }
 
   /**
-   * Streaming chat. The backend emits progress events while the agent runs
-   * (stage / step_start / step_end / note / delta) and one `final` event with
-   * the same payload shape as chat(). fetch is used so the POST body and the
-   * HttpOnly session cookie work exactly like the axios calls; a caller that
-   * fails before any event arrives may fall back to the classic chat().
+   * Streaming chat. The backend persists the conversation and emits progress
+   * events while the agent runs (hello / stage / step_start / step_end / note /
+   * delta) and one `final` event with the same payload shape as chat(). fetch
+   * is used so the POST body and the HttpOnly session cookie work exactly like
+   * the axios calls; a caller that fails before any event arrives may fall
+   * back to the classic chat().
    */
   static async chatStream(
     message: string,
-    history: AIAgentMessage[],
-    handlers: AIAgentStreamHandlers,
-    signal?: AbortSignal
+    options: { conversationId?: number | null; handlers: AIAgentStreamHandlers; signal?: AbortSignal }
   ): Promise<AIAgentReply> {
+    const { conversationId = null, handlers, signal } = options;
     const token = authUtils.getToken();
     const response = await fetch('/api/v1/admin/ai-agent/chat/stream', {
       method: 'POST',
@@ -551,7 +672,7 @@ export class AIAgentService {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ message, history: history.slice(-8).map(({ role, content }) => ({ role, content })) }),
+      body: JSON.stringify({ message, ...(conversationId ? { conversation_id: conversationId } : {}) }),
       signal,
     });
     if (!response.ok || !response.body) {
@@ -564,83 +685,51 @@ export class AIAgentService {
       }
       throw new Error(detail || `AI stream failed (${response.status})`);
     }
-
-    const state: { final: AIAgentReply | null; error: string } = { final: null, error: '' };
-    const handleBlock = (block: string) => {
-      let eventName = '';
-      const dataLines: string[] = [];
-      for (const rawLine of block.split('\n')) {
-        const line = rawLine.replace(/\r$/, '');
-        if (line === '' || line.startsWith(':')) continue;
-        if (line.startsWith('event:')) {
-          eventName = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).replace(/^ /, ''));
-        }
-      }
-      if (!eventName || dataLines.length === 0) return;
-      let payload: Record<string, unknown>;
-      try {
-        payload = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
-      } catch {
-        return;
-      }
-      switch (eventName) {
-        case 'stage':
-          if (typeof payload.stage === 'string') handlers.onStage?.(payload.stage);
-          break;
-        case 'note':
-          if (typeof payload.text === 'string') handlers.onNote?.(payload.text);
-          break;
-        case 'delta':
-          if (typeof payload.text === 'string') handlers.onDelta?.(payload.text);
-          break;
-        case 'step_start':
-          handlers.onStepStart?.({
-            id: String(payload.id ?? ''),
-            tool: String(payload.tool ?? ''),
-            detail: typeof payload.detail === 'string' ? payload.detail : '',
-          });
-          break;
-        case 'step_end':
-          handlers.onStepEnd?.({
-            id: String(payload.id ?? ''),
-            tool: String(payload.tool ?? ''),
-            status: payload.status === 'error' ? 'error' : 'ok',
-            duration_ms: typeof payload.duration_ms === 'number' ? payload.duration_ms : 0,
-            error: typeof payload.error === 'string' && payload.error ? payload.error : undefined,
-          });
-          break;
-        case 'final':
-          state.final = payload as unknown as AIAgentReply;
-          break;
-        case 'error':
-          if (typeof payload.message === 'string') state.error = payload.message;
-          break;
-        default:
-          break;
-      }
-    };
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let separator = buffer.indexOf('\n\n');
-      while (separator !== -1) {
-        handleBlock(buffer.slice(0, separator));
-        buffer = buffer.slice(separator + 2);
-        separator = buffer.indexOf('\n\n');
-      }
-    }
-    if (buffer.trim()) handleBlock(buffer.trim());
-
+    const state: AIAgentStreamState = { final: null, error: '' };
+    await readAIAgentSSE(response, (event, payload) => handleAIAgentStreamEvent(event, payload, state, handlers));
     if (state.error && !state.final) throw new Error(state.error);
     if (!state.final) throw new Error('AI stream ended before the final proposal arrived');
     return state.final;
+  }
+
+  /**
+   * Re-attaches to the live run of a conversation after a refresh, a page
+   * navigation or a re-opened tab. Buffered events replay from `after` and the
+   * stream then follows the run to its end. Resolves with null when the server
+   * has no buffered run (already finished or never started).
+   */
+  static async resumeStream(conversationId: number, after: number, handlers: AIAgentStreamHandlers, signal?: AbortSignal): Promise<AIAgentReply | null> {
+    const token = authUtils.getToken();
+    const response = await fetch(`/api/v1/admin/ai-agent/conversations/${conversationId}/stream?after=${after}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal,
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`Could not resume the AI stream (${response.status})`);
+    }
+    const state: AIAgentStreamState = { final: null, error: '' };
+    await readAIAgentSSE(response, (event, payload) => handleAIAgentStreamEvent(event, payload, state, handlers));
+    if (state.error && !state.final) throw new Error(state.error);
+    return state.final;
+  }
+
+  static async conversations(): Promise<AIAgentConversationSummary[]> {
+    const response = await apiClient.get<APIResponse<AIAgentConversationSummary[]>>('/admin/ai-agent/conversations');
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to load chat history');
+  }
+
+  static async conversation(id: number): Promise<AIAgentConversation> {
+    const response = await apiClient.get<APIResponse<AIAgentConversation>>(`/admin/ai-agent/conversations/${id}`);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to load the conversation');
+  }
+
+  static async deleteConversation(id: number): Promise<void> {
+    const response = await apiClient.delete<APIResponse<null>>(`/admin/ai-agent/conversations/${id}`);
+    if (!response.data.success) throw new Error(response.data.message || 'Unable to delete the conversation');
   }
 
   static async apply(actions: AIAgentAction[]): Promise<Array<Record<string, unknown>>> {
