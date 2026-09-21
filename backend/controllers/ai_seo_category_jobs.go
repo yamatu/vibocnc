@@ -50,6 +50,11 @@ type aiSEOCategoryJobRequest struct {
 	ActivateResolved     *bool `json:"activate_resolved"`
 	UseLLMFallback       *bool `json:"use_llm_fallback"`
 	RepairContent        *bool `json:"repair_content"`
+	// UncategorizedOnly restricts the selection to products that still have no
+	// category (category_id = 0). It is how the administrator (directly or via
+	// an approved AI review proposal) repairs the unclassified backlog without
+	// touching already-categorized products.
+	UncategorizedOnly bool `json:"uncategorized_only"`
 	// ReworkOnly replaces the filter selection with the classification audit:
 	// only products that are misplaced, uncategorized, unresolved-inactive, or
 	// AI-SEO-failed are queued.
@@ -74,15 +79,76 @@ func (ac *AIAgentController) StartCategoryOptimizationJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid category optimization request", Error: err.Error()})
 		return
 	}
-	if !validAISEOJobLimit(req.Limit) {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Category optimization limit must be non-negative (0 = all)"})
-		return
-	}
-
 	db := config.GetDB()
 	if db == nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database connection failed"})
 		return
+	}
+	job, err := startCategoryOptimizationJobCore(db, req, c.GetUint("user_id"))
+	if err != nil {
+		var jobErr *categoryJobError
+		if errors.As(err, &jobErr) {
+			c.JSON(categoryJobErrorStatus(jobErr.kind), models.APIResponse{Success: false, Message: jobErr.message, Error: jobErr.detail})
+			return
+		}
+		if errors.Is(err, errAISEOProductsPending) || errors.Is(err, errAISEOJobCapacity) {
+			c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to create category optimization task", Error: err.Error()})
+		return
+	}
+	go processAIAgentSEOJob(job.ID)
+	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "Category optimization task started", Data: job})
+}
+
+// categoryJobError keeps the HTTP-specific message for a category task
+// creation failure while errors.Is still sees the sentinel kind underneath.
+type categoryJobError struct {
+	kind    error
+	message string
+	detail  string
+}
+
+func (e *categoryJobError) Error() string {
+	if e.detail != "" {
+		return e.message + ": " + e.detail
+	}
+	return e.message
+}
+
+func (e *categoryJobError) Unwrap() error { return e.kind }
+
+func categoryJobErrorStatus(kind error) int {
+	switch {
+	case errors.Is(kind, errCategoryJobAIConfig):
+		return http.StatusServiceUnavailable
+	case errors.Is(kind, errCategoryJobNoCandidates), errors.Is(kind, errCategoryJobInvalidLimit), errors.Is(kind, errCategoryJobSelection):
+		return http.StatusBadRequest
+	case errors.Is(kind, errAISEOProductsPending), errors.Is(kind, errAISEOJobCapacity):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// Category task startup failures, distinguishable with errors.Is. The HTTP
+// layer maps them onto status codes; the AI apply flow surfaces the message.
+var (
+	errCategoryJobInvalidLimit = errors.New("category optimization limit is invalid")
+	errCategoryJobNoCandidates = errors.New("no products matched the requested category optimization scope")
+	errCategoryJobAIConfig     = errors.New("AI assistant must be configured and enabled before product descriptions can be repaired")
+	errCategoryJobSelection    = errors.New("category optimization selection failed")
+)
+
+// startCategoryOptimizationJobCore creates the queued category optimization
+// task. It is shared by the admin endpoint above and the AI assistant's apply
+// flow, so both paths select candidates, encode the options and record the
+// task identically. The caller starts the worker after any surrounding
+// transaction has committed.
+func startCategoryOptimizationJobCore(db *gorm.DB, req aiSEOCategoryJobRequest, createdByID uint) (*models.AIAgentSEOJob, error) {
+	if !validAISEOJobLimit(req.Limit) {
+		return nil, &categoryJobError{kind: errCategoryJobInvalidLimit, message: "Category optimization limit must be non-negative (0 = all)"}
 	}
 	opts := aiSEOCategoryJobOptions{
 		UseWebSearch:            optionalBool(req.UseWebSearch, true),
@@ -95,45 +161,31 @@ func (ac *AIAgentController) StartCategoryOptimizationJob(c *gin.Context) {
 	if opts.RepairContent {
 		setting, _, apiKey, configErr := loadAIAgentConfigWithProfile()
 		if configErr != nil || !setting.Enabled || apiKey == "" {
-			message := "AI assistant must be configured and enabled before product descriptions can be repaired"
+			detail := ""
 			if configErr != nil {
-				message = "AI settings could not be read: " + configErr.Error()
+				detail = configErr.Error()
 			}
-			c.JSON(http.StatusServiceUnavailable, models.APIResponse{Success: false, Message: message})
-			return
+			return nil, &categoryJobError{kind: errCategoryJobAIConfig, message: errCategoryJobAIConfig.Error(), detail: detail}
 		}
 	}
 
 	products, err := findCategoryOptimizationCandidates(db, req, opts.RepairContent)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to select category optimization products", Error: err.Error()})
-		return
+		return nil, &categoryJobError{kind: errCategoryJobSelection, message: "Failed to select category optimization products", detail: err.Error()}
 	}
 	if len(products) == 0 {
 		message := "No products matched the requested category optimization scope"
 		if req.ReworkOnly {
 			message = "The classification audit found no products that need rework"
 		}
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: message})
-		return
+		return nil, &categoryJobError{kind: errCategoryJobNoCandidates, message: message}
 	}
 
 	prompt, err := encodeAISEOCategoryJobOptions(opts)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to prepare category optimization task", Error: err.Error()})
-		return
+		return nil, err
 	}
-	job, err := createCategoryOptimizationJob(db, products, prompt, c.GetUint("user_id"))
-	if err != nil {
-		if errors.Is(err, errAISEOProductsPending) || errors.Is(err, errAISEOJobCapacity) {
-			c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to create category optimization task", Error: err.Error()})
-		return
-	}
-	go processAIAgentSEOJob(job.ID)
-	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "Category optimization task started", Data: job})
+	return createCategoryOptimizationJob(db, products, prompt, createdByID)
 }
 
 func optionalBool(value *bool, fallback bool) bool {
@@ -186,6 +238,9 @@ func findCategoryOptimizationCandidates(db *gorm.DB, req aiSEOCategoryJobRequest
 	}
 	if brand := truncateRunes(strings.TrimSpace(req.Brand), 100); brand != "" {
 		query = query.Where("LOWER(products.brand) = LOWER(?)", brand)
+	}
+	if req.UncategorizedOnly {
+		query = query.Where("products.category_id = 0")
 	}
 	if search := truncateRunes(strings.TrimSpace(req.Search), 120); search != "" {
 		like := "%" + search + "%"

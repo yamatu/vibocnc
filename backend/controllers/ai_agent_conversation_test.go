@@ -47,16 +47,16 @@ func TestIsAIAgentToolNameRejectsUnknownTools(t *testing.T) {
 func TestExecuteAIAgentToolCallValidatesArguments(t *testing.T) {
 	db := dryRunDB(t)
 
-	if _, err := executeAIAgentToolCall(db, aiToolCall{Function: aiToolCallFunction{Name: "drop_table", Arguments: "{}"}}); err == nil {
+	if _, err := executeAIAgentToolCall(db, aiToolCall{Function: aiToolCallFunction{Name: "drop_table", Arguments: "{}"}}, nil); err == nil {
 		t.Fatal("an unknown tool must be rejected")
 	}
-	if _, err := executeAIAgentToolCall(db, aiToolCall{Function: aiToolCallFunction{Name: aiToolSearchProducts, Arguments: "{not json"}}); err == nil {
+	if _, err := executeAIAgentToolCall(db, aiToolCall{Function: aiToolCallFunction{Name: aiToolSearchProducts, Arguments: "{not json"}}, nil); err == nil {
 		t.Fatal("malformed arguments must be rejected")
 	}
 	if _, err := executeAIAgentToolCall(db, aiToolCall{Function: aiToolCallFunction{
 		Name:      aiToolSearchProducts,
 		Arguments: `{"query":"` + strings.Repeat("a", aiAgentMaxToolArgumentBytes+1) + `"}`,
-	}}); err == nil {
+	}}, nil); err == nil {
 		t.Fatal("oversized arguments must be rejected")
 	}
 }

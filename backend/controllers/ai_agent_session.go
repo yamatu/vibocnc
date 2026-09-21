@@ -405,7 +405,7 @@ func runAIAgentConversationJob(run *aiAgentRun, setting *models.AIAgentSetting, 
 	sink := &aiAgentRunSink{run: run}
 	run.append("stage", gin.H{"stage": "thinking"})
 	client := services.NewAIProviderStreamHTTPClient()
-	rawReply, toolTrace, err := completeAIAgentChatStreaming(ctx, setting, apiKey, messages, 2200, client, db, sink)
+	rawReply, toolTrace, pendingSuggestions, err := completeAIAgentChatStreaming(ctx, setting, apiKey, messages, 2200, client, db, sink)
 	if err != nil {
 		message := chatStreamErrorMessage(err)
 		run.append("error", gin.H{"message": message})
@@ -426,6 +426,9 @@ func runAIAgentConversationJob(run *aiAgentRun, setting *models.AIAgentSetting, 
 		reply.Suggestions = nil
 		reply.Reply = truncateRunes(strings.TrimSpace(reply.Reply+" Configure a non-zero default product price in Admin > AI Assistant before creating products."), 3000)
 	}
+	// Review proposals produced by the write tools are prepended so the action
+	// cap below can never truncate an action the tools already validated.
+	reply.Suggestions = mergeAIAgentPendingSuggestions(pendingSuggestions, reply.Suggestions)
 	// Chat-generated proposals remain capped at 30 actions. The dedicated
 	// price preview can submit a larger reviewed batch without expanding this
 	// AI path.

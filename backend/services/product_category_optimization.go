@@ -17,8 +17,10 @@ import (
 
 // ProductCategoryOptimizationOptions controls the explicit administrator-only
 // taxonomy repair flow. Category creation is deliberately opt-in and is not
-// used by imports, ordinary AI SEO jobs, or the AI assistant. The dedicated
-// administrator category-only background job is the sole queued caller.
+// used by imports or ordinary AI SEO jobs. It is reached through two
+// administrator-approved callers only: the dedicated category-only background
+// job, and review proposals the AI assistant attaches for the administrator to
+// apply (the assistant itself can never create a category).
 type ProductCategoryOptimizationOptions struct {
 	UseWebSearch            bool
 	CreateMissingCategories bool
@@ -363,6 +365,17 @@ func resolveOrCreateCategoryForInferenceWithGuard(db *gorm.DB, inference Product
 	return categoryID, created, nil
 }
 
+// ResolveOrCreateCategoryForAdministrator is the administrator-approved entry
+// point for creating a category node from a verified inference. allowNewTypes
+// must be explicitly requested by the administrator (an AI proposal carries it
+// only when the administrator asked for a new type); without it the product
+// type must already belong to the catalog vocabulary. Creation reuses the
+// same guard as the category optimization job, so it stays serialized and
+// duplicate-safe.
+func ResolveOrCreateCategoryForAdministrator(db *gorm.DB, inference ProductCategoryInference, allowNewTypes bool) (uint, bool, error) {
+	return resolveOrCreateCategoryForInferenceWithGuard(db, inference, nil, allowNewTypes)
+}
+
 func inferAdminNameCategory(brand, model, productName string) (ProductCategoryInference, bool) {
 	model = NormalizeProductModel(model)
 	productName = strings.TrimSpace(productName)
@@ -610,4 +623,40 @@ func uniqueCategorySlug(db *gorm.DB, base string) (string, error) {
 func uintPtrForCategoryOptimization(value uint) *uint {
 	copy := value
 	return &copy
+}
+
+// BuildAdministratorCategoryInference constructs the classification inference
+// used when an administrator-approved flow creates a category from a
+// brand/product-type pair. The synthetic rule keeps the decision auditable: it
+// never claims web or AI verification the request does not have, and it only
+// passes for brands on the verified brand registry. Every other brand must go
+// through the web-verified category optimization task instead.
+func BuildAdministratorCategoryInference(brand, productType string) (ProductCategoryInference, error) {
+	brandKey := NormalizeBrandKey(brand)
+	if brandKey == "" || strings.EqualFold(brandKey, "unknown") {
+		return ProductCategoryInference{}, errors.New("brand could not be identified")
+	}
+	brandName := CanonicalBrandName(brandKey)
+	if brandName == "" {
+		brandName = strings.TrimSpace(brand)
+	}
+	typeName := CanonicalProductType(productType)
+	if strings.TrimSpace(typeName) == "" || IsGenericProductType(typeName) {
+		return ProductCategoryInference{}, errors.New("a specific product type is required; generic placeholders cannot become categories")
+	}
+	slug := utils.GenerateSlug(typeName)
+	if slug == "" {
+		return ProductCategoryInference{}, errors.New("the product type could not be converted into a URL slug")
+	}
+	rule := "admin-category:" + slug
+	if !isClassificationBrandAllowed(brandKey, rule) {
+		return ProductCategoryInference{}, fmt.Errorf("brand %q is not on the verified brand list; use the web-verified category optimization task instead", strings.TrimSpace(brand))
+	}
+	return ProductCategoryInference{
+		BrandKey:     brandKey,
+		BrandName:    brandName,
+		PartType:     typeName,
+		CategorySlug: slug,
+		MatchRule:    rule,
+	}, nil
 }

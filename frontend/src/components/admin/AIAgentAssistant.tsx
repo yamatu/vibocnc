@@ -64,11 +64,13 @@ const SUGGESTED_PROMPTS = [
   'A06B-XXXX（如果不存在，创建未发布产品草稿；只能使用现有品牌和产品类型分类）',
   '检查 SKU A06B-XXXX 的分类是否正确，并给出 SEO 优化建议',
   '为 FANUC 伺服驱动分类生成中文、德语 SEO 内容',
-  '检查现有分类；没有能确认品牌和产品类型的分类时请标记待人工审核',
+  '列出未分类的商品，并启动分类任务把缺失的分类按核验结果自动创建',
 ];
 
 const actionLabels: Record<string, { zh: string; en: string }> = {
-  create_category: { zh: '分类待人工审核', en: 'Category needs review' },
+  create_category: { zh: '创建新分类', en: 'Create category' },
+  assign_product_category: { zh: '商品归类调整', en: 'Product category assignment' },
+  start_category_optimization: { zh: '批量分类优化任务', en: 'Bulk category optimization task' },
   create_product: { zh: '新建产品草稿', en: 'New product draft' },
   update_product: { zh: '商品分类 / SEO 优化', en: 'Product category / SEO update' },
   update_product_price: { zh: '商品售价修改', en: 'Product sale price update' },
@@ -85,6 +87,10 @@ const toolLabels: Record<string, { zh: string; en: string }> = {
   list_categories: { zh: '读取分类', en: 'Listed categories' },
   count_products: { zh: '统计商品', en: 'Counted products' },
   seo_gap_report: { zh: 'SEO 缺口统计', en: 'SEO gap report' },
+  list_uncategorized_products: { zh: '查询未分类商品', en: 'Listed uncategorized products' },
+  assign_product_category: { zh: '分类调整建议', en: 'Category assignment proposal' },
+  create_category: { zh: '创建分类建议', en: 'Category creation proposal' },
+  start_category_optimization: { zh: '分类任务建议', en: 'Category task proposal' },
 };
 
 // Streaming chat state for the in-flight run. It becomes the completed
@@ -190,8 +196,25 @@ function actionSummary(action: AIAgentAction, zh: boolean) {
   switch (action.type) {
     case 'create_category':
       return zh
-        ? `无法自动确认现有分类「${displayValue(d.name)}」，请由管理员在分类管理页维护后再审核产品`
-        : `No verified existing category for “${displayValue(d.name)}”; an administrator must maintain the taxonomy before review`;
+        ? `创建分类「${displayValue(d.brand)} > ${displayValue(d.product_type)}」${d.new_type ? '（新类型：将创建公开分类节点，请确认名称）' : ''}`
+        : `Create category “${displayValue(d.brand)} > ${displayValue(d.product_type)}”${d.new_type ? ' (new type — a public category node will be created)' : ''}`;
+    case 'assign_product_category':
+      return zh
+        ? `商品「${displayValue(d.product_sku || d.product_id)}」归入分类「${displayValue(d.category_path || d.category_id)}」`
+        : `Move product “${displayValue(d.product_sku || d.product_id)}” into “${displayValue(d.category_path || d.category_id)}”`;
+    case 'start_category_optimization': {
+      const count = displayValue(d.product_count);
+      const scopeLabels: Record<string, { zh: string; en: string }> = {
+        uncategorized: { zh: `全部未分类商品（${count} 个）`, en: `all uncategorized products (${count})` },
+        brand: { zh: `品牌「${displayValue(d.brand)}」的商品`, en: `products of brand “${displayValue(d.brand)}”` },
+        rework: { zh: '按分类审计处理的待返修商品', en: 'products from the classification audit' },
+        products: { zh: `指定的 ${count} 个商品`, en: `${count} selected products` },
+      };
+      const scopeLabel = scopeLabels[String(d.scope)] || { zh: '商品', en: 'products' };
+      return zh
+        ? `启动后台分类任务：${scopeLabel.zh}；系统联网核验品牌/型号后归类，缺失分类会自动创建`
+        : `Start the background category task for ${scopeLabel.en}; brands/types are web-verified and missing categories are created automatically`;
+    }
     case 'create_product':
       return zh
         ? `创建未发布产品「${displayValue(d.name || d.model)}」；售价 ${displayValue(d.default_price)} USD，质保 ${displayValue(d.warranty_period)}，交期 ${displayValue(d.lead_time)}`
@@ -228,8 +251,8 @@ function ProposalCard({ action, onApply, applying, applied, requiresBatch }: {
   const [expanded, setExpanded] = useState(false);
   const zh = locale === 'zh';
   const label = actionLabels[action.type]?.[zh ? 'zh' : 'en'] || action.title;
-  const blockedCategoryProposal = action.type === 'create_category';
-  const entries = Object.entries(action.data || {}).filter(([key]) => key !== 'client_key' && key !== 'category_client_key');
+  const newTypeProposal = action.type === 'create_category' && Boolean(action.data?.new_type);
+  const entries = Object.entries(action.data || {}).filter(([key]) => key !== 'client_key' && key !== 'category_client_key' && key !== 'new_type' && key !== 'allow_new_product_types');
 
   return (
     <article className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-sm">
@@ -242,9 +265,9 @@ function ProposalCard({ action, onApply, applying, applied, requiresBatch }: {
           <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-700">
             <CheckCircleIcon className="h-4 w-4" /> {zh ? '已应用' : 'Applied'}
           </span>
-        ) : blockedCategoryProposal ? (
+        ) : newTypeProposal ? (
           <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-800">
-            {zh ? '仅供人工审核' : 'Review only'}
+            {zh ? '将创建新类型' : 'New type'}
           </span>
         ) : requiresBatch ? (
           <span className="shrink-0 rounded-md border border-violet-200 bg-white px-2 py-1 text-[10px] font-medium text-violet-700">
@@ -257,7 +280,11 @@ function ProposalCard({ action, onApply, applying, applied, requiresBatch }: {
             onClick={onApply}
             className="shrink-0 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {applying ? (zh ? '应用中...' : 'Applying...') : (zh ? '应用' : 'Apply')}
+            {applying
+              ? (zh ? '应用中...' : 'Applying...')
+              : action.type === 'start_category_optimization'
+                ? (zh ? '启动任务' : 'Start task')
+                : (zh ? '应用' : 'Apply')}
           </button>
         )}
       </div>
@@ -469,7 +496,6 @@ export default function AIAgentAssistant() {
     if (sendingRef.current) return;
     lastLoadedConversationRef.current = conversationId;
     void loadConversation(conversationId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, conversationId]);
 
   // Opening the panel replaces the compact launcher with a much larger surface,
@@ -576,7 +602,9 @@ export default function AIAgentAssistant() {
     try {
       await AIAgentService.apply([action]);
       setAppliedKeys((previous) => [...previous, key]);
-      toast.success(zh ? '建议已应用，网站缓存将自动刷新。' : 'Suggestion applied. Public cache will refresh automatically.');
+      toast.success(action.type === 'start_category_optimization'
+        ? (zh ? '分类任务已启动，可到分类页或 AI SEO 页面查看进度。' : 'Category task started — track progress on the categories or AI SEO page.')
+        : (zh ? '建议已应用，网站缓存将自动刷新。' : 'Suggestion applied. Public cache will refresh automatically.'));
     } catch (error: unknown) {
       const detail = errorMessage(error);
       toast.error(detail || (zh ? '应用建议失败' : 'Could not apply suggestion'));
@@ -586,7 +614,9 @@ export default function AIAgentAssistant() {
   };
 
   const applyGroup = async (actions: AIAgentAction[], messageIndex: number) => {
-    const applicable = actions.filter((action) => action.type !== 'create_category');
+    // Proposals that would create a brand-new public type stay out of a batch
+    // apply; each one gets an individual review instead.
+    const applicable = actions.filter((action) => !(action.type === 'create_category' && action.data?.allow_new_product_types === true));
     const unapplied = applicable.filter((action) => {
       const actionIndex = actions.indexOf(action);
       return !appliedKeys.includes(`${messageIndex}-${actionIndex}`);
@@ -595,9 +625,8 @@ export default function AIAgentAssistant() {
     const batchKey = `all-${messageIndex}`;
     setApplyingKey(batchKey);
     try {
-      // Category proposals are review-only. The server rejects them and the
-      // taxonomy is maintained by administrators, so omit them from a batch
-      // apply instead of letting one stale proposal roll back valid actions.
+      // New-type category creations are excluded above so one deliberately
+      // reviewed proposal cannot slip through a batch apply.
       await AIAgentService.apply(unapplied);
       setAppliedKeys((previous) => [
         ...previous,
@@ -606,7 +635,7 @@ export default function AIAgentAssistant() {
           .filter((key) => !previous.includes(key)),
       ]);
       const reviewCount = actions.length - applicable.length;
-      const suffix = reviewCount > 0 ? (zh ? `，${reviewCount} 条分类建议需人工审核` : `; ${reviewCount} category proposal(s) require review`) : '';
+      const suffix = reviewCount > 0 ? (zh ? `，${reviewCount} 条新类型分类建议需单独审核` : `; ${reviewCount} new-type category proposal(s) require individual review`) : '';
       toast.success(zh ? `已应用 ${unapplied.length} 条建议${suffix}，网站缓存将自动刷新。` : `${unapplied.length} suggestions applied${suffix}. Public cache will refresh automatically.`);
     } catch (error: unknown) {
       toast.error(errorMessage(error) || (zh ? '应用建议失败' : 'Could not apply suggestions'));
@@ -751,7 +780,7 @@ export default function AIAgentAssistant() {
                   </ul>
                 )}
                 {message.suggestions && message.suggestions.length > 0 && <div className="mt-2 space-y-2">
-                  {message.suggestions.length > 1 && message.suggestions.some((action, actionIndex) => action.type !== 'create_category' && !appliedKeys.includes(`${messageIndex}-${actionIndex}`)) && (
+                  {message.suggestions.length > 1 && message.suggestions.some((action, actionIndex) => !(action.type === 'create_category' && action.data?.allow_new_product_types === true) && !appliedKeys.includes(`${messageIndex}-${actionIndex}`)) && (
                     <button
                       type="button"
                       onClick={() => applyGroup(message.suggestions || [], messageIndex)}

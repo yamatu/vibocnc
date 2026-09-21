@@ -7,7 +7,9 @@ export type AIAgentActionType =
   | 'update_product'
   | 'update_product_price'
   | 'upsert_product_translation'
-  | 'upsert_category_translation';
+  | 'upsert_category_translation'
+  | 'assign_product_category'
+  | 'start_category_optimization';
 
 export interface AIAgentAction {
   type: AIAgentActionType;
