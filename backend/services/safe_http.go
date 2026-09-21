@@ -229,3 +229,34 @@ func newPublicHTTPClient(timeout time.Duration) *http.Client {
 func NewPublicHTTPClient(timeout time.Duration) *http.Client {
 	return newPublicHTTPClient(timeout)
 }
+
+// NewAIProviderStreamHTTPClient returns the client used for streaming AI
+// provider requests. Unlike NewAIProviderHTTPClient it carries no overall
+// timeout, because a stream must be allowed to outlive the non-streaming
+// budget; callers bound each request with a context deadline instead. The
+// SSRF guard and connection pool are shared with the other provider clients.
+func NewAIProviderStreamHTTPClient() *http.Client {
+	if !AIProviderAllowPrivateAddresses() {
+		return &http.Client{
+			Transport: publicTransport,
+			CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+				if _, err := validatePublicHTTPURL(req.URL.String()); err != nil {
+					return err
+				}
+				return nil
+			},
+		}
+	}
+	aiProviderTransportOnce.Do(func() {
+		aiProviderTransport = newAIProviderTransport()
+	})
+	return &http.Client{
+		Transport: aiProviderTransport,
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			if _, err := validateOutboundURL(req.URL.String(), true); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+}

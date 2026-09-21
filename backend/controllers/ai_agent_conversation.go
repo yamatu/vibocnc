@@ -29,6 +29,12 @@ import (
 // until it has enough evidence, then requires the same JSON proposal contract as
 // before. It is deliberately bounded in turns, calls per turn and total tool
 // payload, so a misbehaving model cannot turn one click into an unbounded bill.
+//
+// The loop also emits real-time progress through an optional aiAgentEventSink
+// (used by the streaming /chat/stream endpoint): step start/end events around
+// every tool execution, grey narration notes, and — when the provider supports
+// it — the final answer text streamed as it is generated. The non-streaming
+// /chat endpoint passes a nil sink and keeps its exact previous behaviour.
 // ---------------------------------------------------------------------------
 
 const (
@@ -54,7 +60,20 @@ TOOL USE: You can call read-only catalog tools before answering: search_products
 - Only ids returned by a tool may appear in your suggestions. Never invent a product id or category id.
 - Call list_categories before proposing a category_id, and get_product before proposing a change to an existing product.
 - If a lookup returns nothing, say so and ask one concise question instead of proposing a change.
-- When you have enough evidence, answer with the single JSON object required by the system prompt and make no tool call.`
+- When you have enough evidence, answer with the single JSON object required by the system prompt and make no tool call.
+- While you are still gathering data you may write one short progress sentence in Chinese before your tool calls; it is shown to the administrator as a grey status line. Your final answer must still be the single JSON object with no surrounding text.`
+
+// aiAgentEventSink receives real-time progress for the streaming chat
+// endpoint. It is implemented by the SSE sink; a nil sink is ignored, which
+// keeps the non-streaming path identical to before.
+type aiAgentEventSink interface {
+	Stage(stage string)
+	Note(text string)
+	Delta(text string)
+	StepStart(id, tool, detail string)
+	StepEnd(id, tool, status, errText string, durationMS int64)
+	Emitted() bool
+}
 
 // aiToolsUnsupportedProviders remembers providers that rejected the tools field
 // so the assistant downgrades once per provider instead of paying a failed
@@ -125,6 +144,14 @@ func looksLikeUnsupportedTools(err error) bool {
 // path used to return, so the existing JSON parsing and validation downstream is
 // unchanged.
 func runAIAgentConversation(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int, client *http.Client, db *gorm.DB) (string, []aiToolTrace, error) {
+	return runAIAgentConversationWithEvents(ctx, setting, apiKey, messages, maxTokens, client, db, nil, false)
+}
+
+// runAIAgentConversationWithEvents is the loop implementation. When sink is
+// non-nil it receives live progress; when stream is true each provider call
+// uses SSE streaming (falling back to non-streamed calls happens in the
+// caller so the downgrade is remembered once per provider).
+func runAIAgentConversationWithEvents(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int, client *http.Client, db *gorm.DB, sink aiAgentEventSink, stream bool) (string, []aiToolTrace, error) {
 	trace := make([]aiToolTrace, 0, 4)
 	conversation := make([]aiChatMessage, 0, len(messages)+8)
 	conversation = append(conversation, messages...)
@@ -139,11 +166,16 @@ func runAIAgentConversation(ctx context.Context, setting *models.AIAgentSetting,
 			request.ToolChoice = "none"
 		}
 
-		message, err := requestAIAgentMessage(ctx, setting, apiKey, request, client)
+		message, err := requestAIAgentTurn(ctx, setting, apiKey, request, client, stream, sink)
 		if err != nil {
 			if turn == 0 && looksLikeUnsupportedTools(err) {
 				markAIToolsUnsupported(setting)
 				return "", nil, errAIAgentToolsUnsupported
+			}
+			// A provider that rejects the stream flag can be downgraded safely
+			// only while nothing visible has been emitted yet.
+			if turn == 0 && stream && looksLikeUnsupportedStream(err) && (sink == nil || !sink.Emitted()) {
+				return "", nil, errAIAgentStreamUnsupported
 			}
 			return "", trace, err
 		}
@@ -165,9 +197,19 @@ func runAIAgentConversation(ctx context.Context, setting *models.AIAgentSetting,
 		if len(calls) > aiAgentMaxToolCallsPerTurn {
 			calls = calls[:aiAgentMaxToolCallsPerTurn]
 		}
-		for _, call := range calls {
-			entry := aiToolTrace{Tool: call.Function.Name, Detail: describeAIAgentToolCall(call)}
+		if sink != nil {
+			sink.Stage("tools")
+		}
+		for index, call := range calls {
+			stepID := fmt.Sprintf("%d-%d", turn, index)
+			detail := describeAIAgentToolCall(call)
+			if sink != nil {
+				sink.StepStart(stepID, call.Function.Name, detail)
+			}
+			started := time.Now()
+			entry := aiToolTrace{Tool: call.Function.Name, Detail: detail}
 			result, toolErr := executeAIAgentToolCall(db, call)
+			durationMS := time.Since(started).Milliseconds()
 			payload, marshalErr := json.Marshal(result)
 			if marshalErr != nil {
 				payload = []byte(`{"error":"the tool result could not be serialised"}`)
@@ -184,6 +226,15 @@ func runAIAgentConversation(ctx context.Context, setting *models.AIAgentSetting,
 			}
 			toolPayloadBytes += len(payload)
 			trace = append(trace, entry)
+			if sink != nil {
+				status := "ok"
+				errText := ""
+				if entry.Error != "" {
+					status = "error"
+					errText = entry.Error
+				}
+				sink.StepEnd(stepID, call.Function.Name, status, errText, durationMS)
+			}
 			conversation = append(conversation, aiChatMessage{
 				Role: "tool", ToolCallID: call.ID, Name: call.Function.Name, Content: string(payload),
 			})
@@ -203,6 +254,99 @@ func runAIAgentConversation(ctx context.Context, setting *models.AIAgentSetting,
 		return "", trace, errors.New("AI provider returned an empty response")
 	}
 	return content, trace, nil
+}
+
+// requestAIAgentTurn performs one provider request, streamed or not. In
+// streaming mode the assistant's content fragments, progress notes and (for
+// the final answer) incremental reply text are forwarded to the sink as they
+// arrive.
+func requestAIAgentTurn(ctx context.Context, setting *models.AIAgentSetting, apiKey string, request openAIChatRequest, client *http.Client, stream bool, sink aiAgentEventSink) (aiChatMessage, error) {
+	if !stream || sink == nil {
+		return requestAIAgentMessage(ctx, setting, apiKey, request, client)
+	}
+	request.Stream = true
+	extractor := newAIStreamReplyExtractor(sink)
+	message, err := requestAIAgentMessageStream(ctx, setting, apiKey, request, client, extractor.feed)
+	extractor.finish()
+	return message, err
+}
+
+// completeAIAgentChat runs the tool loop when it is usable and transparently
+// falls back to the previous single-shot request otherwise, so an existing
+// installation on a provider without tool support keeps working unchanged.
+func completeAIAgentChat(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int, client *http.Client, db *gorm.DB) (string, []aiToolTrace, error) {
+	if !aiAgentToolsEnabled() || aiToolsUnsupportedFor(setting) {
+		content, err := requestAIAgentCompletionWithClient(ctx, setting, apiKey, messages, maxTokens, client)
+		return content, nil, err
+	}
+	agentMessages := append([]aiChatMessage{{Role: "system", Content: aiAgentToolPromptAddendum}}, messages...)
+	content, trace, err := runAIAgentConversation(ctx, setting, apiKey, agentMessages, maxTokens, client, db)
+	if errors.Is(err, errAIAgentToolsUnsupported) {
+		content, fallbackErr := requestAIAgentCompletionWithClient(ctx, setting, apiKey, messages, maxTokens, client)
+		return content, nil, fallbackErr
+	}
+	return content, trace, err
+}
+
+// completeAIAgentChatStreaming is the streaming variant used by ChatStream.
+// It emits progress through the sink, prefers streamed provider calls, and
+// downgrades at most once per capability (tools, then streaming) so a
+// provider that rejects either feature is remembered instead of paying a
+// failed request on every turn.
+func completeAIAgentChatStreaming(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int, client *http.Client, db *gorm.DB, sink aiAgentEventSink) (string, []aiToolTrace, error) {
+	withTools := aiAgentToolsEnabled() && !aiToolsUnsupportedFor(setting)
+	stream := aiAgentStreamEnabled() && !aiStreamUnsupportedFor(setting)
+
+	run := func(useTools bool, useStream bool) (string, []aiToolTrace, error) {
+		if !useTools {
+			return singleShotAIAgentChat(ctx, setting, apiKey, messages, maxTokens, client, sink, useStream)
+		}
+		agentMessages := append([]aiChatMessage{{Role: "system", Content: aiAgentToolPromptAddendum}}, messages...)
+		return runAIAgentConversationWithEvents(ctx, setting, apiKey, agentMessages, maxTokens, client, db, sink, useStream)
+	}
+
+	for attempt := 0; attempt < 3; attempt++ {
+		content, trace, err := run(withTools, stream)
+		if err == nil {
+			return content, trace, nil
+		}
+		if errors.Is(err, errAIAgentToolsUnsupported) && withTools {
+			withTools = false
+			continue
+		}
+		if errors.Is(err, errAIAgentStreamUnsupported) && stream {
+			markAIStreamUnsupported(setting)
+			stream = false
+			continue
+		}
+		return "", nil, err
+	}
+	return "", nil, errors.New("AI assistant could not complete the request")
+}
+
+// singleShotAIAgentChat is the no-tools fallback, either streamed (so the
+// final answer still types itself out) or plain.
+func singleShotAIAgentChat(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int, client *http.Client, sink aiAgentEventSink, stream bool) (string, []aiToolTrace, error) {
+	if !stream || sink == nil {
+		content, err := requestAIAgentCompletionWithClient(ctx, setting, apiKey, messages, maxTokens, client)
+		return content, nil, err
+	}
+	request := buildOpenAIChatRequest(setting, messages, maxTokens)
+	request.Stream = true
+	extractor := newAIStreamReplyExtractor(sink)
+	message, err := requestAIAgentMessageStream(ctx, setting, apiKey, request, client, extractor.feed)
+	if err != nil {
+		if looksLikeUnsupportedStream(err) {
+			return "", nil, errAIAgentStreamUnsupported
+		}
+		return "", nil, err
+	}
+	extractor.finish()
+	content := finalAIAgentContent(message)
+	if content == "" {
+		return "", nil, errors.New("AI provider returned an empty response")
+	}
+	return content, nil, nil
 }
 
 func finalAIAgentContent(message aiChatMessage) string {
@@ -237,21 +381,4 @@ func isAIAgentToolName(name string) bool {
 		}
 	}
 	return false
-}
-
-// completeAIAgentChat runs the tool loop when it is usable and transparently
-// falls back to the previous single-shot request otherwise, so an existing
-// installation on a provider without tool support keeps working unchanged.
-func completeAIAgentChat(ctx context.Context, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, maxTokens int, client *http.Client, db *gorm.DB) (string, []aiToolTrace, error) {
-	if !aiAgentToolsEnabled() || aiToolsUnsupportedFor(setting) {
-		content, err := requestAIAgentCompletionWithClient(ctx, setting, apiKey, messages, maxTokens, client)
-		return content, nil, err
-	}
-	agentMessages := append([]aiChatMessage{{Role: "system", Content: aiAgentToolPromptAddendum}}, messages...)
-	content, trace, err := runAIAgentConversation(ctx, setting, apiKey, agentMessages, maxTokens, client, db)
-	if errors.Is(err, errAIAgentToolsUnsupported) {
-		content, fallbackErr := requestAIAgentCompletionWithClient(ctx, setting, apiKey, messages, maxTokens, client)
-		return content, nil, fallbackErr
-	}
-	return content, trace, err
 }

@@ -19,9 +19,14 @@ import {
   AIAgentAction,
   AI_AGENT_CONFIG_CHANGED_EVENT,
   AIAgentMessage,
+  AIAgentReply,
   AIAgentService,
   AIAgentStatus,
+  AIAgentStreamStep,
 } from '@/services/ai-agent.service';
+import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAdminI18n } from '@/lib/admin-i18n';
 import { useDraggableWidget } from '@/hooks/useDraggableWidget';
 import AIPriceSyncPanel from '@/components/admin/AIPriceSyncPanel';
@@ -55,6 +60,82 @@ const toolLabels: Record<string, { zh: string; en: string }> = {
   count_products: { zh: '统计商品', en: 'Counted products' },
   seo_gap_report: { zh: 'SEO 缺口统计', en: 'SEO gap report' },
 };
+
+// Streaming chat state for the in-flight run. It becomes the completed
+// message's step timeline once the final proposal arrives.
+type LiveAssistantState = {
+  stage: string;
+  steps: AIAgentStreamStep[];
+  notes: string[];
+  text: string;
+};
+
+const emptyLiveState = (): LiveAssistantState => ({ stage: 'thinking', steps: [], notes: [], text: '' });
+
+function formatStepDuration(durationMs: number) {
+  if (durationMs >= 1000) return `${(durationMs / 1000).toFixed(1)}s`;
+  return `${durationMs}ms`;
+}
+
+function StepStatusIcon({ status }: { status: AIAgentStreamStep['status'] }) {
+  if (status === 'ok') return <CheckCircleIcon className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden="true" />;
+  if (status === 'error') return <ExclamationTriangleIcon className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden="true" />;
+  return <ArrowPathIcon className="h-3.5 w-3.5 shrink-0 animate-spin text-violet-500" aria-hidden="true" />;
+}
+
+// One line per tool execution with status and duration, mirroring the live
+// agent run the backend reports through the streaming endpoint.
+function AssistantSteps({ steps, zh }: { steps: AIAgentStreamStep[]; zh: boolean }) {
+  if (steps.length === 0) return null;
+  return (
+    <ul className="mb-1.5 space-y-0.5 border-b border-slate-100 pb-1.5 text-[11px] leading-5" aria-label={zh ? '执行步骤' : 'Execution steps'}>
+      {steps.map((step) => (
+        <li key={step.id} className="flex items-center gap-1.5 text-slate-500">
+          <StepStatusIcon status={step.status} />
+          <span className={`shrink-0 font-medium ${step.status === 'error' ? 'text-amber-700' : 'text-slate-600'}`}>
+            {toolLabels[step.tool]?.[zh ? 'zh' : 'en'] || step.tool}
+          </span>
+          {step.detail && <span className="truncate text-slate-400">{step.detail}</span>}
+          {step.status === 'running' && <span className="shrink-0 text-violet-500">{zh ? '执行中…' : 'running…'}</span>}
+          {step.status === 'ok' && <span className="shrink-0 text-slate-400">{formatStepDuration(step.duration_ms ?? 0)}</span>}
+          {step.status === 'error' && step.error && <span className="truncate text-amber-600">{step.error}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Answers are rendered as Markdown. react-markdown never injects raw HTML, so
+// model output stays inert; the components map keeps the typography compact
+// inside the chat bubble.
+const markdownComponents: Components = {
+  h1: ({ children }) => <h3 className="mb-1 mt-3 text-sm font-semibold first:mt-0">{children}</h3>,
+  h2: ({ children }) => <h4 className="mb-1 mt-3 text-sm font-semibold first:mt-0">{children}</h4>,
+  h3: ({ children }) => <h5 className="mb-1 mt-2 text-xs font-semibold first:mt-0">{children}</h5>,
+  h4: ({ children }) => <h5 className="mb-1 mt-2 text-xs font-semibold first:mt-0">{children}</h5>,
+  p: ({ children }) => <p className="my-1.5 first:mt-0 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="my-1.5 list-disc space-y-0.5 pl-5 first:mt-0 last:mb-0">{children}</ul>,
+  ol: ({ children }) => <ol className="my-1.5 list-decimal space-y-0.5 pl-5 first:mt-0 last:mb-0">{children}</ol>,
+  li: ({ children }) => <li className="leading-5">{children}</li>,
+  code: ({ children }) => <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-800">{children}</code>,
+  pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-md bg-slate-900 p-2 font-mono text-[11px] leading-4 text-slate-100">{children}</pre>,
+  a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" className="text-violet-700 underline">{children}</a>,
+  table: ({ children }) => <div className="my-2 overflow-x-auto"><table className="w-full border-collapse text-[11px]">{children}</table></div>,
+  th: ({ children }) => <th className="border border-slate-200 bg-slate-50 px-1.5 py-1 text-left font-semibold">{children}</th>,
+  td: ({ children }) => <td className="border border-slate-200 px-1.5 py-1 align-top">{children}</td>,
+  blockquote: ({ children }) => <blockquote className="my-1.5 border-l-2 border-slate-300 pl-2 text-slate-600">{children}</blockquote>,
+  hr: () => <hr className="my-2 border-slate-200" />,
+};
+
+function MarkdownBlock({ content }: { content: string }) {
+  return (
+    <div className="ai-markdown break-words">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function displayValue(value: unknown) {
   if (value === null || value === undefined || value === '') return '—';
@@ -186,8 +267,18 @@ export default function AIAgentAssistant() {
   const [sending, setSending] = useState(false);
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [appliedKeys, setAppliedKeys] = useState<string[]>([]);
+  const [live, setLive] = useState<LiveAssistantState | null>(null);
+  const liveRef = useRef<LiveAssistantState | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const drag = useDraggableWidget(AI_AGENT_POSITION_STORAGE_KEY);
+
+  // Streaming state mirrors the in-flight run so it can become the completed
+  // message (including its step timeline) once the final proposal arrives.
+  const updateLive = (mutate: (current: LiveAssistantState) => LiveAssistantState) => {
+    if (!liveRef.current) return;
+    liveRef.current = mutate(liveRef.current);
+    setLive(liveRef.current);
+  };
 
   // Opening the panel replaces the compact launcher with a much larger surface,
   // so the stored spot has to be re-anchored and re-checked against the viewport.
@@ -213,25 +304,55 @@ export default function AIAgentAssistant() {
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, sending, open]);
+  }, [messages, sending, open, live]);
 
   const send = async (event?: FormEvent, suggested?: string) => {
     event?.preventDefault();
     const text = (suggested || input).trim();
     if (!text || sending || !status?.configured) return;
     const userMessage: AIAgentMessage = { role: 'user', content: text };
-    const history = [...messages, userMessage];
-    setMessages(history);
+    setMessages((previous) => [...previous, userMessage]);
     setInput('');
     setSending(true);
+    liveRef.current = emptyLiveState();
+    setLive(liveRef.current);
+
+    const finalize = (reply: AIAgentReply) => {
+      const steps = liveRef.current?.steps || [];
+      setMessages((previous) => [...previous, { role: 'assistant', content: reply.reply, suggestions: reply.suggestions || [], toolCalls: reply.tool_calls || [], steps }]);
+    };
+
     try {
-      const reply = await AIAgentService.chat(text, messages);
-      setMessages((previous) => [...previous, { role: 'assistant', content: reply.reply, suggestions: reply.suggestions || [], toolCalls: reply.tool_calls || [] }]);
+      let reply: AIAgentReply;
+      try {
+        reply = await AIAgentService.chatStream(text, messages, {
+          onStage: (stage) => updateLive((current) => ({ ...current, stage })),
+          onStepStart: (step) => updateLive((current) => ({ ...current, steps: [...current.steps, { ...step, status: 'running' as const }] })),
+          onStepEnd: (step) => updateLive((current) => ({
+            ...current,
+            steps: current.steps.map((item) => (item.id === step.id ? { ...item, status: step.status, duration_ms: step.duration_ms, error: step.error } : item)),
+          })),
+          onNote: (noteText) => updateLive((current) => ({ ...current, notes: [...current.notes, noteText] })),
+          onDelta: (deltaText) => updateLive((current) => ({ ...current, text: current.text + deltaText })),
+        });
+      } catch (streamError) {
+        // A stream that failed before anything was shown (older backend,
+        // proxy hiccup) silently falls back to the classic chat endpoint;
+        // once output is on screen the error is surfaced instead of
+        // discarding a run the administrator is watching.
+        const partial = liveRef.current;
+        const hadOutput = Boolean(partial && (partial.text || partial.steps.length > 0 || partial.notes.length > 0));
+        if (hadOutput) throw streamError;
+        reply = await AIAgentService.chat(text, messages);
+      }
+      finalize(reply);
     } catch (error: unknown) {
       const detail = errorMessage(error);
       toast.error(detail || (zh ? 'AI 暂时无法生成建议' : 'AI could not generate a proposal'));
       setMessages((previous) => previous.filter((item) => item !== userMessage));
     } finally {
+      liveRef.current = null;
+      setLive(null);
       setSending(false);
     }
   };
@@ -284,6 +405,8 @@ export default function AIAgentAssistant() {
     setMessages([]);
     setAppliedKeys([]);
     setInput('');
+    liveRef.current = null;
+    setLive(null);
   };
 
   // The launcher starts life bottom-right; `position` is null until it has been
@@ -368,8 +491,15 @@ export default function AIAgentAssistant() {
             )}
             {messages.map((message, messageIndex) => (
               <div key={`${message.role}-${messageIndex}`} className={message.role === 'user' ? 'ml-8' : 'mr-3'}>
-                <div className={`rounded-xl px-3 py-2 text-sm leading-6 ${message.role === 'user' ? 'bg-violet-600 text-white' : 'border border-gray-100 bg-white text-gray-800 shadow-sm'}`}>{message.content}</div>
-                {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
+                {message.role === 'user' ? (
+                  <div className="rounded-xl bg-violet-600 px-3 py-2 text-sm leading-6 whitespace-pre-wrap text-white">{message.content}</div>
+                ) : (
+                  <div className="rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm leading-6 text-gray-800 shadow-sm">
+                    {message.steps && message.steps.length > 0 && <AssistantSteps steps={message.steps} zh={zh} />}
+                    <MarkdownBlock content={message.content} />
+                  </div>
+                )}
+                {message.role === 'assistant' && !(message.steps && message.steps.length > 0) && message.toolCalls && message.toolCalls.length > 0 && (
                   <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label={zh ? '本次回答查询的目录数据' : 'Catalogue lookups behind this answer'}>
                     {message.toolCalls.map((call, callIndex) => (
                       <li
@@ -403,7 +533,29 @@ export default function AIAgentAssistant() {
                 </div>}
               </div>
             ))}
-            {sending && <div className="mr-8 rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm text-gray-500 shadow-sm">{zh ? '正在检索目录并分析分类和 SEO…' : 'Checking the catalogue, then analyzing categories and SEO…'}</div>}
+            {sending && live && (
+              <div className="mr-3">
+                <div className="rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm shadow-sm">
+                  <AssistantSteps steps={live.steps} zh={zh} />
+                  {live.notes.length > 0 && (
+                    <div className="mb-1.5 space-y-0.5 border-b border-slate-100 pb-1.5 text-xs leading-5 text-slate-400">
+                      {live.notes.map((note, noteIndex) => <p key={noteIndex} className="whitespace-pre-wrap">{note}</p>)}
+                    </div>
+                  )}
+                  {live.text ? (
+                    <div className="text-gray-800">
+                      <MarkdownBlock content={live.text} />
+                      <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-violet-500 align-[-2px]" aria-hidden="true" />
+                    </div>
+                  ) : (
+                    live.steps.length === 0 && live.notes.length === 0 && (
+                      <p className="text-xs text-gray-400">{live.stage === 'answering' ? (zh ? '正在生成回答…' : 'Writing the answer…') : (zh ? '正在思考并检索目录…' : 'Thinking and checking the catalogue…')}</p>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+            {sending && !live && <div className="mr-8 rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm text-gray-500 shadow-sm">{zh ? '正在检索目录并分析分类和 SEO…' : 'Checking the catalogue, then analyzing categories and SEO…'}</div>}
             <div ref={bottomRef} />
           </div>
 

@@ -1,4 +1,4 @@
-import { apiClient } from '@/lib/api';
+import { apiClient, authUtils } from '@/lib/api';
 import { APIResponse } from '@/types';
 
 export type AIAgentActionType =
@@ -20,6 +20,7 @@ export interface AIAgentMessage {
   content: string;
   suggestions?: AIAgentAction[];
   toolCalls?: AIAgentToolCall[];
+  steps?: AIAgentStreamStep[];
 }
 
 export interface AIAgentStatus {
@@ -143,6 +144,25 @@ export interface AIAgentToolCall {
   tool: string;
   detail: string;
   error?: string;
+}
+
+/** One tool execution shown in the live step timeline. */
+export interface AIAgentStreamStep {
+  id: string;
+  tool: string;
+  detail: string;
+  status: 'running' | 'ok' | 'error';
+  duration_ms?: number;
+  error?: string;
+}
+
+/** Callbacks for the streaming chat endpoint (progress is pushed live). */
+export interface AIAgentStreamHandlers {
+  onStage?: (stage: string) => void;
+  onStepStart?: (step: { id: string; tool: string; detail: string }) => void;
+  onStepEnd?: (step: { id: string; tool: string; status: 'ok' | 'error'; duration_ms: number; error?: string }) => void;
+  onNote?: (text: string) => void;
+  onDelta?: (text: string) => void;
 }
 
 export interface AIAgentReply {
@@ -509,6 +529,118 @@ export class AIAgentService {
     });
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'AI assistant could not create a proposal');
+  }
+
+  /**
+   * Streaming chat. The backend emits progress events while the agent runs
+   * (stage / step_start / step_end / note / delta) and one `final` event with
+   * the same payload shape as chat(). fetch is used so the POST body and the
+   * HttpOnly session cookie work exactly like the axios calls; a caller that
+   * fails before any event arrives may fall back to the classic chat().
+   */
+  static async chatStream(
+    message: string,
+    history: AIAgentMessage[],
+    handlers: AIAgentStreamHandlers,
+    signal?: AbortSignal
+  ): Promise<AIAgentReply> {
+    const token = authUtils.getToken();
+    const response = await fetch('/api/v1/admin/ai-agent/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ message, history: history.slice(-8).map(({ role, content }) => ({ role, content })) }),
+      signal,
+    });
+    if (!response.ok || !response.body) {
+      let detail = '';
+      try {
+        const data = (await response.json()) as { error?: string; message?: string };
+        detail = data.error || data.message || '';
+      } catch {
+        // Non-JSON error body; keep the generic message.
+      }
+      throw new Error(detail || `AI stream failed (${response.status})`);
+    }
+
+    const state: { final: AIAgentReply | null; error: string } = { final: null, error: '' };
+    const handleBlock = (block: string) => {
+      let eventName = '';
+      const dataLines: string[] = [];
+      for (const rawLine of block.split('\n')) {
+        const line = rawLine.replace(/\r$/, '');
+        if (line === '' || line.startsWith(':')) continue;
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).replace(/^ /, ''));
+        }
+      }
+      if (!eventName || dataLines.length === 0) return;
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      switch (eventName) {
+        case 'stage':
+          if (typeof payload.stage === 'string') handlers.onStage?.(payload.stage);
+          break;
+        case 'note':
+          if (typeof payload.text === 'string') handlers.onNote?.(payload.text);
+          break;
+        case 'delta':
+          if (typeof payload.text === 'string') handlers.onDelta?.(payload.text);
+          break;
+        case 'step_start':
+          handlers.onStepStart?.({
+            id: String(payload.id ?? ''),
+            tool: String(payload.tool ?? ''),
+            detail: typeof payload.detail === 'string' ? payload.detail : '',
+          });
+          break;
+        case 'step_end':
+          handlers.onStepEnd?.({
+            id: String(payload.id ?? ''),
+            tool: String(payload.tool ?? ''),
+            status: payload.status === 'error' ? 'error' : 'ok',
+            duration_ms: typeof payload.duration_ms === 'number' ? payload.duration_ms : 0,
+            error: typeof payload.error === 'string' && payload.error ? payload.error : undefined,
+          });
+          break;
+        case 'final':
+          state.final = payload as unknown as AIAgentReply;
+          break;
+        case 'error':
+          if (typeof payload.message === 'string') state.error = payload.message;
+          break;
+        default:
+          break;
+      }
+    };
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let separator = buffer.indexOf('\n\n');
+      while (separator !== -1) {
+        handleBlock(buffer.slice(0, separator));
+        buffer = buffer.slice(separator + 2);
+        separator = buffer.indexOf('\n\n');
+      }
+    }
+    if (buffer.trim()) handleBlock(buffer.trim());
+
+    if (state.error && !state.final) throw new Error(state.error);
+    if (!state.final) throw new Error('AI stream ended before the final proposal arrived');
+    return state.final;
   }
 
   static async apply(actions: AIAgentAction[]): Promise<Array<Record<string, unknown>>> {
