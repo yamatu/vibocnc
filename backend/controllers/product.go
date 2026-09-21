@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -131,10 +132,12 @@ func findProductBySKUInternal(sku string) (models.Product, error) {
 				if err3 != gorm.ErrRecordNotFound {
 					return product, err3
 				}
-				// Step 3.5: sanitized compare (strip '-' and '/')
-				sanitized := strings.ReplaceAll(strings.ReplaceAll(normalized, "-", ""), "/", "")
+				// Step 3.5: sanitized compare - strips '-', '/', and whitespace
+				// (incl. NBSP), so slug-derived candidates like "FP0-E16RS-A-(B)"
+				// resolve stored SKUs like "FP0-E16RS-A -(B)" (sanitizeSKUForCompare).
+				sanitized := sanitizeSKUForCompare(normalized)
 				if err4 := withPublicProductPreloads(db).
-					Where("REPLACE(REPLACE(sku,'-',''),'/','') = ?", sanitized).
+					Where("REGEXP_REPLACE(sku, '[-/[:space:]]+', '') = ?", sanitized).
 					Order("updated_at DESC").
 					First(&product).Error; err4 != nil {
 					return product, err4
@@ -143,6 +146,20 @@ func findProductBySKUInternal(sku string) (models.Product, error) {
 		}
 	}
 	return product, nil
+}
+
+// sanitizeSKUForCompare strips separator characters ('-', '/', and any
+// whitespace such as ASCII spaces or NBSP) so slug-derived candidates like
+// "FP0-E16RS-A-(B)" match stored SKUs such as "FP0-E16RS-A -(B)".
+// Product URLs are built by the frontend's toProductPathId(), which maps
+// those separators to '-'.
+func sanitizeSKUForCompare(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '-' || r == '/' || unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // Helper function to deserialize image URLs from JSON
