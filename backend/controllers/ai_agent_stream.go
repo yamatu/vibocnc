@@ -688,7 +688,7 @@ func (ac *AIAgentController) ChatStream(c *gin.Context) {
 	}
 	req.Message = strings.TrimSpace(req.Message)
 	if len([]rune(req.Message)) < 2 || len([]rune(req.Message)) > aiAgentMessageMaxRunes {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Message must contain 2-4000 characters"})
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: fmt.Sprintf("Message must contain 2-%d characters", aiAgentMessageMaxRunes)})
 		return
 	}
 

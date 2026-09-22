@@ -69,6 +69,11 @@ var (
 	aiBulkImportBullet = regexp.MustCompile(`^\s*(?:[-*•·>]+|\(?\d{1,4}[.)、])\s*`)
 	// aiBulkImportNonASCII marks an entry that contains words, not only a model.
 	aiBulkImportNonASCII = regexp.MustCompile(`[^\x00-\x7F]`)
+	// aiBulkImportInvisible removes the invisible characters a paste out of a
+	// spreadsheet, a PDF page or a chat window drags along (BOM, zero-width
+	// joiners, non-breaking and full-width spaces). "A06B\u00a0-6089" is one model,
+	// and a stray zero-width character must not split it into two.
+	aiBulkImportInvisible = regexp.MustCompile("[\u00a0\u1680\u2000-\u200d\u202f\u205f\u3000\ufeff]")
 )
 
 // pastedModelScan is the deterministic result of reading a pasted list.
@@ -79,6 +84,10 @@ type pastedModelScan struct {
 	Models            []string
 	Unrecognised      []string
 	UnrecognisedTotal int
+	// Truncated counts the unique models left out because the list was longer
+	// than one import allows, so the assistant can ask for the remainder instead
+	// of silently dropping them.
+	Truncated int
 }
 
 // scanPastedProductModels reads a pasted model list. Nothing here consults a
@@ -89,6 +98,7 @@ func scanPastedProductModels(text string, limit int) pastedModelScan {
 	if limit <= 0 || limit > aiAgentMaxBulkImportModels {
 		limit = aiAgentMaxBulkImportModels
 	}
+	text = aiBulkImportInvisible.ReplaceAllString(text, " ")
 	scan := pastedModelScan{Models: make([]string, 0, 64), Unrecognised: make([]string, 0, 8)}
 	seen := map[string]bool{}
 	for _, rawSegment := range aiBulkImportSegmentSeparator.Split(text, -1) {
@@ -113,9 +123,12 @@ func scanPastedProductModels(text string, limit int) pastedModelScan {
 				continue
 			}
 			seen[identity] = true
-			if len(scan.Models) < limit {
-				scan.Models = append(scan.Models, model)
+			if len(scan.Models) >= limit {
+				// Unique models past the limit are counted, not dropped quietly.
+				scan.Truncated++
+				continue
 			}
+			scan.Models = append(scan.Models, model)
 		}
 	}
 	return scan
@@ -341,6 +354,12 @@ func aiToolRunImportPastedModels(db *gorm.DB, rawArguments string, session *aiAg
 		"unrecognised_count": scan.UnrecognisedTotal,
 		"unrecognised_items": scan.Unrecognised,
 		"image_note":         "no image was set; the storefront keeps generating the placeholder image for this model",
+	}
+	if scan.Truncated > 0 {
+		response["over_limit_count"] = scan.Truncated
+		response["over_limit_note"] = fmt.Sprintf(
+			"only %d unique models are imported per message; %d more were left out, ask the administrator to paste the remaining models in one more message",
+			aiAgentMaxBulkImportModels, scan.Truncated)
 	}
 	if len(created) > aiAgentBulkImportReportLimit {
 		response["created_products_note"] = fmt.Sprintf("only the first %d created products are listed", aiAgentBulkImportReportLimit)

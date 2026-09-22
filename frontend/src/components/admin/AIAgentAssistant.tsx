@@ -924,11 +924,14 @@ export default function AIAgentAssistant() {
               <span className="truncate text-[11px] text-gray-400">{zh ? '保存常用指令，一键插入或复制' : 'Save instructions and insert or copy them in one click'}</span>
             </div>
             <div className="flex items-end gap-2 rounded-xl border border-gray-300 bg-white p-1.5 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-100">
-              <textarea value={input} onChange={(event) => { setInput(event.target.value); setHistoryCursor(null); }} onKeyDown={handleInputKeyDown} disabled={!status?.configured || sending} rows={2} maxLength={4000} aria-label={zh ? 'AI 优化指令' : 'AI optimization instruction'} placeholder={zh ? '直接输入型号，例如 A06B-xxxx' : 'Enter a model, for example A06B-xxxx'} className="min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed" />
+              <textarea value={input} onChange={(event) => { setInput(event.target.value); setHistoryCursor(null); }} onKeyDown={handleInputKeyDown} disabled={!status?.configured || sending} rows={3} maxLength={200000} aria-label={zh ? 'AI 优化指令' : 'AI optimization instruction'} placeholder={zh ? '粘贴型号清单，一行一个或逗号分隔，最多 1000 个型号（例如 A06B-2235-B100）' : 'Paste a model list, one per line or comma separated, up to 1000 models (e.g. A06B-2235-B100)'} className="max-h-64 min-h-[62px] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed" />
               <button type="submit" disabled={!input.trim() || !status?.configured || sending} className="rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-gray-300" aria-label={zh ? '发送' : 'Send'}><PaperAirplaneIcon className="h-4 w-4" /></button>
             </div>
+            {input.trim().length > 600 && (
+              <p className="mt-1 text-[11px] font-medium text-violet-600">{zh ? `已输入 ${input.length.toLocaleString()} 字符（上限 200,000）；识别出的型号会自动建类目、去重并上架，未识别的会单独列出` : `${input.length.toLocaleString()} / 200,000 characters; recognized models are categorized, de-duplicated and published, and anything unrecognized is listed separately`}</p>
+            )}
             <p className="mt-1.5 text-[11px] text-gray-400">{status?.product_creation_ready ? (zh ? `AI 会自动建类目并创建产品，默认售价 ${status.default_product_price} USD，${status.auto_publish_new_products === false ? '确认后先存草稿' : '确认后直接上架'}。` : `The assistant creates the category and product; default price ${status.default_product_price} USD, ${status.auto_publish_new_products === false ? 'kept as a draft' : 'published on approval'}.`) : (zh ? '尚未设置默认质保或交期；AI 可分析，但不会创建产品。' : 'No default warranty or lead time is configured; AI can analyze but cannot create products.')}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">{zh ? 'Enter 发送，Shift+Enter 换行，↑/↓ 调出历史输入' : 'Enter to send, Shift+Enter for a new line, ↑/↓ recalls previous input'}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">{zh ? 'Enter 发送，Shift+Enter 换行，↑/↓ 调出历史输入；可整段粘贴型号清单（单次最多 1000 个）' : 'Enter to send, Shift+Enter for a new line, ↑/↓ recalls previous input; paste a whole model list (up to 1000 at a time)'}</p>
           </form>
           </>}
         </section>

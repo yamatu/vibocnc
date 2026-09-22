@@ -151,7 +151,7 @@ Action rules:
 - upsert_category_translation data: category_id, language_code, name, description. Use it for localized category SEO.
 - assign_product_category data: product_id (required), category_id (required, an existing active leaf category). Moves ONE product the tools have already verified; prefer start_category_optimization for bulk work.
 - create_category data: brand (required), product_type (required), allow_new_types (optional). Creates a 'Brand > Product type' node. Only propose it when the write tool accepted the brand; set allow_new_types only when the administrator explicitly asked for a new product type.
-- import_pasted_models (tool): the bulk entry point. When the administrator pastes, or asks to add, a list of model numbers, call import_pasted_models ONCE with no model list in the arguments (the models are read from the administrator's own message), and never ask the administrator to split a long list or to paste the models one at a time. It creates the category and the products, publishes them according to the saved policy and queues the AI copy job; report created_count, skipped_count and the queued job. Do not also emit create_product or create_products proposals for those models.
+- import_pasted_models (tool): the bulk entry point. When the administrator pastes, or asks to add, a list of model numbers, call import_pasted_models ONCE with no model list in the arguments (the models are read from the administrator's own message), and never ask the administrator to split a long list or to paste the models one at a time. It creates the category and the products, publishes them according to the saved policy and queues the AI copy job; report created_count, skipped_count and the queued job. Do not also emit create_product or create_products proposals for those models. One paste may hold up to 1000 unique models; when the tool reports over_limit_count, ask the administrator to paste the remaining models in one more message instead of re-pasting the whole list.
 - create_products (tool): use it only for a SHORT curated list when the administrator wants to review every entry before it exists. When the administrator pastes SEVERAL model numbers in one message, call create_products once with one item per model instead of emitting many create_product suggestions, and never ask the administrator to paste them one at a time. Every item needs model, brand and product_type; also write name, short_description, description, meta_title, meta_description and meta_keywords for that specific model, because those become the stored product content. Never put price, warranty, lead time, stock or images in an item. Report which models were proposed and which were skipped, and why.
 - start_category_optimization data: scope (uncategorized|brand|rework|products), plus brand for scope=brand or product_ids for scope=products; limit optional (0 = all matching). Starts the background category task that verifies products, assigns categories and creates missing ones. Prefer this for any bulk unclassified or category-repair request.
 
@@ -180,7 +180,19 @@ var aiPriceLinePattern = regexp.MustCompile(`(?i)^\s*(.+?)(?:\s*(?:=|:|,|\t)\s*|
 var strictPricePattern = regexp.MustCompile(`^\d+(?:\.\d{1,2})?$`)
 var aiProductIdentifierPattern = regexp.MustCompile(`^[A-Z0-9][A-Z0-9._#/()+-]{1,99}$`)
 
-const aiAgentMessageMaxRunes = 4000
+// aiAgentMessageMaxRunes bounds one administrator message. The bulk model import
+// reads the models straight out of this text, so the guard has to hold a pasted
+// list of 1000 model numbers together with their labels and notes. It is only a
+// runaway-body guard: the provider prompt is compacted separately by
+// aiAgentPromptRequestMaxRunes.
+const aiAgentMessageMaxRunes = 200000
+
+// aiAgentPromptRequestMaxRunes is how much of the CURRENT user message is
+// replayed into the provider prompt. A pasted 1000-line list is read server side
+// by import_pasted_models, so shipping the whole list to the model as well would
+// only burn tokens and invite truncation.
+const aiAgentPromptRequestMaxRunes = 6000
+
 const aiPriceImportMaxRows = 200
 
 func getOrCreateAIAgentSetting(db *gorm.DB) (*models.AIAgentSetting, error) {
@@ -587,7 +599,7 @@ func (ac *AIAgentController) Chat(c *gin.Context) {
 	}
 	req.Message = strings.TrimSpace(req.Message)
 	if len([]rune(req.Message)) < 2 || len([]rune(req.Message)) > aiAgentMessageMaxRunes {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Message must contain 2-4000 characters"})
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: fmt.Sprintf("Message must contain 2-%d characters", aiAgentMessageMaxRunes)})
 		return
 	}
 
@@ -722,7 +734,7 @@ func (ac *AIAgentController) PreviewPrices(c *gin.Context) {
 	}
 	req.Text = strings.TrimSpace(req.Text)
 	if len([]rune(req.Text)) < 2 || len([]rune(req.Text)) > aiAgentMessageMaxRunes {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Price list must contain 2-4000 characters"})
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: fmt.Sprintf("Price list must contain 2-%d characters", aiAgentMessageMaxRunes)})
 		return
 	}
 
