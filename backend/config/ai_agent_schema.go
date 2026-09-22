@@ -25,6 +25,9 @@ func requiredAIAgentSchemaColumns() []aiAgentSchemaColumn {
 		{model: &models.AIAgentProfile{}, field: "APIMode", column: "api_mode", table: "ai_agent_profiles"},
 		{model: &models.AIAgentSetting{}, field: "ActiveProfileID", column: "active_profile_id", table: "ai_agent_settings"},
 		{model: &models.AIAgentSetting{}, field: "APIMode", column: "api_mode", table: "ai_agent_settings"},
+		{model: &models.AIAgentSetting{}, field: "MaxConcurrentJobs", column: "max_concurrent_jobs", table: "ai_agent_settings"},
+		{model: &models.AIAgentSetting{}, field: "AgentHistoryLimit", column: "agent_history_limit", table: "ai_agent_settings"},
+		{model: &models.AIAgentSetting{}, field: "AutoPublishNewProducts", column: "auto_publish_new_products", table: "ai_agent_settings"},
 		{model: &models.AIAgentSEOJob{}, field: "AIProfileID", column: "ai_profile_id", table: "ai_agent_seo_jobs"},
 		{model: &models.AIAgentSEOJob{}, field: "AIProfileName", column: "ai_profile_name", table: "ai_agent_seo_jobs"},
 		{model: &models.AIAgentSEOJob{}, field: "AIModel", column: "ai_model", table: "ai_agent_seo_jobs"},
@@ -37,6 +40,7 @@ func requiredAIAgentSchemaModels() []any {
 		&models.AIAgentProfile{},
 		&models.AIAgentSetting{},
 		&models.AIAgentSEOJob{},
+		&models.AIAgentPromptPreset{},
 	}
 }
 

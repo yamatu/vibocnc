@@ -5,6 +5,7 @@ import {
   ArrowPathIcon,
   ArrowsPointingInIcon,
   Bars3Icon,
+  BookmarkIcon,
   ChatBubbleLeftRightIcon,
   CheckCircleIcon,
   ChevronDownIcon,
@@ -34,6 +35,7 @@ import remarkGfm from 'remark-gfm';
 import { useAdminI18n } from '@/lib/admin-i18n';
 import { useDraggableWidget } from '@/hooks/useDraggableWidget';
 import AIPriceSyncPanel from '@/components/admin/AIPriceSyncPanel';
+import AIPromptLibrary from '@/components/admin/AIPromptLibrary';
 
 // Remembered per browser so the widget stays where the administrator parked it.
 const AI_AGENT_POSITION_STORAGE_KEY = 'vibocnc.ai-assistant.position';
@@ -61,11 +63,16 @@ function readStoredAssistantSession(): StoredAssistantSession | null {
 }
 
 const SUGGESTED_PROMPTS = [
-  'A06B-XXXX（如果不存在，创建未发布产品草稿；只能使用现有品牌和产品类型分类）',
+  '批量入库（把型号列表贴在下面，每个型号一行）：\nA06B-XXXX\nA06B-YYYY',
   '检查 SKU A06B-XXXX 的分类是否正确，并给出 SEO 优化建议',
   '为 FANUC 伺服驱动分类生成中文、德语 SEO 内容',
   '列出未分类的商品，并启动分类任务把缺失的分类按核验结果自动创建',
 ];
+
+// Shell-style input recall. The list is mirrored into localStorage so a pasted
+// model list is still one ArrowUp away after a page reload.
+const INPUT_HISTORY_KEY = 'vibocnc.ai-assistant.input-history';
+const INPUT_HISTORY_LIMIT = 100;
 
 const actionLabels: Record<string, { zh: string; en: string }> = {
   create_category: { zh: '创建新分类', en: 'Create category' },
@@ -329,6 +336,11 @@ export default function AIAgentAssistant() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [messages, setMessages] = useState<AIAgentMessage[]>([]);
   const [input, setInput] = useState('');
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<number | null>(null);
+  const [historyDraft, setHistoryDraft] = useState('');
+  const historyHydratedRef = useRef(false);
   const [sending, setSending] = useState(false);
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [appliedKeys, setAppliedKeys] = useState<string[]>([]);
@@ -524,6 +536,28 @@ export default function AIAgentAssistant() {
     if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, sending, open, live]);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(INPUT_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        setInputHistory(parsed.filter((item): item is string => typeof item === 'string').slice(-INPUT_HISTORY_LIMIT));
+      }
+    } catch {
+      // A corrupt cache must never keep the assistant from opening.
+    }
+    historyHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!historyHydratedRef.current) return;
+    try {
+      window.localStorage.setItem(INPUT_HISTORY_KEY, JSON.stringify(inputHistory));
+    } catch {
+      // Private mode or a full quota: recall simply stays session-only.
+    }
+  }, [inputHistory]);
+
   const send = async (event?: FormEvent, suggested?: string) => {
     event?.preventDefault();
     const text = (suggested || input).trim();
@@ -531,6 +565,9 @@ export default function AIAgentAssistant() {
     const userMessage: AIAgentMessage = { role: 'user', content: text };
     setMessages((previous) => [...previous, userMessage]);
     setInput('');
+    setInputHistory((previous) => (previous[previous.length - 1] === text ? previous : [...previous, text].slice(-INPUT_HISTORY_LIMIT)));
+    setHistoryCursor(null);
+    setHistoryDraft('');
     setSending(true);
     setHistoryOpen(false);
     liveRef.current = emptyLiveState();
@@ -590,9 +627,46 @@ export default function AIAgentAssistant() {
 
   // Enter sends and Shift+Enter inserts a newline; both keys are ignored while
   // an IME composition is being committed (Chinese input).
+  // Walks the recall list. Returns true when the arrow key was consumed, so a
+  // multi-line draft keeps its normal caret movement.
+  const recallInputHistory = (direction: -1 | 1) => {
+    if (inputHistory.length === 0) return false;
+    if (direction === -1) {
+      const next = historyCursor === null ? inputHistory.length - 1 : Math.max(0, historyCursor - 1);
+      if (historyCursor === null) setHistoryDraft(input);
+      setHistoryCursor(next);
+      setInput(inputHistory[next]);
+      return true;
+    }
+    if (historyCursor === null) return false;
+    if (historyCursor >= inputHistory.length - 1) {
+      setHistoryCursor(null);
+      setInput(historyDraft);
+      return true;
+    }
+    const next = historyCursor + 1;
+    setHistoryCursor(next);
+    setInput(inputHistory[next]);
+    return true;
+  };
+
   const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== 'Enter' || event.shiftKey) return;
     if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      const target = event.currentTarget;
+      const singleLine = !target.value.includes('\n');
+      const caretAtStart = target.selectionStart === 0 && target.selectionEnd === 0;
+      const caretAtEnd = target.selectionStart === target.value.length && target.selectionEnd === target.value.length;
+      if (event.key === 'ArrowUp') {
+        if (!singleLine && !caretAtStart) return;
+        if (recallInputHistory(-1)) event.preventDefault();
+      } else {
+        if (!singleLine && !caretAtEnd) return;
+        if (recallInputHistory(1)) event.preventDefault();
+      }
+      return;
+    }
+    if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     void send();
   };
@@ -704,6 +778,13 @@ export default function AIAgentAssistant() {
               <div>
                 <h2 className="text-sm font-semibold">{zh ? 'AI 商品优化助手' : 'AI Catalog Assistant'}</h2>
                 <p className="text-[11px] text-violet-100">{status?.configured ? `${status.provider || 'OpenAI compatible'} · ${status.model}` : (zh ? '分类、SEO 与多语言优化' : 'Categories, SEO and localization')}</p>
+                {status?.task_gate && (
+                  <p className="mt-0.5 text-[10px] text-violet-200">
+                    {zh
+                      ? `AI 任务 ${status.task_gate.active}/${status.task_gate.limit}${status.task_gate.queued_jobs > 0 ? ` · 排队 ${status.task_gate.queued_jobs}` : ''}`
+                      : `AI tasks ${status.task_gate.active}/${status.task_gate.limit}${status.task_gate.queued_jobs > 0 ? ` · ${status.task_gate.queued_jobs} queued` : ''}`}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -747,10 +828,10 @@ export default function AIAgentAssistant() {
             {!statusLoading && status?.configured && messages.length === 0 && (
               <div className="space-y-3 py-2">
                 <div className="rounded-xl bg-white p-3 text-sm leading-6 text-gray-700 shadow-sm ring-1 ring-gray-100">
-                  {zh ? '直接输入一个型号即可分析。型号不存在时，只有品牌、型号、产品类型及现有叶子分类都能确认，才会生成未发布产品草稿；售价、质保与交期只采用后台保存的默认值。' : 'Enter a model directly. If it does not exist, an unpublished draft is proposed only when the brand, model, product type, and an existing leaf category are all verified; price, warranty, and lead time use only saved admin defaults.'}
+                  {zh ? '直接把型号（一行一个，最多 25 个）发给我：我会自动判断品牌和产品类型、缺失的分类按核验规则创建，并为每个型号写好名称、简短描述、详细描述和 SEO 信息。售价、质保、交期、库存只采用后台保存的默认值，图片继续使用按型号自动生成的图库默认图片。确认后即按设置上架。' : 'Paste the model numbers directly, one per line (up to 25): the assistant resolves brand and product type, creates missing categories through the verified-rule path, and writes a name, short description, long description and SEO fields for each model. Price, warranty, lead time and stock use only saved admin defaults, and images stay on the generated default catalogue image. Approved products are published according to your settings.'}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {SUGGESTED_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => send(undefined, prompt)} className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-left text-xs leading-4 text-violet-700 hover:bg-violet-50">{prompt}</button>)}
+                  {SUGGESTED_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => { setInput(prompt); setPromptLibraryOpen(true); }} className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-left text-xs leading-4 text-violet-700 hover:bg-violet-50">{prompt.split('\n')[0]}</button>)}
                 </div>
               </div>
             )}
@@ -824,13 +905,30 @@ export default function AIAgentAssistant() {
             <div ref={bottomRef} />
           </div>
 
+          {promptLibraryOpen && (
+            <div className="flex max-h-72 min-h-0 shrink-0 flex-col border-t border-gray-200">
+              <AIPromptLibrary zh={zh} onInsert={(content) => setInput(content)} />
+            </div>
+          )}
           <form onSubmit={send} className="border-t border-gray-200 bg-white p-3">
+            <div className="mb-1.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPromptLibraryOpen((open) => !open)}
+                aria-expanded={promptLibraryOpen}
+                className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] ${promptLibraryOpen ? 'bg-violet-100 font-semibold text-violet-700' : 'text-gray-500 hover:bg-gray-100'}`}
+              >
+                <BookmarkIcon className="h-3.5 w-3.5" />
+                {zh ? '提示词库' : 'Prompt library'}
+              </button>
+              <span className="truncate text-[11px] text-gray-400">{zh ? '保存常用指令，一键插入或复制' : 'Save instructions and insert or copy them in one click'}</span>
+            </div>
             <div className="flex items-end gap-2 rounded-xl border border-gray-300 bg-white p-1.5 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-100">
-              <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleInputKeyDown} disabled={!status?.configured || sending} rows={2} maxLength={4000} aria-label={zh ? 'AI 优化指令' : 'AI optimization instruction'} placeholder={zh ? '直接输入型号，例如 A06B-xxxx' : 'Enter a model, for example A06B-xxxx'} className="min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed" />
+              <textarea value={input} onChange={(event) => { setInput(event.target.value); setHistoryCursor(null); }} onKeyDown={handleInputKeyDown} disabled={!status?.configured || sending} rows={2} maxLength={4000} aria-label={zh ? 'AI 优化指令' : 'AI optimization instruction'} placeholder={zh ? '直接输入型号，例如 A06B-xxxx' : 'Enter a model, for example A06B-xxxx'} className="min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-gray-400 disabled:cursor-not-allowed" />
               <button type="submit" disabled={!input.trim() || !status?.configured || sending} className="rounded-lg bg-violet-600 p-2 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-gray-300" aria-label={zh ? '发送' : 'Send'}><PaperAirplaneIcon className="h-4 w-4" /></button>
             </div>
-            <p className="mt-1.5 text-[11px] text-gray-400">{status?.product_creation_ready ? (zh ? `产品草稿默认售价 ${status.default_product_price} USD；确认后创建但不发布。` : `Product draft default: ${status.default_product_price} USD; created only after confirmation and kept unpublished.`) : (zh ? '尚未设置默认售价；AI 可分析，但不会创建产品。' : 'No default price is configured; AI can analyze but cannot create products.')}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">{zh ? 'Enter 发送，Shift+Enter 换行' : 'Enter to send, Shift+Enter for a new line'}</p>
+            <p className="mt-1.5 text-[11px] text-gray-400">{status?.product_creation_ready ? (zh ? `AI 会自动建类目并创建产品，默认售价 ${status.default_product_price} USD，${status.auto_publish_new_products === false ? '确认后先存草稿' : '确认后直接上架'}。` : `The assistant creates the category and product; default price ${status.default_product_price} USD, ${status.auto_publish_new_products === false ? 'kept as a draft' : 'published on approval'}.`) : (zh ? '尚未设置默认质保或交期；AI 可分析，但不会创建产品。' : 'No default warranty or lead time is configured; AI can analyze but cannot create products.')}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">{zh ? 'Enter 发送，Shift+Enter 换行，↑/↓ 调出历史输入' : 'Enter to send, Shift+Enter for a new line, ↑/↓ recalls previous input'}</p>
           </form>
           </>}
         </section>

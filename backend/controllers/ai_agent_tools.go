@@ -41,6 +41,9 @@ const (
 	aiToolAssignCategory    = "assign_product_category"
 	aiToolCreateCategory    = "create_category"
 	aiToolStartCategoryJob  = "start_category_optimization"
+	// aiToolCreateProducts is the bulk entry point: one call turns a pasted
+	// list of model numbers into one review proposal per model.
+	aiToolCreateProducts = "create_products"
 
 	aiToolDefaultLimit  = 20
 	aiToolMaxLimit      = 50
@@ -48,10 +51,18 @@ const (
 
 	// Per-answer caps for review proposals, so one turn cannot flood the
 	// administrator with suggestions.
-	aiAgentMaxPendingSuggestions = 30
+	aiAgentMaxPendingSuggestions = 1200
 	aiAgentMaxAssignProposals    = 20
 	aiAgentMaxCreateProposals    = 5
-	aiAgentMaxStartProposals     = 2
+	// aiAgentMaxCreateProductProposals is the per-answer product creation cap.
+	// It matches the batch tool's maxItems so one "paste a model list" message
+	// can still be reviewed entry by entry, up to one import's worth of models.
+	aiAgentMaxCreateProductProposals = aiAgentMaxBulkImportModels
+	// aiAgentMaxBatchCreateItems bounds one create_products tool call. The
+	// preferred path for a long list is import_pasted_models, which never has to
+	// fit the list into tool arguments at all.
+	aiAgentMaxBatchCreateItems = aiAgentMaxBulkImportModels
+	aiAgentMaxStartProposals   = 2
 	// aiAgentMaxJobProductIDs bounds an explicit product scope for one
 	// category optimization proposal.
 	aiAgentMaxJobProductIDs = 500
@@ -219,6 +230,43 @@ func aiAgentToolDefinitions() []aiToolDefinition {
 				}),
 			},
 		},
+		{
+			Type: "function",
+			Function: aiToolFunctionSchema{
+				Name:        aiToolCreateProducts,
+				Description: "Propose creating one or more products from administrator-supplied model numbers, in a single call. Use this for bulk imports: the administrator pastes a list of models and you return one proposal per model with AI-written name, short_description, description, meta_title, meta_description and meta_keywords. Give brand and product_type for every item so the 'Brand > Product type' category is created automatically when it does not exist yet; pass category_id only when list_categories already gave you an existing active leaf category. Price, warranty, lead time, stock and images are administrator-owned defaults: never supply or invent them. Nothing is written by this call - the administrator approves the proposals in the UI, and approved products are published according to the saved product defaults.",
+				Parameters: objectSchema(map[string]any{
+					"items": map[string]any{
+						"type": "array", "minItems": 1, "maxItems": aiAgentMaxBatchCreateItems,
+						"description": "One entry per administrator-supplied model.",
+						"items": objectSchema(map[string]any{
+							"model":             map[string]any{"type": "string", "description": "Exact model or part number supplied by the administrator. It becomes the SKU; never rewrite it."},
+							"brand":             map[string]any{"type": "string", "description": "Manufacturer brand, for example 'FANUC'."},
+							"product_type":      map[string]any{"type": "string", "description": "Specific product-type node name, for example 'Servo Drive'. Never a generic word like 'Spare Part'."},
+							"category_id":       map[string]any{"type": "integer", "description": "Optional existing active leaf category id from list_categories."},
+							"name":              map[string]any{"type": "string", "description": "Customer-facing product name."},
+							"short_description": map[string]any{"type": "string"},
+							"description":       map[string]any{"type": "string", "description": "Original long description in plain text."},
+							"meta_title":        map[string]any{"type": "string"},
+							"meta_description":  map[string]any{"type": "string"},
+							"meta_keywords":     map[string]any{"type": "string"},
+						}, "model", "brand", "product_type"),
+					},
+					"allow_new_product_types": map[string]any{"type": "boolean", "description": "Set true ONLY when the administrator explicitly asked to allow product types outside the existing vocabulary."},
+				}, "items"),
+			},
+		},
+		{
+			Type: "function",
+			Function: aiToolFunctionSchema{
+				Name:        aiToolImportPastedModels,
+				Description: "Import the model numbers the administrator just pasted in the current message, in one call. Use this whenever the administrator asks to add, import or publish a list of models, including a very long list (one model per line, or separated by commas): the list is read from the administrator's own message, so never repeat the models in the arguments and never ask the administrator to split the list or to paste the models one at a time. For every model the backend resolves the brand and the product type from the model number itself, creates the missing 'Brand > Product type' category, creates the product with the saved defaults (price, warranty, lead time, stock) and publishes it according to the saved policy; the customer-facing copy is then written by a background AI job. A model whose brand or product type cannot be verified is skipped and reported, never guessed. Call it at most once per answer, then report created_count, skipped_count and the queued content job. Do not also emit create_product or create_products proposals for a list this tool covers.",
+				Parameters: objectSchema(map[string]any{
+					"allow_new_product_types": map[string]any{"type": "boolean", "description": "Set true ONLY when the administrator explicitly asked to allow product types outside the existing vocabulary."},
+					"publish":                 map[string]any{"type": "boolean", "description": "Optional override of the saved publish policy for this import."},
+				}),
+			},
+		},
 	}
 }
 
@@ -361,6 +409,10 @@ func executeAIAgentToolWithSession(db *gorm.DB, name, rawArguments string, sessi
 		return aiToolRunCreateCategory(db, rawArguments, session)
 	case aiToolStartCategoryJob:
 		return aiToolRunStartCategoryOptimization(db, rawArguments, session)
+	case aiToolCreateProducts:
+		return aiToolRunCreateProducts(db, rawArguments, session)
+	case aiToolImportPastedModels:
+		return aiToolRunImportPastedModels(db, rawArguments, session)
 	default:
 		return nil, fmt.Errorf("tool %q is not available", name)
 	}
@@ -727,6 +779,12 @@ func describeAIAgentToolCall(call aiToolCall) string {
 		}
 		_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
 		detail = strings.TrimSpace(strings.Join(nonEmptyStrings(args.Scope, args.Brand), " / "))
+	case aiToolCreateProducts:
+		var args struct {
+			Items []map[string]any `json:"items"`
+		}
+		_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+		detail = fmt.Sprintf("%d 个型号 / models", len(args.Items))
 	}
 	return detail
 }
@@ -756,6 +814,13 @@ func nonEmptyStrings(values ...string) []string {
 // the administrator with proposals.
 type aiAgentToolSession struct {
 	pending []aiAction
+	// userMessage is the administrator's current message and setting is the
+	// effective AI configuration. The bulk import tool reads the pasted model
+	// list from userMessage instead of making the model echo it back, which is
+	// what keeps a thousand-model import affordable and lossless.
+	userMessage string
+	setting     *models.AIAgentSetting
+	userID      uint
 }
 
 func (s *aiAgentToolSession) add(action aiAction) error {
@@ -773,6 +838,8 @@ func (s *aiAgentToolSession) add(action aiAction) error {
 		limit = aiAgentMaxCreateProposals
 	case aiToolStartCategoryJob:
 		limit = aiAgentMaxStartProposals
+	case "create_product":
+		limit = aiAgentMaxCreateProductProposals
 	}
 	if limit > 0 {
 		count := 0
@@ -1202,4 +1269,98 @@ func aiAgentCategoryJobProposalTitle(scope, brand string, count int64) string {
 		return fmt.Sprintf("启动分类优化任务：指定商品（%d 个）", count)
 	}
 	return "启动分类优化任务"
+}
+
+// ---------------------------------------------------------------------------
+// create_products: bulk model import
+// ---------------------------------------------------------------------------
+
+// aiToolRunCreateProducts turns an administrator-supplied list of model numbers
+// into one review proposal per model. The tool itself writes nothing: each
+// proposal is re-validated and created by the Apply endpoint inside its own
+// transaction, and the administrator approves the whole batch with one click.
+//
+// Two things are checked here because failing late is worse than failing here:
+// the identifier must be usable as a SKU, and the proposal must carry either an
+// existing category or the brand + product type pair that lets the Apply step
+// create the missing 'Brand > Product type' node.
+func aiToolRunCreateProducts(db *gorm.DB, rawArguments string, session *aiAgentToolSession) (any, error) {
+	var args struct {
+		Items                []map[string]any `json:"items"`
+		AllowNewProductTypes bool             `json:"allow_new_product_types"`
+	}
+	if err := decodeAIAgentToolArguments(rawArguments, &args); err != nil {
+		return nil, err
+	}
+	if len(args.Items) == 0 {
+		return nil, errors.New("items is required")
+	}
+	if len(args.Items) > aiAgentMaxBatchCreateItems {
+		return nil, fmt.Errorf("at most %d models can be proposed per call", aiAgentMaxBatchCreateItems)
+	}
+
+	proposed := make([]map[string]any, 0, len(args.Items))
+	skipped := make([]map[string]any, 0)
+	seen := map[string]bool{}
+
+	for index, item := range args.Items {
+		model := services.NormalizeProductModel(trimField(item["model"], 100))
+		if model == "" || !aiProductIdentifierPattern.MatchString(model) {
+			skipped = append(skipped, map[string]any{"index": index + 1, "model": trimField(item["model"], 100), "reason": "not a usable model or part number"})
+			continue
+		}
+		identity := normalizePriceModel(model)
+		if identity == "" || seen[identity] {
+			skipped = append(skipped, map[string]any{"index": index + 1, "model": model, "reason": "duplicate model in this request"})
+			continue
+		}
+		seen[identity] = true
+
+		var existing models.Product
+		findErr := db.Select("id", "sku").Where(
+			"UPPER(REPLACE(TRIM(sku), ' ', '')) = ? OR UPPER(REPLACE(TRIM(model), ' ', '')) = ? OR UPPER(REPLACE(TRIM(part_number), ' ', '')) = ?",
+			identity, identity, identity).First(&existing).Error
+		if findErr == nil {
+			skipped = append(skipped, map[string]any{"index": index + 1, "model": model, "reason": fmt.Sprintf("already exists as product %d (SKU %s)", existing.ID, existing.SKU)})
+			continue
+		}
+		if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+			return nil, findErr
+		}
+
+		data := map[string]any{"model": model}
+		for _, field := range []string{"brand", "product_type", "name", "short_description", "description", "meta_title", "meta_description", "meta_keywords"} {
+			if value := trimField(item[field], 20000); value != "" {
+				data[field] = value
+			}
+		}
+		if categoryID := uint(numberField(item["category_id"])); categoryID > 0 {
+			data["category_id"] = categoryID
+		}
+		if args.AllowNewProductTypes {
+			data["allow_new_product_types"] = true
+		}
+		if data["category_id"] == nil && (trimField(data["brand"], 100) == "" || trimField(data["product_type"], 120) == "") {
+			skipped = append(skipped, map[string]any{"index": index + 1, "model": model, "reason": "brand and product_type (or an existing category_id) are required so the category can be resolved"})
+			continue
+		}
+
+		if err := session.add(aiAction{Type: "create_product", Data: data}); err != nil {
+			// The per-answer cap is a normal stop, not a failure: report what was
+			// already proposed and let the administrator send the next batch.
+			return map[string]any{
+				"proposed": proposed,
+				"skipped":  skipped,
+				"stopped":  err.Error(),
+				"note":     "Nothing has been created yet; proposals are waiting for the administrator's approval.",
+			}, nil
+		}
+		proposed = append(proposed, map[string]any{"model": model, "brand": data["brand"], "product_type": data["product_type"]})
+	}
+
+	return map[string]any{
+		"proposed": proposed,
+		"skipped":  skipped,
+		"note":     "Nothing has been created yet; the administrator approves the proposals from the UI.",
+	}, nil
 }

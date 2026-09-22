@@ -33,6 +33,12 @@ import type { CommercePolicySetting } from '@/types';
 
 type GlobalFormState = {
   enabled: boolean;
+  /** Global ceiling on concurrent AI tasks (product SEO, category, spec, chat). */
+  max_concurrent_jobs: number;
+  /** How many previous chat turns are replayed into the assistant context. */
+  agent_history_limit: number;
+  /** Whether an approved assistant-created product goes live immediately. */
+  auto_publish_new_products: boolean;
   seo_job_concurrency: number;
   seo_candidate_limit: number;
   default_product_price: number;
@@ -57,6 +63,9 @@ type ProfileFormState = {
 
 const blankGlobalForm: GlobalFormState = {
   enabled: false,
+  max_concurrent_jobs: 4,
+  agent_history_limit: 24,
+  auto_publish_new_products: true,
   seo_job_concurrency: 2,
   seo_candidate_limit: 30000,
   default_product_price: 0,
@@ -122,6 +131,9 @@ function globalFormFromSettings(
 ): GlobalFormState {
   return {
     enabled: settings.enabled,
+    max_concurrent_jobs: settings.max_concurrent_jobs || 4,
+    agent_history_limit: settings.agent_history_limit || 24,
+    auto_publish_new_products: settings.auto_publish_new_products !== false,
     seo_job_concurrency: settings.seo_job_concurrency || 2,
     seo_candidate_limit: settings.seo_candidate_limit || 30000,
     default_product_price: settings.default_product_price || 0,
@@ -467,6 +479,9 @@ export default function AIAssistantSettingsPage() {
     try {
       const saved = await AIAgentService.updateSettings({
         enabled: globalForm.enabled,
+        max_concurrent_jobs: Number(globalForm.max_concurrent_jobs),
+        agent_history_limit: Number(globalForm.agent_history_limit),
+        auto_publish_new_products: globalForm.auto_publish_new_products,
         seo_job_concurrency: Number(globalForm.seo_job_concurrency),
         seo_candidate_limit: Number(globalForm.seo_candidate_limit),
         default_product_price: Number(globalForm.default_product_price),
@@ -739,13 +754,29 @@ export default function AIAssistantSettingsPage() {
                   {zh ? '默认质保' : 'Default warranty'}
                   <input required maxLength={50} value={globalForm.default_warranty_period} onChange={(event) => setGlobalForm((current) => ({ ...current, default_warranty_period: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
                 </label>
+                <label className="flex items-start gap-2 text-sm font-medium text-gray-700">
+                  <input type="checkbox" checked={globalForm.auto_publish_new_products} onChange={(event) => setGlobalForm((current) => ({ ...current, auto_publish_new_products: event.target.checked }))} className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
+                  <span>{zh ? '新建商品直接上架' : 'Publish new products'}
+                    <span className="mt-0.5 block text-xs font-normal text-gray-500">{zh ? '关闭则先存为草稿' : 'Off keeps a draft'}</span>
+                  </span>
+                </label>
                 <label className="block text-sm font-medium text-gray-700">
                   {zh ? '默认交期' : 'Default lead time'}
                   <input required maxLength={50} value={globalForm.default_lead_time} onChange={(event) => setGlobalForm((current) => ({ ...current, default_lead_time: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
                 </label>
               </div>
 
-              <div className="grid gap-4 border-t border-gray-200 px-5 py-5 md:grid-cols-2">
+              <div className="grid gap-4 border-t border-gray-200 px-5 py-5 md:grid-cols-4">
+                <label className="block text-sm font-medium text-gray-700">
+                  {zh ? '全局并发 AI 任务数' : 'Concurrent AI tasks'}
+                  <input min="1" max="16" type="number" value={globalForm.max_concurrent_jobs} onChange={(event) => setGlobalForm((current) => ({ ...current, max_concurrent_jobs: Number(event.target.value) }))} className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
+                  <span className="mt-1 block text-xs font-normal text-gray-500">{zh ? '所有 AI 任务合计上限，超出排队' : 'All AI tasks combined; extra ones queue'}</span>
+                </label>
+                <label className="block text-sm font-medium text-gray-700">
+                  {zh ? '助手上下文条数' : 'Assistant context window'}
+                  <input min="4" max="80" type="number" value={globalForm.agent_history_limit} onChange={(event) => setGlobalForm((current) => ({ ...current, agent_history_limit: Number(event.target.value) }))} className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
+                  <span className="mt-1 block text-xs font-normal text-gray-500">{zh ? '回放的历史消息条数' : 'Replayed chat turns'}</span>
+                </label>
                 <label className="block text-sm font-medium text-gray-700">
                   {zh ? '每个 SEO 任务并行请求数' : 'Parallel SEO requests per job'}
                   <input min="1" max="50" type="number" value={globalForm.seo_job_concurrency} onChange={(event) => setGlobalForm((current) => ({ ...current, seo_job_concurrency: Number(event.target.value) }))} className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
@@ -757,7 +788,7 @@ export default function AIAssistantSettingsPage() {
               </div>
 
               <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <span className="inline-flex items-start gap-2 text-xs leading-5 text-gray-600"><InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />{zh ? '默认售价为 0 时，AI 不会创建无依据价格的产品草稿。' : 'A zero default price prevents AI from creating product drafts with unsupported prices.'}</span>
+                <span className="inline-flex items-start gap-2 text-xs leading-5 text-gray-600"><InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />{zh ? '默认售价允许为 0：价格暂时无法确定的型号会以 0 创建，之后再批量改价。' : 'A default price of 0 is allowed: a model with no known price is created as 0 and repriced later.'}</span>
                 <button disabled={savingGlobal} type="submit" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
                   {savingGlobal ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <ServerStackIcon className="h-4 w-4" />}
                   {zh ? '保存全局设置' : 'Save global settings'}

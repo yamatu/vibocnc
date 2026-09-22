@@ -34,6 +34,9 @@ export interface AIAgentStatus {
   active_profile_id?: number;
   active_profile_name?: string;
   product_creation_ready: boolean;
+  auto_publish_new_products?: boolean;
+  max_concurrent_jobs?: number;
+  task_gate?: AIAgentTaskGate;
   default_product_price: number;
   default_warranty_period: string;
   default_lead_time: string;
@@ -51,11 +54,48 @@ export interface AIAgentSettings {
   reasoning_effort: string;
   timeout_seconds: number;
   seo_job_concurrency: number;
+  /** Global ceiling: how many AI tasks run at once across every task kind. */
+  max_concurrent_jobs: number;
+  /** How many previous chat turns are replayed into the assistant context. */
+  agent_history_limit: number;
+  /** Whether an approved assistant-created product goes live immediately. */
+  auto_publish_new_products: boolean;
   seo_candidate_limit: number;
   default_product_price: number;
   default_warranty_period: string;
   default_lead_time: string;
   updated_at?: string;
+}
+
+/** Live occupancy of the global AI task gate, shown in the assistant header. */
+export interface AIAgentTaskGate {
+  limit: number;
+  active: number;
+  available: number;
+  queued_jobs: number;
+  running_jobs: number;
+  generating_chats: number;
+}
+
+/** One saved instruction of the assistant prompt library. */
+export interface AIAgentPromptPreset {
+  id: number;
+  name: string;
+  content: string;
+  tags: string;
+  sort_order: number;
+  is_favorite: boolean;
+  usage_count: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AIAgentPromptPresetInput {
+  name?: string;
+  content?: string;
+  tags?: string;
+  sort_order?: number;
+  is_favorite?: boolean;
 }
 
 export interface AIAgentProfile {
@@ -136,6 +176,9 @@ export interface AIAgentSettingsUpdate {
   reasoning_effort?: string;
   timeout_seconds?: number;
   seo_job_concurrency?: number;
+  max_concurrent_jobs?: number;
+  agent_history_limit?: number;
+  auto_publish_new_products?: boolean;
   seo_candidate_limit?: number;
   default_product_price?: number;
   default_warranty_period?: string;
@@ -894,6 +937,44 @@ export class AIAgentService {
     );
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Unable to approve the classification candidate');
+  }
+
+  // --- prompt library -----------------------------------------------------
+
+  /** Saved instructions, most pinned / most used first. */
+  static async listPromptPresets(search = ''): Promise<AIAgentPromptPreset[]> {
+    const response = await apiClient.get<APIResponse<{ prompts: AIAgentPromptPreset[]; total: number }>>(
+      '/admin/ai-agent/prompts',
+      { params: { search: search.trim() || undefined } }
+    );
+    if (response.data.success && response.data.data) return response.data.data.prompts || [];
+    throw new Error(response.data.message || 'Unable to load the prompt library');
+  }
+
+  static async createPromptPreset(payload: AIAgentPromptPresetInput): Promise<AIAgentPromptPreset> {
+    const response = await apiClient.post<APIResponse<AIAgentPromptPreset>>('/admin/ai-agent/prompts', payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to save the prompt');
+  }
+
+  static async updatePromptPreset(id: number, payload: AIAgentPromptPresetInput): Promise<AIAgentPromptPreset> {
+    const response = await apiClient.put<APIResponse<AIAgentPromptPreset>>(`/admin/ai-agent/prompts/${id}`, payload);
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to update the prompt');
+  }
+
+  static async deletePromptPreset(id: number): Promise<void> {
+    const response = await apiClient.delete<APIResponse<null>>(`/admin/ai-agent/prompts/${id}`);
+    if (!response.data.success) throw new Error(response.data.message || 'Unable to delete the prompt');
+  }
+
+  /** Best-effort popularity counter; never blocks using the prompt. */
+  static async markPromptPresetUsed(id: number): Promise<void> {
+    try {
+      await apiClient.post(`/admin/ai-agent/prompts/${id}/use`, {});
+    } catch {
+      // Losing a usage count is not worth surfacing to the administrator.
+    }
   }
 
   static async dismissClassificationReview(itemId: number, note = ''): Promise<AIClassificationReviewDecision> {
