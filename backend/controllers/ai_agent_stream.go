@@ -563,6 +563,16 @@ func requestAIAgentMessageStream(ctx context.Context, setting *models.AIAgentSet
 }
 
 func doRequestAIAgentMessageStream(ctx context.Context, endpoint, apiKey string, payload []byte, client *http.Client, onContent func(string)) (aiChatMessage, bool, error) {
+	// One global AI slot is taken here, at the point where a streamed provider
+	// request is actually issued. Gating the leaf instead of each caller is what
+	// keeps the ceiling honest: every AI path in the backend funnels through
+	// this function or requestAIAgentMessage, the two never call each other, so
+	// a slot is never taken twice on one request (which would deadlock the
+	// gate). The slot is held for the whole streamed round trip and released
+	// when the body has been consumed.
+	releaseAITaskSlot := acquireAITaskSlotForRequest(nil)
+	defer releaseAITaskSlot()
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return aiChatMessage{}, false, fmt.Errorf("invalid AI provider URL: %w", err)

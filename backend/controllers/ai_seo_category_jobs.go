@@ -98,7 +98,7 @@ func (ac *AIAgentController) StartCategoryOptimizationJob(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to create category optimization task", Error: err.Error()})
 		return
 	}
-	go processAIAgentSEOJob(job.ID)
+	dispatchQueuedAISEOJobsAsync()
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "Category optimization task started", Data: job})
 }
 
@@ -614,6 +614,7 @@ func repairCategoryJobProductContent(ctx context.Context, jobID, workerToken str
 		{Role: "user", Content: "ADMINISTRATOR_SEO_INSTRUCTION:\n" + prompt + "\n\nPRODUCT_REFERENCE:\n" + string(productContext)},
 	}
 	setAISEOItemProgress(db, itemIDForProduct(db, jobID, productID), "AI 审核名称、简介、描述及 SEO / AI content and SEO review")
+	// The slot is taken by the provider call itself (see ai_task_limiter.go).
 	aiSEOProviderSlots <- struct{}{}
 	output, err := requestAIAgentSEOOutput(ctx, setting, apiKey, messages, 2200)
 	<-aiSEOProviderSlots

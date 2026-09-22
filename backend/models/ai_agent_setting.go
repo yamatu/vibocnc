@@ -17,13 +17,17 @@ type AIAgentSetting struct {
 	TimeoutSeconds  int    `json:"timeout_seconds" gorm:"default:75"`
 	// SEOJobConcurrency limits parallel product requests made by one AI SEO job.
 	// It is deliberately capped by the controller so a large candidate job cannot
-	// exhaust an OpenAI-compatible provider's rate limit.
+	// exhaust an OpenAI-compatible provider's rate limit. Multiplied by
+	// MaxConcurrentJobs it also becomes the ceiling on simultaneous provider
+	// requests, so four tasks of two workers really do run eight requests.
 	SEOJobConcurrency int `json:"seo_job_concurrency" gorm:"default:2"`
-	// MaxConcurrentJobs is the global ceiling on how many AI tasks run at the
-	// same time, across every task kind: product SEO jobs, category optimization
-	// jobs, spec research jobs and AI assistant turns all hold one slot each.
-	// SEOJobConcurrency answers "how many workers inside one task"; this answers
-	// "how many tasks at all".
+	// MaxConcurrentJobs is how many optimisation tasks run at the same time:
+	// product SEO jobs, category optimization jobs and spec research jobs each
+	// hold one task slot for their whole lifetime, and a task beyond the ceiling
+	// stays queued until one of them finishes. SEOJobConcurrency answers "how
+	// many provider requests inside one task"; this answers "how many tasks at
+	// all". Interactive assistant turns take a request slot but never a task
+	// slot, so chatting never queues behind the background jobs.
 	MaxConcurrentJobs int `json:"max_concurrent_jobs" gorm:"default:4"`
 	// AgentHistoryLimit is how many previous chat turns are replayed into the
 	// assistant context. A larger window lets one instruction refer to models

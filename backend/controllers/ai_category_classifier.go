@@ -68,6 +68,8 @@ func classifyProductCategoryWithLLM(ctx context.Context, setting *models.AIAgent
 	if err != nil {
 		return services.ClassificationProposal{}, err
 	}
+	// The limiter falls back to the configured database when nil is passed.
+	// The slot is taken by the provider call itself (see ai_task_limiter.go).
 	aiSEOProviderSlots <- struct{}{}
 	defer func() { <-aiSEOProviderSlots }()
 	reply, err := requestAIAgentCompletion(ctx, setting, apiKey, []aiChatMessage{

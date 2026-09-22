@@ -1023,6 +1023,12 @@ func requestAIAgentCompletionWithClient(ctx context.Context, setting *models.AIA
 // assistant message, including any tool calls. Reasoning models occasionally
 // answer with only reasoning_content, which the callers fall back to.
 func requestAIAgentMessage(ctx context.Context, setting *models.AIAgentSetting, apiKey string, request openAIChatRequest, client *http.Client) (aiChatMessage, error) {
+	// The plain (non streamed) twin of doRequestAIAgentMessageStream: the global
+	// AI slot is taken at the leaf, so retries inside this function reuse the one
+	// slot instead of queueing behind themselves. See ai_task_limiter.go.
+	releaseAITaskSlot := acquireAITaskSlotForRequest(nil)
+	defer releaseAITaskSlot()
+
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return aiChatMessage{}, err
@@ -1155,7 +1161,7 @@ func (ac *AIAgentController) Apply(c *gin.Context) {
 	// after it has committed, so a rolled-back batch can never launch a task.
 	for _, result := range results {
 		if jobID, ok := result["job_id"].(string); ok && jobID != "" {
-			go processAIAgentSEOJob(jobID)
+			dispatchQueuedAISEOJobsAsync()
 		}
 	}
 	productIDs, skus := appliedAIProductReferences(results)

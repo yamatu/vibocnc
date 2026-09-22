@@ -2,16 +2,18 @@ package controllers
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
 
 func TestScanPastedProductModelsReadsRealLists(t *testing.T) {
 	cases := []struct {
-		name         string
-		text         string
-		wantModels   []string
-		wantRejected int
+		name            string
+		text            string
+		wantModels      []string
+		wantRejected    int
+		wantUnconfirmed int
 	}{
 		{
 			name:       "one model per line with chinese labels bullets and notes",
@@ -40,10 +42,13 @@ func TestScanPastedProductModelsReadsRealLists(t *testing.T) {
 			wantModels: []string{},
 		},
 		{
-			name:         "an unknown part number is reported instead of imported",
-			text:         "ZZZ-0000-XY",
-			wantModels:   []string{},
-			wantRejected: 1,
+			// A model the rule engine cannot place is still a model the
+			// administrator pasted: it is imported in the unverified tier and
+			// reported for review, instead of being dropped with a note.
+			name:            "an unknown part number is imported and reported",
+			text:            "ZZZ-0000-XY",
+			wantModels:      []string{"ZZZ-0000-XY"},
+			wantUnconfirmed: 1,
 		},
 	}
 	for _, testCase := range cases {
@@ -57,6 +62,9 @@ func TestScanPastedProductModelsReadsRealLists(t *testing.T) {
 			}
 			if scan.UnrecognisedTotal != testCase.wantRejected {
 				t.Fatalf("unrecognised %d, want %d (%v)", scan.UnrecognisedTotal, testCase.wantRejected, scan.Unrecognised)
+			}
+			if scan.UnconfirmedTotal != testCase.wantUnconfirmed {
+				t.Fatalf("unconfirmed %d, want %d (%v)", scan.UnconfirmedTotal, testCase.wantUnconfirmed, scan.Unconfirmed)
 			}
 		})
 	}
@@ -137,5 +145,48 @@ func TestScanPastedProductModelsHonoursLimit(t *testing.T) {
 	}
 	if got := scanPastedProductModels(text, aiAgentMaxBulkImportModels+500); len(got.Models) != 5 {
 		t.Fatalf("limit clamp changed the result: parsed %d models", len(got.Models))
+	}
+}
+
+// A real list of Siemens, Schneider or ABB numbers sits largely outside the
+// deterministic rule set. Those models must still be imported - that is what the
+// administrator pasted - while being reported as needing review. The test stays
+// away from a total count on purpose: it pins the behaviour (verified numbers are
+// not flagged, unverified ones are) without breaking every time a rule is added.
+func TestScanPastedProductModelsAcceptsModelsOutsideTheRuleSet(t *testing.T) {
+	text := "3VA1125-4ED46-0AA0\nLC1D093-BD-24V\nACS800-104\nA06B-2235-B100\n请检查未分类商品"
+	scan := scanPastedProductModels(text, 0)
+	if len(scan.Models) != 4 {
+		t.Fatalf("recognised %d models, want 4 (%v)", len(scan.Models), scan.Models)
+	}
+	// A FANUC number and an ABB drive family the rules do resolve must not be
+	// pushed into the review list, or the review list becomes noise.
+	if slices.Contains(scan.Unconfirmed, "A06B-2235-B100") {
+		t.Fatalf("a rule-verified FANUC model was flagged for review: %v", scan.Unconfirmed)
+	}
+	if slices.Contains(scan.Unconfirmed, "ACS800-104") {
+		t.Fatalf("a rule-verified ABB model was flagged for review: %v", scan.Unconfirmed)
+	}
+	// The Siemens breaker has no rule, so it is imported and reported.
+	if !slices.Contains(scan.Unconfirmed, "3VA1125-4ED46-0AA0") {
+		t.Fatalf("the model outside the rule set was not reported: %v", scan.Unconfirmed)
+	}
+	if scan.UnrecognisedTotal != 0 {
+		t.Fatalf("unrecognised %d, want 0 (%v)", scan.UnrecognisedTotal, scan.Unrecognised)
+	}
+}
+
+// The prose guard must still keep a sentence or a price column out of the import
+// now that the rule-engine gate no longer does that job.
+func TestScanPastedProductModelsStillRejectsProse(t *testing.T) {
+	for _, text := range []string{
+		"Please check the uncategorised products and report the SEO gaps",
+		"Total: 1000 pcs, unit price 12.5 USD",
+		"1. Servo Motor Drive\n2. Spare Parts List",
+	} {
+		scan := scanPastedProductModels(text, 0)
+		if len(scan.Models) != 0 {
+			t.Fatalf("imported %v from prose %q", scan.Models, text)
+		}
 	}
 }

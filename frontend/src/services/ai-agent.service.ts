@@ -54,7 +54,7 @@ export interface AIAgentSettings {
   reasoning_effort: string;
   timeout_seconds: number;
   seo_job_concurrency: number;
-  /** Global ceiling: how many AI tasks run at once across every task kind. */
+  /** How many optimization tasks run at once; extra tasks stay queued. */
   max_concurrent_jobs: number;
   /** How many previous chat turns are replayed into the assistant context. */
   agent_history_limit: number;
@@ -69,12 +69,18 @@ export interface AIAgentSettings {
 
 /** Live occupancy of the global AI task gate, shown in the assistant header. */
 export interface AIAgentTaskGate {
+  /** Optimization tasks allowed to run side by side (max_concurrent_jobs). */
   limit: number;
+  /** Optimization tasks running right now. */
   active: number;
   available: number;
   queued_jobs: number;
   running_jobs: number;
   generating_chats: number;
+  /** Provider requests allowed in flight at once (tasks x per-task workers). */
+  requests_limit: number;
+  /** Provider requests in flight right now. */
+  requests_active: number;
 }
 
 /** One saved instruction of the assistant prompt library. */

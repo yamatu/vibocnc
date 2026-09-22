@@ -114,7 +114,7 @@ func (ac *AIAgentController) StartSpecResearchJob(c *gin.Context) {
 		writeSpecResearchStartError(c, err)
 		return
 	}
-	go processAIAgentSEOJob(job.ID)
+	dispatchQueuedAISEOJobsAsync()
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: specResearchStartMessage(warning), Data: job})
 }
 
@@ -136,7 +136,7 @@ func (sc *ProductSpecDraftController) StartBatchSpecResearchJob(c *gin.Context) 
 		writeSpecResearchStartError(c, err)
 		return
 	}
-	go processAIAgentSEOJob(job.ID)
+	dispatchQueuedAISEOJobsAsync()
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: specResearchStartMessage(warning), Data: job})
 }
 
@@ -158,7 +158,7 @@ func (sc *ProductSpecDraftController) StartProductSpecResearchJob(c *gin.Context
 		writeSpecResearchStartError(c, err)
 		return
 	}
-	go processAIAgentSEOJob(job.ID)
+	dispatchQueuedAISEOJobsAsync()
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: specResearchStartMessage(warning), Data: job})
 }
 

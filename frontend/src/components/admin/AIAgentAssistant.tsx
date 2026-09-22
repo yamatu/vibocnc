@@ -347,6 +347,11 @@ export default function AIAgentAssistant() {
   const [live, setLive] = useState<LiveAssistantState | null>(null);
   const liveRef = useRef<LiveAssistantState | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // The transcript is the one place a reader can be scrolled away from the live
+  // edge, so it keeps its own scroll container instead of relying on the page.
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(false);
   const drag = useDraggableWidget(AI_AGENT_POSITION_STORAGE_KEY);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
@@ -532,9 +537,40 @@ export default function AIAgentAssistant() {
     return () => window.removeEventListener(AI_AGENT_CONFIG_CHANGED_EVENT, refreshStatus);
   }, []);
 
+  const scrollToLatest = (smooth = true) => {
+    const area = scrollAreaRef.current;
+    if (area) {
+      area.scrollTo({ top: area.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+    }
+    setPinnedToBottom(true);
+    setUnreadWhileScrolled(false);
+  };
+
+  const handleTranscriptScroll = () => {
+    const area = scrollAreaRef.current;
+    if (!area) return;
+    const distanceFromBottom = area.scrollHeight - area.scrollTop - area.clientHeight;
+    const atBottom = distanceFromBottom < 48;
+    setPinnedToBottom(atBottom);
+    if (atBottom) setUnreadWhileScrolled(false);
+  };
+
+  // Streaming deltas arrive several times a second. While the reader is at the
+  // bottom the transcript follows the answer, but the moment they scroll up the
+  // stream must stop dragging the viewport back - they are reading. New text is
+  // marked instead, with a button to return to the live edge.
   useEffect(() => {
-    if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, sending, open, live]);
+    if (!open) return;
+    if (!pinnedToBottom) {
+      if (sending || live) setUnreadWhileScrolled(true);
+      return;
+    }
+    const area = scrollAreaRef.current;
+    if (area) area.scrollTop = area.scrollHeight;
+    else bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [messages, sending, open, live, pinnedToBottom]);
 
   useEffect(() => {
     try {
@@ -781,8 +817,8 @@ export default function AIAgentAssistant() {
                 {status?.task_gate && (
                   <p className="mt-0.5 text-[10px] text-violet-200">
                     {zh
-                      ? `AI 任务 ${status.task_gate.active}/${status.task_gate.limit}${status.task_gate.queued_jobs > 0 ? ` · 排队 ${status.task_gate.queued_jobs}` : ''}`
-                      : `AI tasks ${status.task_gate.active}/${status.task_gate.limit}${status.task_gate.queued_jobs > 0 ? ` · ${status.task_gate.queued_jobs} queued` : ''}`}
+                      ? `优化任务 ${status.task_gate.active}/${status.task_gate.limit} · AI 请求 ${status.task_gate.requests_active}/${status.task_gate.requests_limit}${status.task_gate.queued_jobs > 0 ? ` · 排队 ${status.task_gate.queued_jobs}` : ''}`
+                      : `${status.task_gate.active}/${status.task_gate.limit} tasks · ${status.task_gate.requests_active}/${status.task_gate.requests_limit} AI requests${status.task_gate.queued_jobs > 0 ? ` · ${status.task_gate.queued_jobs} queued` : ''}`}
                   </p>
                 )}
               </div>
@@ -818,7 +854,8 @@ export default function AIAgentAssistant() {
             </div>
           )}
           {mode === 'prices' ? <AIPriceSyncPanel zh={zh} /> : <>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3" role="tabpanel">
+          <div className="relative min-h-0 flex-1">
+          <div ref={scrollAreaRef} onScroll={handleTranscriptScroll} className="h-full space-y-3 overflow-y-auto bg-slate-50 p-3" role="tabpanel">
             {statusLoading && <p className="pt-6 text-center text-sm text-gray-500">{zh ? '正在检查 AI 配置…' : 'Checking AI configuration…'}</p>}
             {!statusLoading && status && !status.configured && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -828,7 +865,7 @@ export default function AIAgentAssistant() {
             {!statusLoading && status?.configured && messages.length === 0 && (
               <div className="space-y-3 py-2">
                 <div className="rounded-xl bg-white p-3 text-sm leading-6 text-gray-700 shadow-sm ring-1 ring-gray-100">
-                  {zh ? '直接把型号（一行一个，最多 25 个）发给我：我会自动判断品牌和产品类型、缺失的分类按核验规则创建，并为每个型号写好名称、简短描述、详细描述和 SEO 信息。售价、质保、交期、库存只采用后台保存的默认值，图片继续使用按型号自动生成的图库默认图片。确认后即按设置上架。' : 'Paste the model numbers directly, one per line (up to 25): the assistant resolves brand and product type, creates missing categories through the verified-rule path, and writes a name, short description, long description and SEO fields for each model. Price, warranty, lead time and stock use only saved admin defaults, and images stay on the generated default catalogue image. Approved products are published according to your settings.'}
+                  {zh ? '直接把型号（一行一个，一次最多 1000 个）发给我：我会自动判断品牌和产品类型、缺失的分类按核验规则创建，并为每个型号写好名称、简短描述、详细描述和 SEO 信息。售价、质保、交期、库存只采用后台保存的默认值，图片继续使用按型号自动生成的图库默认图片。确认后即按设置上架。' : 'Paste the model numbers directly, one per line, up to 1000 per message: the assistant resolves brand and product type, creates missing categories through the verified-rule path, and writes a name, short description, long description and SEO fields for each model. Price, warranty, lead time and stock use only saved admin defaults, and images stay on the generated default catalogue image. Approved products are published according to your settings.'}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {SUGGESTED_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => { setInput(prompt); setPromptLibraryOpen(true); }} className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-left text-xs leading-4 text-violet-700 hover:bg-violet-50">{prompt.split('\n')[0]}</button>)}
@@ -895,14 +932,25 @@ export default function AIAgentAssistant() {
                     </div>
                   ) : (
                     live.steps.length === 0 && live.notes.length === 0 && (
-                      <p className="text-xs text-gray-400">{live.stage === 'answering' ? (zh ? '正在生成回答…' : 'Writing the answer…') : (zh ? '正在思考并检索目录…' : 'Thinking and checking the catalogue…')}</p>
+                      <p className="text-xs text-gray-400">{live.stage === 'answering' ? (zh ? '正在生成回答…' : 'Writing the answer…') : live.stage === 'queued' ? (zh ? '正在等待空闲 AI 请求槽位…' : 'Waiting for a free AI slot…') : (zh ? '正在思考并检索目录…' : 'Thinking and checking the catalogue…')}</p>
                     )
                   )}
                 </div>
               </div>
             )}
             {sending && !live && <div className="mr-8 rounded-xl border border-gray-100 bg-white px-3 py-2 text-sm text-gray-500 shadow-sm">{zh ? '正在检索目录并分析分类和 SEO…' : 'Checking the catalogue, then analyzing categories and SEO…'}</div>}
-            <div ref={bottomRef} />
+              <div ref={bottomRef} />
+            </div>
+            {(!pinnedToBottom || unreadWhileScrolled) && (
+              <button
+                type="button"
+                onClick={() => scrollToLatest()}
+                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-violet-300 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 shadow-lg hover:bg-violet-50"
+                aria-label={zh ? '回到最新内容' : 'Jump to the latest message'}
+              >
+                {zh ? '↓ 回到最新' : '↓ Jump to latest'}
+              </button>
+            )}
           </div>
 
           {promptLibraryOpen && (

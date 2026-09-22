@@ -8,6 +8,7 @@ import (
 
 	"fanuc-backend/models"
 	"fanuc-backend/services"
+	"fanuc-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -41,6 +42,11 @@ const (
 	// as an unrecognised entry.
 	aiAgentBulkImportMinCandidateRunes = 4
 	aiAgentBulkImportMaxCandidateRunes = 40
+	// aiAgentBulkImportUnknownBrand and aiAgentBulkImportFallbackProductType are
+	// what an imported model gets when the rules cannot name its manufacturer or
+	// its type. The follow-up AI job replaces both with real values.
+	aiAgentBulkImportUnknownBrand        = "Unbranded"
+	aiAgentBulkImportFallbackProductType = "Industrial Spare Part"
 )
 
 // aiAgentBulkImportContentPrompt is attached to the follow-up AI job. It is
@@ -76,12 +82,37 @@ var (
 	aiBulkImportInvisible = regexp.MustCompile("[\u00a0\u1680\u2000-\u200d\u202f\u205f\u3000\ufeff]")
 )
 
+// aiBulkImportProseWords are the words that share a line with real part numbers
+// in quotations, packing lists and spreadsheets but are never part numbers
+// themselves: quantities, units, currencies and column labels. Rejecting them
+// keeps a pasted price column out of the import while leaving every genuine
+// model number in it.
+var aiBulkImportProseWords = map[string]bool{
+	"pcs": true, "pc": true, "qty": true, "ea": true, "each": true, "set": true,
+	"kit": true, "unit": true, "units": true, "total": true, "sum": true,
+	"and": true, "the": true, "for": true, "with": true, "from": true,
+	"price": true, "usd": true, "eur": true, "cny": true, "rmb": true,
+	"moq": true, "new": true, "used": true, "ref": true, "stock": true,
+	"lead": true, "time": true, "days": true, "day": true, "weeks": true,
+	"months": true, "years": true, "note": true, "notes": true, "remark": true,
+	"remarks": true, "model": true, "sku": true, "brand": true, "type": true,
+	"origin": true, "gross": true, "net": true, "kg": true, "lbs": true,
+	"mm": true, "cm": true, "inch": true, "watts": true, "kw": true, "hp": true,
+	"rpm": true, "hz": true, "vdc": true, "vac": true, "amp": true, "amps": true,
+}
+
 // pastedModelScan is the deterministic result of reading a pasted list.
 // Models holds what will be imported; Unrecognised holds what looked like a
 // model but is not in the rule set, so the assistant can report it instead of
 // silently dropping it.
 type pastedModelScan struct {
-	Models            []string
+	Models []string
+	// Unconfirmed holds accepted models the deterministic rules cannot verify.
+	// They are imported anyway - the administrator pasted a real list - but they
+	// are reported so the catalogue can review them, and so nothing is dropped
+	// silently.
+	Unconfirmed       []string
+	UnconfirmedTotal  int
 	Unrecognised      []string
 	UnrecognisedTotal int
 	// Truncated counts the unique models left out because the list was longer
@@ -107,7 +138,7 @@ func scanPastedProductModels(text string, limit int) pastedModelScan {
 		if segment == "" {
 			continue
 		}
-		entryModels := confirmedModelsInEntry(segment)
+		entryModels := modelsInEntry(segment)
 		if len(entryModels) == 0 {
 			if candidate := firstModelLikeCandidate(segment); candidate != "" {
 				scan.UnrecognisedTotal++
@@ -129,27 +160,96 @@ func scanPastedProductModels(text string, limit int) pastedModelScan {
 				continue
 			}
 			scan.Models = append(scan.Models, model)
+			if !ruleConfirmedModel(model) {
+				scan.UnconfirmedTotal++
+				if len(scan.Unconfirmed) < aiAgentBulkImportReportLimit {
+					scan.Unconfirmed = append(scan.Unconfirmed, model)
+				}
+			}
 		}
 	}
 	return scan
 }
 
-// confirmedModelsInEntry decides how many models one entry holds.
+// ruleConfirmedModel reports whether the catalogue's own deterministic rules
+// resolve both a manufacturer and a specific product type for a model.
+func ruleConfirmedModel(model string) bool {
+	return services.IsConfirmedProductCategory(services.InferProductCategory("", model), model)
+}
+
+// modelShapeCandidate accepts a token that looks like a manufacturer part
+// number, whether or not the deterministic rules know its family.
+//
+// The rule engine covers a fixed set of manufacturers, so requiring it before a
+// pasted model may be imported is far too strict: a real list of Siemens,
+// Schneider or ABB numbers sits almost entirely outside the rule set, and the
+// import reported those lines instead of importing them. The shape test below is
+// what actually separates a part number from prose; the rule engine then decides
+// whether the classification is verified or needs review.
+func modelShapeCandidate(candidate string) (string, bool) {
+	candidate = aiBulkImportLabel.ReplaceAllString(strings.TrimSpace(candidate), "")
+	candidate = strings.Trim(candidate, "._-#/()\\")
+	if candidate == "" || len(candidate) > aiAgentBulkImportMaxCandidateRunes {
+		return "", false
+	}
+	if !strings.ContainsAny(candidate, "0123456789") || !strings.ContainsAny(candidate, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+		return "", false
+	}
+	if aiBulkImportProseWords[strings.ToLower(candidate)] {
+		return "", false
+	}
+	if !looksLikePartNumber(candidate) {
+		return "", false
+	}
+	model := services.NormalizeProductModel(candidate)
+	if model == "" || !aiProductIdentifierPattern.MatchString(model) {
+		return "", false
+	}
+	return model, true
+}
+
+// looksLikePartNumber keeps field labels, units and ordinary words out of the
+// import. A part number is written either with a separator ("3VA1125-4ED46",
+// "MR-J4-70B"), or as a compact alphanumeric code carrying several digits
+// ("3NE1815", "GOT1000"), or in capitals ("PTQPDPMV1").
+func looksLikePartNumber(candidate string) bool {
+	if strings.ContainsAny(candidate, "-_/.") {
+		return true
+	}
+	if countCandidateDigits(candidate) >= 2 {
+		return true
+	}
+	return len(candidate) >= 4 && candidate == strings.ToUpper(candidate)
+}
+
+func countCandidateDigits(candidate string) int {
+	digits := 0
+	for _, glyph := range candidate {
+		if glyph >= '0' && glyph <= '9' {
+			digits++
+		}
+	}
+	return digits
+}
+
+// modelsInEntry decides how many models one entry holds.
 //
 // A pasted line can be a single model, or several models separated by spaces.
-// The rule set cannot tell "A06B" from "A06B-6089-H105" on its own, so the
-// entry is resolved like this: every token that classifies on its own is a
-// model candidate, and the whole entry is only joined back together when that
-// leaves exactly zero or one candidate, which is what a model written with an
-// internal space looks like ("6ES7 315-2AG10-0AB0", "A06B 6089 H105"). Two or
-// more standalone candidates means the entry is a space separated list. Prose
-// stays out because a word only classifies after the rules resolve a brand and
-// a specific product type for it.
-func confirmedModelsInEntry(segment string) []string {
-	models := make([]string, 0, 4)
+// Every token passing the shape test is a model candidate, and the tokens the
+// rules can verify are preferred because two verified models on one line is
+// unambiguous. Otherwise the complete tokens - those already written as a full
+// part number rather than a fragment - are taken as a list, and anything else is
+// joined back together, which is what a model written with an internal space
+// looks like ("6ES7 315-2AG10-0AB0", "A06B 6089 H105"). A description such as
+// "1756-L71  AB PLC" must never be glued into a part number that does not exist,
+// so any word on the line means the tokens stand alone.
+func modelsInEntry(segment string) []string {
+	candidates := make([]string, 0, 4)
+	verified := make([]string, 0, 4)
+	complete := make([]string, 0, 4)
 	seen := map[string]bool{}
-	for _, candidate := range aiBulkImportCandidate.FindAllString(segment, -1) {
-		model, ok := confirmedModelCandidate(candidate)
+	for _, token := range aiBulkImportCandidate.FindAllString(segment, -1) {
+		model, ok := modelShapeCandidate(token)
 		if !ok {
 			continue
 		}
@@ -158,62 +258,49 @@ func confirmedModelsInEntry(segment string) []string {
 			continue
 		}
 		seen[identity] = true
-		models = append(models, model)
+		candidates = append(candidates, model)
+		if ruleConfirmedModel(model) {
+			verified = append(verified, model)
+		}
+		if completePartNumberToken(token) {
+			complete = append(complete, model)
+		}
+	}
+	if len(verified) > 1 {
+		return verified
+	}
+	if len(candidates) == 0 {
+		return candidates
 	}
 	if aiBulkImportNonASCII.MatchString(segment) {
 		// An entry with words in another script is a list item, not a model
 		// written with a space; only the tokens above may count.
-		return models
+		return candidates
 	}
-	if len(models) > 1 {
-		// "A06B-1 A06B-2": several standalone models on one line.
-		return models
-	}
-	// A description such as "1756-L71  AB PLC" would otherwise be glued into a
-	// part number that does not exist. Words without a digit are prose, so more
-	// than one of them means only the standalone models below may count.
-	proseParts := 0
 	for _, part := range strings.Fields(segment) {
 		if !strings.ContainsAny(part, "0123456789") {
-			proseParts++
+			return candidates
 		}
 	}
-	if proseParts > 1 {
-		return models
-	}
-	if proseParts == 1 && len(models) > 0 {
-		// A single trailing word after a confirmed model is a note, not a model
-		// fragment, so the entry must not be rejoined.
-		return models
+	if len(complete) > 1 {
+		// "A06B-1 A06B-2": several standalone models on one line.
+		return candidates
 	}
 	joined := strings.Join(strings.Fields(segment), " ")
-	whole, ok := confirmedModelCandidate(joined)
-	if !ok {
-		return models
+	if whole, ok := modelShapeCandidate(joined); ok {
+		return []string{whole}
 	}
-	if len(models) == 1 && whole == models[0] {
-		return models
-	}
-	return []string{whole}
+	return candidates
 }
 
-func confirmedModelCandidate(candidate string) (string, bool) {
-	candidate = aiBulkImportLabel.ReplaceAllString(strings.TrimSpace(candidate), "")
-	candidate = strings.Trim(candidate, "._-#/()\\")
-	if candidate == "" || len(candidate) > aiAgentBulkImportMaxCandidateRunes {
-		return "", false
+// completePartNumberToken reports whether a token is already a full part number
+// rather than a fragment of one, so a space separated list of them is not glued
+// back into a single invented identifier.
+func completePartNumberToken(token string) bool {
+	if strings.ContainsAny(token, "-_/") {
+		return true
 	}
-	if !strings.ContainsAny(candidate, "0123456789") || !strings.ContainsAny(candidate, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") {
-		return "", false
-	}
-	model := services.NormalizeProductModel(candidate)
-	if model == "" || !aiProductIdentifierPattern.MatchString(model) {
-		return "", false
-	}
-	if !services.IsConfirmedProductCategory(services.InferProductCategory("", model), model) {
-		return "", false
-	}
-	return model, true
+	return countCandidateDigits(token) >= 3
 }
 
 func firstModelLikeCandidate(segment string) string {
@@ -240,6 +327,11 @@ func aiToolRunImportPastedModels(db *gorm.DB, rawArguments string, session *aiAg
 	var args struct {
 		AllowNewProductTypes bool  `json:"allow_new_product_types"`
 		Publish              *bool `json:"publish"`
+		// AcceptUnverifiedModels defaults to true: the administrator pasted a
+		// list of real model numbers, so a model the rule engine cannot place is
+		// imported with a fallback classification and reported for review rather
+		// than silently dropped.
+		AcceptUnverifiedModels *bool `json:"accept_unverified_models"`
 	}
 	if err := decodeAIAgentToolArguments(rawArguments, &args); err != nil {
 		return nil, err
@@ -271,9 +363,15 @@ func aiToolRunImportPastedModels(db *gorm.DB, rawArguments string, session *aiAg
 		publish = *args.Publish
 	}
 
+	acceptUnverified := true
+	if args.AcceptUnverifiedModels != nil {
+		acceptUnverified = *args.AcceptUnverifiedModels
+	}
 	created := make([]gin.H, 0, len(scan.Models))
 	createdRefs := make([]aiSEOProductRef, 0, len(scan.Models))
 	skipped := make([]gin.H, 0)
+	unverifiedRows := make([]gin.H, 0)
+	unverifiedCount := 0
 
 	for _, model := range scan.Models {
 		identity := normalizePriceModel(model)
@@ -289,26 +387,51 @@ func aiToolRunImportPastedModels(db *gorm.DB, rawArguments string, session *aiAg
 			return nil, findErr
 		}
 
+		// Two tiers. A model the deterministic rules can place goes through the
+		// guarded, verified category path exactly as before. A model they cannot
+		// place is still a real part number the administrator asked for: it is
+		// imported under its brand category (or a shared fallback category when
+		// even the brand is unknown) and reported as needing review, so a pasted
+		// list of Siemens, Schneider or ABB numbers is no longer reported back
+		// instead of imported.
 		inference := services.InferProductCategory("", model)
-		if !services.IsConfirmedProductCategory(inference, model) {
-			skipped = append(skipped, gin.H{"model": model, "reason": "brand or product type could not be verified from the model number"})
-			continue
-		}
+		verified := services.IsConfirmedProductCategory(inference, model)
 		brand := services.CanonicalBrandName(inference.BrandKey)
-		if brand == "" || strings.EqualFold(brand, "unknown") {
-			skipped = append(skipped, gin.H{"model": model, "reason": "the manufacturer could not be resolved"})
-			continue
+		if strings.EqualFold(strings.TrimSpace(brand), "unknown") {
+			brand = ""
 		}
 		productType := trimField(inference.PartType, 100)
-		if productType == "" {
-			skipped = append(skipped, gin.H{"model": model, "reason": "the product type could not be resolved"})
-			continue
+		classification := "verified"
+		categoryID := uint(0)
+		if verified && brand != "" && productType != "" {
+			resolvedCategoryID, _, categoryErr := services.ResolveOrCreateCategoryForAdministrator(db, inference, args.AllowNewProductTypes)
+			if categoryErr == nil {
+				categoryID = resolvedCategoryID
+			} else if !acceptUnverified {
+				skipped = append(skipped, gin.H{"model": model, "reason": trimField(categoryErr.Error(), 300)})
+				continue
+			}
 		}
-
-		categoryID, _, categoryErr := services.ResolveOrCreateCategoryForAdministrator(db, inference, args.AllowNewProductTypes)
-		if categoryErr != nil {
-			skipped = append(skipped, gin.H{"model": model, "reason": trimField(categoryErr.Error(), 300)})
-			continue
+		if categoryID == 0 {
+			if !acceptUnverified {
+				skipped = append(skipped, gin.H{"model": model, "reason": "brand or product type could not be verified from the model number"})
+				continue
+			}
+			classification = "unverified"
+			if brand == "" {
+				brand = aiAgentBulkImportUnknownBrand
+			}
+			if productType == "" {
+				productType = aiAgentBulkImportFallbackProductType
+			}
+			fallbackCategoryID, fallbackErr := ensureBulkImportFallbackCategory(db, brand)
+			if fallbackErr != nil {
+				skipped = append(skipped, gin.H{"model": model, "reason": trimField(fallbackErr.Error(), 300)})
+				continue
+			}
+			categoryID = fallbackCategoryID
+			unverifiedCount++
+			unverifiedRows = append(unverifiedRows, gin.H{"model": model, "brand": brand, "category_id": categoryID})
 		}
 
 		name := truncateRunes(strings.Join([]string{brand, model, productType}, " "), aiAgentBulkImportNameMaxRunes)
@@ -341,6 +464,8 @@ func aiToolRunImportPastedModels(db *gorm.DB, rawArguments string, session *aiAg
 			"id": createdProduct.ID, "sku": createdProduct.SKU, "name": createdProduct.Name,
 			"brand": brand, "model": model, "product_type": productType,
 			"category_id": categoryID, "published": createdProduct.IsActive,
+			"classification": classification,
+			"needs_review":   classification == "unverified",
 		})
 	}
 
@@ -351,6 +476,7 @@ func aiToolRunImportPastedModels(db *gorm.DB, rawArguments string, session *aiAg
 		"published":          publish,
 		"created_products":   cappedRows(created, aiAgentBulkImportReportLimit),
 		"skipped_items":      cappedRows(skipped, aiAgentBulkImportReportLimit),
+		"unverified_count":   unverifiedCount,
 		"unrecognised_count": scan.UnrecognisedTotal,
 		"unrecognised_items": scan.Unrecognised,
 		"image_note":         "no image was set; the storefront keeps generating the placeholder image for this model",
@@ -364,12 +490,22 @@ func aiToolRunImportPastedModels(db *gorm.DB, rawArguments string, session *aiAg
 	if len(created) > aiAgentBulkImportReportLimit {
 		response["created_products_note"] = fmt.Sprintf("only the first %d created products are listed", aiAgentBulkImportReportLimit)
 	}
+	if unverifiedCount > 0 {
+		response["unverified_items"] = cappedRows(unverifiedRows, aiAgentBulkImportReportLimit)
+		response["unverified_note"] = fmt.Sprintf(
+			"%d model(s) were imported with a fallback classification because the catalogue rules do not know their product family yet. They are published according to your setting and listed for review; the follow-up AI job writes their English copy, and a category task can classify them later.",
+			unverifiedCount)
+	}
 
 	// The customer-facing copy is generated by the existing resumable AI job
 	// engine, so a long import survives a restart and its progress is visible on
 	// the AI SEO page instead of being tied to this conversation.
 	if len(createdRefs) > 0 {
-		job, jobErr := createAIAgentSEOJob(db, createdRefs, aiAgentBulkImportContentPrompt, "selected", session.userID)
+		// The scope marker keeps this a content + SEO run: the products were just
+		// created from a pasted list, so their copy must be written even when the
+		// catalogue's classifier cannot yet verify their identity. Their category
+		// is left as imported and can be optimized by a separate task.
+		job, jobErr := createAIAgentSEOJob(db, createdRefs, aiAgentBulkImportContentPrompt+"\n\n"+aiSEOScopeMarker+"seo,content]]", "selected", session.userID)
 		if jobErr != nil {
 			response["content_job_error"] = trimField(jobErr.Error(), 300)
 			response["content_job_note"] = "the products were created, but the AI content job could not be queued; start it again from the AI SEO page"
@@ -387,4 +523,58 @@ func cappedRows(rows []gin.H, limit int) []gin.H {
 		return rows
 	}
 	return rows[:limit]
+}
+
+// ensureBulkImportFallbackCategory returns the category an imported model is
+// filed under when the deterministic rules cannot verify its product type: the
+// manufacturer's own category when the brand is known, otherwise one shared
+// "Unbranded" category. Category creation is serialized through the same lock
+// the verified path uses, so two concurrent imports cannot create it twice.
+func ensureBulkImportFallbackCategory(db *gorm.DB, brand string) (uint, error) {
+	brand = strings.TrimSpace(brand)
+	if brand == "" {
+		brand = aiAgentBulkImportUnknownBrand
+	}
+	var existing models.Category
+	err := db.Where("is_active = ? AND parent_id IS NULL AND LOWER(name) = ?", true, strings.ToLower(brand)).First(&existing).Error
+	if err == nil {
+		return existing.ID, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+	category := models.Category{
+		Name:        brand,
+		Slug:        uniqueBulkImportCategorySlug(db, brand),
+		Description: brand + " industrial automation parts",
+		IsActive:    true,
+	}
+	if createErr := db.Create(&category).Error; createErr != nil {
+		// A concurrent import may have created it between the lookup and the
+		// insert; read it back instead of failing the product.
+		if lookupErr := db.Where("is_active = ? AND parent_id IS NULL AND LOWER(name) = ?", true, strings.ToLower(brand)).First(&existing).Error; lookupErr == nil {
+			return existing.ID, nil
+		}
+		return 0, createErr
+	}
+	return category.ID, nil
+}
+
+func uniqueBulkImportCategorySlug(db *gorm.DB, name string) string {
+	base := utils.GenerateSlug(name)
+	if base == "" {
+		base = "unbranded"
+	}
+	slug := base
+	for suffix := 2; suffix < 100; suffix++ {
+		var count int64
+		if err := db.Model(&models.Category{}).Where("slug = ?", slug).Count(&count).Error; err != nil {
+			return slug
+		}
+		if count == 0 {
+			return slug
+		}
+		slug = fmt.Sprintf("%s-%d", base, suffix)
+	}
+	return base + "-2"
 }

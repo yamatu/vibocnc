@@ -106,7 +106,7 @@ func (ac *AIAgentController) StartSEOAutoFix(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to create one-click SEO job", Error: err.Error()})
 		return
 	}
-	go processAIAgentSEOJob(job.ID)
+	dispatchQueuedAISEOJobsAsync()
 	c.JSON(http.StatusAccepted, models.APIResponse{
 		Success: true,
 		Message: "One-click SEO fix started",

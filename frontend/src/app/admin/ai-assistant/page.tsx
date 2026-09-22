@@ -768,9 +768,9 @@ export default function AIAssistantSettingsPage() {
 
               <div className="grid gap-4 border-t border-gray-200 px-5 py-5 md:grid-cols-4">
                 <label className="block text-sm font-medium text-gray-700">
-                  {zh ? '全局并发 AI 任务数' : 'Concurrent AI tasks'}
+                  {zh ? '同时运行的优化任务数' : 'Concurrent optimisation tasks'}
                   <input min="1" max="16" type="number" value={globalForm.max_concurrent_jobs} onChange={(event) => setGlobalForm((current) => ({ ...current, max_concurrent_jobs: Number(event.target.value) }))} className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
-                  <span className="mt-1 block text-xs font-normal text-gray-500">{zh ? '所有 AI 任务合计上限，超出排队' : 'All AI tasks combined; extra ones queue'}</span>
+                  <span className="mt-1 block text-xs font-normal text-gray-500">{zh ? '最多几个优化任务同时跑（每个任务内部的并发由「每个 SEO 任务并行请求数」决定），超出的排队等空位' : 'How many optimisation tasks run side by side; extra tasks queue for a free slot'}</span>
                 </label>
                 <label className="block text-sm font-medium text-gray-700">
                   {zh ? '助手上下文条数' : 'Assistant context window'}

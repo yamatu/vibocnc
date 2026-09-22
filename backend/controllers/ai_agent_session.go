@@ -450,22 +450,16 @@ func (ac *AIAgentController) buildAIAgentChatMessages(setting *models.AIAgentSet
 // request. The buffered events and the persisted messages make the run
 // observable after a refresh, and the resume endpoint re-attaches to it.
 func runAIAgentConversationJob(run *aiAgentRun, setting *models.AIAgentSetting, apiKey string, messages []aiChatMessage, db *gorm.DB) {
-	// Assistant turns share the global AI task gate with the background jobs, so
-	// a burst of bulk work cannot open more simultaneous provider requests than
-	// max_concurrent_jobs allows. The wait is bounded and visible: the run stays
-	// attached to its conversation and the UI shows the queued stage.
-	run.append("stage", gin.H{"stage": "queued", "detail": "等待空闲 AI 任务槽位 / waiting for a free AI task slot"})
-	waitCtx, cancelWait := context.WithTimeout(context.Background(), aiAgentRunTimeout)
-	releaseTaskSlot, taskSlotAcquired := acquireGlobalAITaskSlot(waitCtx, db)
-	cancelWait()
-	if !taskSlotAcquired {
-		message := "AI 任务排队等待超时，请稍后重试 / Timed out waiting for a free AI task slot"
-		run.append("error", gin.H{"message": message})
-		aiAgentMarkConversationStatus(db, run.conversationID, "idle")
-		run.finish(nil, message)
-		return
+	// A turn takes a provider request slot, never a task slot: it is interactive,
+	// and queueing a turn behind the four background tasks would make the
+	// assistant look hung. Its slot is taken per provider request (see
+	// ai_task_limiter.go), so the turn only counts while it is actually talking to
+	// the provider. When every request slot is busy the wait happens inside that
+	// call; this notice is emitted first so the UI can say what the assistant is
+	// waiting for instead of looking stuck.
+	if !aiTaskGateHasFreeSlot(db) {
+		run.append("stage", gin.H{"stage": "queued", "detail": "等待空闲 AI 请求槽位 / waiting for a free AI request slot"})
 	}
-	defer releaseTaskSlot()
 
 	ctx, cancel := context.WithTimeout(context.Background(), aiAgentRunTimeout)
 	defer cancel()
