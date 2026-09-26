@@ -17,6 +17,8 @@ import {
   PlayIcon,
 } from '@heroicons/react/24/outline';
 import AdminLayout from '@/components/admin/AdminLayout';
+import AIReviewPanel from '@/components/admin/AIReviewPanel';
+import EbayMarketPanel from '@/components/admin/EbayMarketPanel';
 import Pagination from '@/components/common/Pagination';
 import { EbayImportDraftService } from '@/services';
 import type { EbayImportDraftJSONTaskSnapshot } from '@/services';
@@ -31,10 +33,43 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 const MAX_JSON_IMPORT_BYTES = 1024 * 1024 * 1024;
 
+/**
+ * Page sizes the drafts list offers.
+ *
+ * The server caps a page at 200; anything larger would make the list endpoint
+ * slow for no benefit because the admin is reading the rows, not scanning them.
+ */
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
+const DEFAULT_PAGE_SIZE = 50;
+
+const clampPageSize = (value: number): number => {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_PAGE_SIZE;
+  return PAGE_SIZE_OPTIONS.includes(value) ? value : DEFAULT_PAGE_SIZE;
+};
+
+/**
+ * Build the status allow-list for a filter-based bulk delete.
+ *
+ * The backend refuses a delete with no status bound, so that a single click can
+ * never empty the entire review queue. When the admin has not filtered by status
+ * we scope the delete to "not yet imported" drafts, which is the set the review
+ * queue is about: imported drafts are history, not work in progress.
+ */
+const deleteStatusScope = (statusFilter: string | undefined, locale: string): string[] => {
+  const status = (statusFilter || '').trim();
+  if (status) return [status];
+  void locale;
+  return ['pending', 'failed', 'skipped'];
+};
+
 function EbayImportDraftsContent() {
   const { locale } = useAdminI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // The drafts list and the eBay market tools are two views of one workflow
+  // (scrape -> review -> price -> publish), so they share a page instead of
+  // living in two places that must be kept in sync.
+  const activeTab = searchParams.get('tab') === 'market' ? 'market' : 'drafts';
   const queryClient = useQueryClient();
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -42,17 +77,25 @@ function EbayImportDraftsContent() {
   const [bulkTaskControlPending, setBulkTaskControlPending] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [jsonImportTask, setJsonImportTask] = useState<EbayImportDraftJSONTaskSnapshot | null>(null);
+  // The JSON task endpoint returns only the current state, so the history is
+  // accumulated client-side every time an observation differs. That is what
+  // turns "progress: 43%" into a log an administrator can read after the fact.
+  const [jsonTaskLog, setJsonTaskLog] = useState<{ at: string; level: 'info' | 'success' | 'error'; text: string }[]>([]);
   const [jsonUploadPending, setJsonUploadPending] = useState(false);
   const [jsonUploadPct, setJsonUploadPct] = useState(0);
   const [jsonTaskControlPending, setJsonTaskControlPending] = useState(false);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
   const page = parseInt(searchParams.get('page') || '1', 10);
-  const pageSize = 20;
+  // Page size is a real usability knob (20 rows is too few for triage), so it
+  // lives in the URL like the other list state: a reload or a shared link keeps
+  // the view the admin chose.
+  const pageSize = clampPageSize(parseInt(searchParams.get('page_size') || '50', 10));
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
   const matchStatus = searchParams.get('match_status') || '';
   const brand = searchParams.get('brand') || '';
+  const aiReviewStatus = searchParams.get('ai_review_status') || '';
 
   const filters = useMemo(
     () => ({
@@ -62,8 +105,9 @@ function EbayImportDraftsContent() {
       status,
       match_status: matchStatus,
       brand,
+      ai_review_status: aiReviewStatus,
     }),
-    [page, pageSize, search, status, matchStatus, brand]
+    [page, pageSize, search, status, matchStatus, brand, aiReviewStatus]
   );
 
   const { data, isLoading, error } = useQuery({
@@ -76,11 +120,16 @@ function EbayImportDraftsContent() {
   const totalPages = data?.total_pages || 1;
   const visibleIds = list.map((item) => item.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
-  const allDraftsSelected = total > 0 && selectedIds.length >= total;
+  // True whenever the id array addresses the whole filtered set, whether the
+  // server returned every id or had to cap the list. Either way the delete must
+  // be expressed as a filter, not as an id array.
+  const [selectionCoversAll, setSelectionCoversAll] = useState(false);
+  const allDraftsSelected = selectionCoversAll || (total > 0 && selectedIds.length >= total);
 
   useEffect(() => {
     setSelectedIds([]);
-  }, [search, status, matchStatus, brand]);
+    setSelectionCoversAll(false);
+  }, [search, status, matchStatus, brand, aiReviewStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +165,55 @@ function EbayImportDraftsContent() {
     }, 2000);
     return () => window.clearInterval(timer);
   }, [jsonImportTask?.id, jsonImportTask?.status, locale, queryClient]);
+
+  /**
+   * Append a line to the JSON import log whenever the task's observable state
+   * changes. Comparing against the previous snapshot is what keeps a poll that
+   * changes nothing from filling the log with duplicates.
+   */
+  useEffect(() => {
+    if (!jsonImportTask) return;
+    const task = jsonImportTask;
+    const at = new Date().toISOString();
+    setJsonTaskLog((current) => {
+      const previous = current[current.length - 1];
+      const entry = (text: string, level: 'info' | 'success' | 'error' = 'info') => {
+        if (previous && previous.text === text && previous.level === level) return current;
+        return [...current, { at, level, text }].slice(-200);
+      };
+      const failed = task.errors?.length ?? 0;
+      switch (task.status) {
+        case 'uploading':
+          return entry(`上传文件中 ${task.uploaded_bytes}/${task.file_size} 字节`);
+        case 'queued':
+          return entry('文件已上传，等待后台处理');
+        case 'processing':
+          return entry(
+            `处理中：已处理 ${task.processed} 条，新增 ${task.created}，跳过 ${task.skipped}，失败 ${task.failed}`
+          );
+        case 'paused':
+          return entry(`已暂停：已处理 ${task.processed} 条`);
+        case 'completed':
+          return entry(
+            `完成：新增 ${task.created}，跳过重复 ${task.skipped}，失败 ${task.failed}`,
+            task.failed > 0 ? 'error' : 'success'
+          );
+        case 'completed_with_errors':
+          return entry(
+            `完成（有失败）：新增 ${task.created}，跳过 ${task.skipped}，失败 ${task.failed}`,
+            'error'
+          );
+        case 'failed':
+          return entry(`失败：${task.error || task.message || '未知错误'}`, 'error');
+        case 'cancelled':
+          return entry('任务已取消', 'error');
+        default:
+          return failed > 0
+            ? entry(`${failed} 条导入失败：${(task.errors || []).slice(0, 3).join(' | ')}`, 'error')
+            : current;
+      }
+    });
+  }, [jsonImportTask]);
 
   const invalidateAll = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.lists() });
@@ -212,6 +310,22 @@ function EbayImportDraftsContent() {
     onSuccess: async (result) => {
       await invalidateAll();
       setSelectedIds([]);
+      setSelectionCoversAll(false);
+      toast.success(locale === 'zh' ? `已删除 ${result.deleted} 条草稿` : `Deleted ${result.deleted} drafts`);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '批量删除失败' : 'Bulk delete failed')),
+  });
+
+  // Deleting everything the filters match goes through a filter-based request.
+  // Sending tens of thousands of ids in one body (and one `WHERE id IN (...)`) is
+  // what produced the 500 on the select-all path.
+  const bulkDeleteAllMutation = useMutation({
+    mutationFn: () =>
+      EbayImportDraftService.bulkDeleteByFilter(filters, deleteStatusScope(filters.status, locale)),
+    onSuccess: async (result) => {
+      await invalidateAll();
+      setSelectedIds([]);
+      setSelectionCoversAll(false);
       toast.success(locale === 'zh' ? `已删除 ${result.deleted} 条草稿` : `Deleted ${result.deleted} drafts`);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '批量删除失败' : 'Bulk delete failed')),
@@ -221,6 +335,15 @@ function EbayImportDraftsContent() {
     mutationFn: () => EbayImportDraftService.selectionIds(filters),
     onSuccess: (result) => {
       setSelectedIds(result.ids);
+      if (result.truncated) {
+        setSelectionCoversAll(true);
+        toast.success(
+          locale === 'zh'
+            ? `匹配草稿超过 ${result.limit} 条，已切换为按筛选条件删除`
+            : `More than ${result.limit} drafts match; switching to filter-based delete`
+        );
+        return;
+      }
       toast.success(locale === 'zh' ? `已选择全部 ${result.total} 条草稿` : `Selected all ${result.total} drafts`);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '全选草稿失败' : 'Failed to select all drafts')),
@@ -230,6 +353,9 @@ function EbayImportDraftsContent() {
     mutationFn: () => EbayImportDraftService.selectionIds(filters, true),
     onSuccess: (result) => {
       setSelectedIds(result.ids);
+      // An eligible-only selection is a strict subset, so it is always removed
+      // by id; never treat it as "everything matching the filter".
+      setSelectionCoversAll(false);
       if (result.total === 0) toast(locale === 'zh' ? '当前筛选条件下没有可自动导入的草稿' : 'No auto-importable drafts match the current filters');
       else toast.success(locale === 'zh' ? `已选择 ${result.total} 条可自动导入草稿` : `Selected ${result.total} auto-importable drafts`);
     },
@@ -329,7 +455,19 @@ function EbayImportDraftsContent() {
       toast.error(locale === 'zh' ? '请先选择草稿' : 'Select drafts first');
       return;
     }
-    if (!window.confirm(locale === 'zh' ? '确定删除选中的草稿吗？' : 'Delete selected drafts?')) return;
+    const confirmMessage = allDraftsSelected
+      ? locale === 'zh'
+        ? `确定删除当前筛选条件下的全部 ${total} 条草稿吗？此操作不可撤销。`
+        : `Delete all ${total} drafts matching the current filters? This cannot be undone.`
+      : locale === 'zh'
+        ? `确定删除选中的 ${selectedIds.length} 条草稿吗？`
+        : `Delete the ${selectedIds.length} selected drafts?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    if (allDraftsSelected) {
+      bulkDeleteAllMutation.mutate();
+      return;
+    }
     bulkDeleteMutation.mutate(selectedIds);
   };
 
@@ -484,6 +622,34 @@ function EbayImportDraftsContent() {
   return (
     <AdminLayout>
       <div className="space-y-6">
+        {/* Tabs live above the header so switching views is always possible,
+            even when the drafts list is still loading or empty. */}
+        <div className="flex gap-1 border-b border-gray-200" role="tablist">
+          {([
+            { id: 'drafts', label: locale === 'zh' ? '采集草稿' : 'Drafts' },
+            { id: 'market', label: locale === 'zh' ? '市场调研 / 价格' : 'Market & Pricing' },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => updateParams({ tab: tab.id === 'drafts' ? undefined : tab.id, page: 1 })}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
+                activeTab === tab.id
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'market' && <EbayMarketPanel />}
+
+        {activeTab === 'drafts' && (
+      <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{locale === 'zh' ? 'eBay 草稿' : 'eBay Drafts'}</h1>
@@ -528,7 +694,9 @@ function EbayImportDraftsContent() {
             </button>
             <button
               onClick={handleBulkDelete}
-              disabled={bulkDeleteMutation.isPending || selectedIds.length === 0}
+              disabled={
+                bulkDeleteMutation.isPending || bulkDeleteAllMutation.isPending || selectedIds.length === 0
+              }
               className="inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
             >
               <TrashIcon className="mr-2 h-4 w-4" />
@@ -616,7 +784,7 @@ function EbayImportDraftsContent() {
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-medium text-gray-700">{locale === 'zh' ? '搜索' : 'Search'}</label>
               <div className="relative">
@@ -658,6 +826,23 @@ function EbayImportDraftsContent() {
                 <option value="new_unique">{locale === 'zh' ? '新品' : 'New Unique'}</option>
                 <option value="possible_duplicate">{locale === 'zh' ? '疑似重复' : 'Possible Duplicate'}</option>
                 <option value="matched_exact">{locale === 'zh' ? '精确重复' : 'Exact Match'}</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">{locale === 'zh' ? 'AI 审核' : 'AI Review'}</label>
+              <select
+                value={aiReviewStatus}
+                onChange={(e) => updateParams({ ai_review_status: e.target.value, page: 1 })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">{locale === 'zh' ? '全部' : 'All'}</option>
+                <option value="ready">{locale === 'zh' ? '待批准' : 'Ready to approve'}</option>
+                <option value="queued">{locale === 'zh' ? '排队中' : 'Queued'}</option>
+                <option value="processing">{locale === 'zh' ? '处理中' : 'Processing'}</option>
+                <option value="approved">{locale === 'zh' ? '已批准' : 'Approved'}</option>
+                <option value="rejected">{locale === 'zh' ? '已跳过' : 'Rejected'}</option>
+                <option value="failed">{locale === 'zh' ? '失败' : 'Failed'}</option>
+                <option value="unreviewed">{locale === 'zh' ? '未审核' : 'Not reviewed'}</option>
               </select>
             </div>
             <div>
@@ -771,14 +956,99 @@ function EbayImportDraftsContent() {
               <p className="mt-2 text-xs text-blue-800">
                 已处理 {jsonImportTask.processed} 条 · 最后更新 {new Date(jsonImportTask.updated_at).toLocaleString()}。上传完成后关闭或刷新网页不会终止后台任务。
               </p>
+
+              {/* The backend captures per-row failures but the UI only ever
+                  showed a percentage, so a failed import looked like it was
+                  still running. Render the reasons instead. */}
+              {jsonImportTask.error && (
+                <p className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
+                  任务错误：{jsonImportTask.error}
+                </p>
+              )}
+              {(jsonImportTask.errors?.length ?? 0) > 0 && (
+                <details className="mt-2" open={jsonImportTask.status === 'failed'}>
+                  <summary className="cursor-pointer text-xs font-medium text-red-800">
+                    {jsonImportTask.errors?.length} 条导入失败记录（点击展开）
+                  </summary>
+                  <ul className="mt-1 max-h-48 space-y-0.5 overflow-y-auto rounded bg-slate-900 p-2 font-mono text-xs text-red-300">
+                    {jsonImportTask.errors?.map((message, index) => (
+                      <li key={`${index}-${message.slice(0, 24)}`} className="break-words">
+                        {message}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+
+              {/* A run that stays on screen must also be readable afterwards, so
+                  the state transitions are kept as a log instead of
+                  overwriting a single progress line. */}
+              {jsonTaskLog.length > 0 && (
+                <details className="mt-2" open>
+                  <summary className="cursor-pointer text-xs font-medium text-blue-900">
+                    任务日志（{jsonTaskLog.length} 条）
+                  </summary>
+                  <div className="mt-1 max-h-48 overflow-y-auto rounded bg-slate-900 p-2 font-mono text-xs leading-relaxed">
+                    {jsonTaskLog.map((line, index) => (
+                      <p
+                        key={`${line.at}-${index}`}
+                        className={
+                          line.level === 'error'
+                            ? 'text-red-300'
+                            : line.level === 'success'
+                              ? 'text-emerald-300'
+                              : 'text-slate-300'
+                        }
+                      >
+                        <span className="text-slate-500">
+                          {new Date(line.at).toLocaleTimeString('zh-CN', { hour12: false })}{' '}
+                        </span>
+                        {line.text}
+                      </p>
+                    ))}
+                  </div>
+                </details>
+              )}
             </>
           )}
         </div>
+
+        <AIReviewPanel
+          selectedIds={selectedIds}
+          filters={{
+            search: search.trim(),
+            status,
+            match_status: matchStatus,
+            brand,
+            ai_review_status: aiReviewStatus,
+          }}
+          onApproved={() => {
+            setSelectedIds([]);
+            queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
+          }}
+          onReviewFinished={() => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
+          }}
+        />
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
           <p className="text-sm text-blue-900" role="status" aria-live="polite">
             {locale === 'zh' ? `已选择 ${selectedIds.length} 条草稿` : `${selectedIds.length} draft(s) selected`}
           </p>
+          <label className="flex items-center gap-2 text-sm text-blue-900">
+            <span>{locale === 'zh' ? '每页显示' : 'Rows per page'}</span>
+            <select
+              value={pageSize}
+              onChange={(event) => updateParams({ page_size: Number(event.target.value) })}
+              className="rounded border border-blue-200 bg-white px-2 py-1 text-sm"
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -881,6 +1151,14 @@ function EbayImportDraftsContent() {
                       <td className="px-4 py-4 text-sm text-gray-700">
                         <div>{draft.suggested_category?.name || draft.suggested_category_name || '-'}</div>
                         <div className="text-xs text-gray-500">{draft.taxonomy_status}</div>
+                        {/* A proposal is what makes a row approvable, so the
+                            category the AI would publish under is shown here
+                            rather than only inside the detail page. */}
+                        {draft.ai_review_status === 'ready' && draft.proposed_category_name && (
+                          <div className="mt-1 rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-800">
+                            AI 提案：{draft.proposed_category_name}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-700">
                         <div>{renderMatchStatus(draft)}</div>
@@ -890,7 +1168,29 @@ function EbayImportDraftsContent() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-700">{renderStatus(draft)}</td>
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        <div>{renderStatus(draft)}</div>
+                        {draft.ai_review_status === 'ready' && (
+                          <div className="mt-1">
+                            <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-800">
+                              待批准
+                            </span>
+                          </div>
+                        )}
+                        {draft.ai_review_status === 'queued' || draft.ai_review_status === 'processing' ? (
+                          <div className="mt-1 text-xs text-indigo-700">AI 审核中…</div>
+                        ) : null}
+                        {draft.ai_review_status === 'rejected' && draft.ai_review_error && (
+                          <div className="mt-1 max-w-[220px] text-xs text-amber-700">
+                            AI 跳过：{draft.ai_review_error}
+                          </div>
+                        )}
+                        {draft.ai_review_status === 'failed' && draft.ai_review_error && (
+                          <div className="mt-1 max-w-[220px] text-xs text-red-700">
+                            AI 失败：{draft.ai_review_error}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-sm text-gray-500">
                         <div>{new Date(draft.created_at).toLocaleDateString()}</div>
                         <div className="text-xs text-gray-400">{new Date(draft.created_at).toLocaleTimeString()}</div>
@@ -920,6 +1220,8 @@ function EbayImportDraftsContent() {
             />
           </div>
         )}
+      </div>
+      )}
       </div>
     </AdminLayout>
   );

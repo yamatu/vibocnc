@@ -369,14 +369,18 @@ func (ec *EbayImportDraftController) ResumeJSONImportTask(c *gin.Context) {
 
 func (ec *EbayImportDraftController) List(c *gin.Context) {
 	db := config.GetDB()
-	page, pageSize := utils.ParsePaginationWithMax(c.Query("page"), c.Query("page_size"), 100)
+	// The drafts list is a triage table, so it allows a larger page than the
+	// generic 100. The cap matches services.MaxEbayImportDraftPageSize so the
+	// selector in the admin UI cannot ask for a page the server silently clamps.
+	page, pageSize := utils.ParsePaginationWithMax(c.Query("page"), c.Query("page_size"), services.MaxEbayImportDraftPageSize)
 	res, err := services.ListEbayImportDrafts(db, services.EbayImportDraftFilters{
-		Page:        page,
-		PageSize:    pageSize,
-		Search:      c.Query("search"),
-		Status:      c.Query("status"),
-		MatchStatus: c.Query("match_status"),
-		Brand:       c.Query("brand"),
+		Page:           page,
+		PageSize:       pageSize,
+		Search:         c.Query("search"),
+		Status:         c.Query("status"),
+		MatchStatus:    c.Query("match_status"),
+		Brand:          c.Query("brand"),
+		AIReviewStatus: c.Query("ai_review_status"),
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load eBay import drafts", Error: err.Error()})
@@ -401,10 +405,24 @@ func (ec *EbayImportDraftController) SelectionIDs(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to fetch draft selection", Error: err.Error()})
 		return
 	}
+
+	// Refuse to hand back an id array too large for a follow-up request body or a
+	// single `WHERE id IN (...)`. The client falls back to a filter-based delete
+	// instead, which has no such ceiling.
+	truncated := false
+	if len(ids) > services.MaxEbayImportDraftSelectionIDs {
+		ids = ids[:services.MaxEbayImportDraftSelectionIDs]
+		truncated = true
+	}
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Draft selection retrieved successfully",
-		Data:    models.EbayImportDraftSelectionResponse{IDs: ids, Total: int64(len(ids))},
+		Data: models.EbayImportDraftSelectionResponse{
+			IDs:       ids,
+			Total:     int64(len(ids)),
+			Truncated: truncated,
+			Limit:     services.MaxEbayImportDraftSelectionIDs,
+		},
 	})
 }
 
@@ -712,17 +730,89 @@ func (ec *EbayImportDraftController) BulkDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request data", Error: err.Error()})
 		return
 	}
+
+	if req.DeleteAllAsSelected {
+		ec.bulkDeleteByFilter(c, req)
+		return
+	}
+
 	ids := normalizeBulkDraftIDs(req.IDs)
 	if len(ids) == 0 {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "At least one valid draft ID is required", Error: "ids_required"})
 		return
 	}
-	result := config.GetDB().Where("id IN ?", ids).Delete(&models.EbayImportDraft{})
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to delete drafts", Error: result.Error.Error()})
+
+	// A large explicit selection is still chunked: a single statement with tens
+	// of thousands of placeholders exceeds the driver's parameter limit and
+	// fails the whole request, which is how the partial-delete case 500'd.
+	deleted, err := services.DeleteEbayImportDraftsByID(config.GetDB(), ids)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to delete drafts", Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Drafts deleted successfully", Data: gin.H{"deleted": result.RowsAffected, "requested": len(ids)}})
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Drafts deleted successfully", Data: gin.H{"deleted": deleted, "requested": len(ids)}})
+}
+
+// bulkDeleteByFilter deletes every draft matching the current filters without
+// materialising the id list. The admin UI's "select all" addresses a filter,
+// not a fixed set, so this is the only representation that stays correct (and
+// affordable) for a review queue with tens of thousands of rows.
+func (ec *EbayImportDraftController) bulkDeleteByFilter(c *gin.Context, req models.EbayImportDraftBulkDeleteRequest) {
+	statuses := normalizeDraftStatusFilter(req.Statuses, req.Status)
+	if len(statuses) == 0 {
+		// Without a status bound this would empty the entire review queue from a
+		// single click, so require the caller to be explicit.
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Deleting all selected drafts requires at least one status filter",
+			Error:   "status_filter_required",
+		})
+		return
+	}
+
+	matched, deleted, err := services.DeleteEbayImportDraftsByFilter(config.GetDB(), services.EbayImportDraftFilters{
+		Search:      req.Search,
+		Status:      req.Status,
+		MatchStatus: req.MatchStatus,
+		Brand:       req.Brand,
+	}, statuses)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to delete drafts", Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Drafts deleted successfully",
+		Data:    gin.H{"deleted": deleted, "matched": matched, "requested": matched},
+	})
+}
+
+// normalizeDraftStatusFilter builds the status allow-list for a filter delete.
+// An explicit statuses list wins; otherwise the single status filter is used.
+// Unknown values are dropped so a typo cannot silently widen the delete.
+func normalizeDraftStatusFilter(statuses []string, single string) []string {
+	valid := map[string]bool{
+		services.EbayDraftStatusPending:  true,
+		services.EbayDraftStatusImported: true,
+		services.EbayDraftStatusSkipped:  true,
+		services.EbayDraftStatusFailed:   true,
+	}
+	out := make([]string, 0, len(statuses)+1)
+	seen := map[string]bool{}
+	appendStatus := func(raw string) {
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value == "" || !valid[value] || seen[value] {
+			return
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	for _, status := range statuses {
+		appendStatus(status)
+	}
+	appendStatus(single)
+	return out
 }
 
 // normalizeBulkDraftIDs removes duplicate IDs and ignores zero values before

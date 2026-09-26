@@ -30,8 +30,7 @@ import {
   ClipboardDocumentListIcon,
   ShareIcon,
   SparklesIcon,
-  ScaleIcon,
-  BeakerIcon
+  ScaleIcon
 } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, useLogout } from '@/hooks/useAuth';
@@ -47,7 +46,6 @@ const navigation = [
   { key: 'nav.dashboard', name: 'Dashboard', href: '/admin', icon: HomeIcon },
   { key: 'nav.products', name: 'Products', href: '/admin/products', icon: CubeIcon },
   { key: 'nav.ebayDrafts', name: 'eBay Drafts', href: '/admin/ebay-import-drafts', icon: ClipboardDocumentListIcon },
-  { key: 'nav.ebayMarket', name: 'eBay Market', href: '/admin/ebay-market', icon: ChartBarIcon },
   { key: 'nav.categories', name: 'Categories', href: '/admin/categories', icon: TagIcon },
   { key: 'nav.orders', name: 'Orders', href: '/admin/orders', icon: ShoppingBagIcon },
   { key: 'nav.customers', name: 'Customers', href: '/admin/customers', icon: UserCircleIcon },
@@ -59,7 +57,6 @@ const navigation = [
   { key: 'nav.media', name: 'Media Library', href: '/admin/media', icon: PhotoIcon },
   { key: 'nav.shipping', name: 'Shipping Rates', href: '/admin/shipping-rates', icon: TruckIcon },
   { key: 'nav.commercePolicy', name: 'Commerce Policy', href: '/admin/commerce-policy', icon: ScaleIcon },
-  { key: 'nav.specResearch', name: 'Spec Research', href: '/admin/spec-drafts', icon: BeakerIcon },
   { key: 'nav.backup', name: 'Backup & Restore', href: '/admin/backup', icon: ArrowDownTrayIcon },
   { key: 'nav.cache', name: 'Cache & CDN', href: '/admin/cache', icon: ArrowPathIcon },
   { key: 'nav.paypal', name: 'PayPal', href: '/admin/paypal', icon: CreditCardIcon },

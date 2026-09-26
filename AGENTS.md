@@ -91,7 +91,8 @@ backend/
 ├── admin/          # Protected admin endpoints (requires authentication)
 │   ├── products    # Product CRUD with image management
 │   │   ├── spec-research        # Model-number parameter research (creates drafts)
-│   │   └── spec-drafts          # Review queue: list / approve / reject
+│   │   └── spec-drafts          # Draft endpoints (no standalone page; see below)
+│   ├── ebay-import-drafts  # Scraped listing queue + eBay market/pricing tab
 │   ├── commerce-policy # Editable shipping / warranty / return promise
 │   ├── categories  # Category management
 │   ├── orders      # Order management (admin only)
@@ -161,13 +162,52 @@ Not derivable from a model number (never invented): price, stock, weight, dimens
 The single source of truth for the list above is `controllers.modelDerivedFields`; `GET /admin/products/optimization-status` returns `field_coverage` (missing products per field, one aggregate query via `fieldCoverageSelections`) and the products admin page renders it as a "what can still be filled" panel. `TestModelOnlyRecordCoversModelDerivableFields` fails if the generator and that list ever drift apart.
 
 ### Spec Research (model number → parameters)
+
+> The standalone `Admin → Spec Research` review page was removed. The endpoints
+> below are unchanged and still back the product edit form and the profile review
+> panel.
 - Endpoints: `POST /admin/products/spec-research` (bare model number, synchronous), `POST /admin/products/spec-research/batch` and `POST /admin/products/:id/spec-research` (queue an AI job, `202`), `POST /admin/ai-agent/seo/spec-jobs` (scope-filtered job), `GET /admin/products/spec-drafts[/:id]`, `POST /admin/products/spec-drafts/:id/{approve,reject}` (`backend/routes/routes.go`, asserted by `routes/spec_draft_routes_test.go`)
 - **Catalogue products are always researched on the AI job queue** (`controllers/ai_seo_spec_jobs.go`, `aiSEOSpecSelectionMode = "spec_research"`): a synchronous batch timed out, showed no progress and lost work on restart. Job kinds that only write drafts (`category_optimization`, `spec_research`) are the ones `ResumeSEOJob` requeues for and `controllers.finalizeDraftJob` finalizes; content jobs must never be requeued.
 - A spec job **never calls `publishAIAgentSEOJobCompletion`** — it publishes nothing, so there is no cache to invalidate and no URL to submit. It also has no dedicated capacity cap; it counts against `maxActiveAISEOJobs=8` only, because `validateAISEOJobCapacity`'s signature is test-asserted.
-- UI: `Admin → Spec Research` (`/admin/spec-drafts`) is the review queue **and** the place where a task is started and watched (progress bar, pause/resume/stop, per-product outcome); the product list has **Research Specs** (batch) and the product edit form has **Research specs by model number** (single product, model field)
+- UI: `Admin → eBay Drafts` (`/admin/ebay-import-drafts`) is the single hub for the scraped-listing workflow, with two tabs: **采集草稿** (the queue plus the AI review pass below) and **市场调研 / 价格** (eBay market quotes, price suggestions, product-profile drafts). The former standalone `/admin/ebay-market` page now redirects to `?tab=market` — the two are one workflow (scrape → review → price → publish), so they must not drift apart.
+- The spec-draft **review page was removed**; `Admin → Spec Research` no longer exists as a nav entry. The `/admin/products/spec-drafts` **endpoints remain** and are still used by the product edit form ("Research specs by model number") and by `ProductProfileReviewPanel`. Deleting the page did not delete the API.
+- Every brand-agnostic detail of the pipeline is covered by `docs/SPEC_RESEARCH.md` (services) and `docs/EBAY_DRAFT_REVIEW.md` (the automated review pass).
 - Approval writes `product.technical_specs`; the value flows into generated copy on the next regeneration (opt-in) and is rendered by the storefront spec table
 - `services.ResearchProductSpecs` searches public evidence and extracts parameters verbatim; `models.ProductSpecDraft` holds the review queue. Nothing is auto-published, and every candidate needs a cited `SourceURL`
 - Details: `docs/SPEC_RESEARCH.md`
+
+### Automated Draft Review (eBay listing → publishable product)
+
+Admin → eBay Drafts can run an AI pass over scraped drafts. It is the only path
+the plugin/爬虫 feeds into that can end in a published product, so its boundaries
+are strict:
+
+- **The pass never publishes.** `services.ReviewDraft` writes a proposal onto the
+draft (`ai_review_status = ready` plus the `Proposed*` columns). A product is
+created only by `ApproveReview`, which reuses `confirmDraftImport` so an approved
+draft passes exactly the same validation, duplicate handling and upsert as a
+manually confirmed one. There is no auto-publish switch, by design: `AGENTS.md`
+forbids silently rewriting indexed pages, and bulk auto-publishing would create
+thousands of new ones.
+- **Category creation is brand → type.** `ResolveDraftReviewCategory` reuses an
+already-taxonomy-matched category first, then `ResolveExistingCategoryForInference`,
+and only then `ResolveOrCreateCategoryForAdministrator` — which creates a parent
+named after the brand and a child named after the part type (e.g. `Fanuc > Fanuc
+Drive`). Creation is gated on `IsConfirmedProductCategory` **and**
+`!IsGenericProductType`, so an unconfirmed inference or a generic "Spare Part"
+never mints a category.
+- **Price is the collected eBay price.** `ApplyDraftReviewToDraft` copies
+`NormalizedPrice` straight through; the market `price_sync` factor is a separate,
+opt-in mechanism and is not applied here.
+- **Jobs, not requests.** A pass runs as `EbayDraftReviewJob` +
+`EbayDraftReviewJobItem` (their own tables — `AIAgentSEOJob.ProductID` is
+`NOT NULL` and drafts are not products). Progress is polled; the job is
+resumable and survives a restart.
+- Review state is a column on the draft (`ai_review_status`), filterable from the
+list (`ready` = awaiting approval, `unreviewed` = no state yet). `unreviewed` is
+an absence, so it is matched with `IS NULL OR = ''` via
+`services.EbayDraftReviewStatusClause` — an equality would silently match nothing.
+- Details: `docs/EBAY_DRAFT_REVIEW.md`.
 
 ### Error Handling Strategy
 - **API Errors**: Centralized handling in `src/lib/api.ts`

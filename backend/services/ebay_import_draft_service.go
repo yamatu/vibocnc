@@ -66,7 +66,17 @@ type EbayImportDraftListItem struct {
 	ImportedAt            *time.Time `json:"imported_at"`
 	CreatedAt             time.Time  `json:"created_at"`
 	UpdatedAt             time.Time  `json:"updated_at"`
-	MatchedProduct        *struct {
+
+	// Automated review state. The list view shows whether a row has a proposal
+	// waiting, which is how an administrator finds the rows to approve without
+	// opening each one.
+	AIReviewStatus       string `json:"ai_review_status"`
+	AIReviewError        string `json:"ai_review_error"`
+	ProposedName         string `json:"proposed_name"`
+	ProposedCategoryName string `json:"proposed_category_name"`
+	ProposedCategoryID   *uint  `json:"proposed_category_id"`
+	ProposedPartType     string `json:"proposed_part_type"`
+	MatchedProduct       *struct {
 		ID         uint   `json:"id"`
 		SKU        string `json:"sku"`
 		Name       string `json:"name"`
@@ -135,6 +145,9 @@ type EbayImportDraftFilters struct {
 	Status      string
 	MatchStatus string
 	Brand       string
+	// AIReviewStatus filters by the automated review state, which is how the
+	// review queue is listed without paging through everything.
+	AIReviewStatus string
 }
 
 func BuildEbayImportDraft(db *gorm.DB, raw map[string]any) EbayImportDraftBuildResult {
@@ -303,6 +316,11 @@ func ListEbayImportDrafts(db *gorm.DB, filters EbayImportDraftFilters) (models.E
 	if filters.PageSize <= 0 {
 		filters.PageSize = 20
 	}
+	// A page is rendered as rows in a table, so an unbounded page size would
+	// only make the request slow and the browser unhappy.
+	if filters.PageSize > MaxEbayImportDraftPageSize {
+		filters.PageSize = MaxEbayImportDraftPageSize
+	}
 
 	query := db.Model(&models.EbayImportDraft{}).
 		Preload("MatchedProduct", func(tx *gorm.DB) *gorm.DB {
@@ -337,6 +355,75 @@ func ListEbayImportDrafts(db *gorm.DB, filters EbayImportDraftFilters) (models.E
 		Total:      total,
 		TotalPages: int(math.Ceil(float64(total) / float64(filters.PageSize))),
 	}, nil
+}
+
+// MaxEbayImportDraftSelectionIDs bounds an explicit selection list. "Select all"
+// is expressed as a filter (DeleteEbayImportDraftsByFilter) rather than an id
+// array, because a review queue can hold far more rows than a request body or a
+// single `WHERE id IN (...)` can carry. Beyond this limit the caller is told to
+// switch to the filter form instead of silently truncating a destructive action.
+const MaxEbayImportDraftSelectionIDs = 5000
+
+// MaxEbayImportDraftPageSize caps the drafts list page. The admin UI offers a
+// matching selector, so this is a server-side guard rather than a UI limit.
+const MaxEbayImportDraftPageSize = 200
+
+// EbayImportDraftDeleteChunkSize keeps every generated statement well inside the
+// MySQL placeholder limit (65,535) and the driver's packet size.
+const EbayImportDraftDeleteChunkSize = 1000
+
+// DeleteEbayImportDraftsByFilter removes every draft matching the filters plus
+// an explicit status allow-list, in one statement, and reports how many rows
+// matched and were removed. Deleting by filter is what makes "select all"
+// correct: the addressed set is the query, not a snapshot of ids.
+//
+// The status list is required by the caller so a request can never wipe the
+// whole queue without stating which statuses it means to remove.
+func DeleteEbayImportDraftsByFilter(db *gorm.DB, filters EbayImportDraftFilters, statuses []string) (matched int64, deleted int64, err error) {
+	if db == nil {
+		return 0, 0, errors.New("database connection failed")
+	}
+	if len(statuses) == 0 {
+		return 0, 0, errors.New("at least one status is required")
+	}
+
+	build := func() *gorm.DB {
+		query := db.Model(&models.EbayImportDraft{})
+		applyEbayImportDraftFilters(&query, filters)
+		return query.Where("status IN ?", statuses)
+	}
+
+	if err := build().Count(&matched).Error; err != nil {
+		return 0, 0, err
+	}
+	result := build().Delete(&models.EbayImportDraft{})
+	if result.Error != nil {
+		return matched, 0, result.Error
+	}
+	return matched, result.RowsAffected, nil
+}
+
+// DeleteEbayImportDraftsByID removes drafts in bounded chunks. A single
+// statement with tens of thousands of placeholders exceeds the driver's
+// parameter limit and fails the entire request, so chunking keeps a large
+// partial selection from turning into a 500.
+func DeleteEbayImportDraftsByID(db *gorm.DB, ids []uint) (int64, error) {
+	if db == nil {
+		return 0, errors.New("database connection failed")
+	}
+	var deleted int64
+	for start := 0; start < len(ids); start += EbayImportDraftDeleteChunkSize {
+		end := start + EbayImportDraftDeleteChunkSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		result := db.Where("id IN ?", ids[start:end]).Delete(&models.EbayImportDraft{})
+		if result.Error != nil {
+			return deleted, result.Error
+		}
+		deleted += result.RowsAffected
+	}
+	return deleted, nil
 }
 
 // ListEbayImportDraftIDs returns every draft ID matching the supplied filters.
@@ -621,6 +708,12 @@ func summarizeDraft(draft models.EbayImportDraft) EbayImportDraftListItem {
 		ImportedAt:            draft.ImportedAt,
 		CreatedAt:             draft.CreatedAt,
 		UpdatedAt:             draft.UpdatedAt,
+		AIReviewStatus:        draft.AIReviewStatus,
+		AIReviewError:         draft.AIReviewError,
+		ProposedName:          draft.ProposedName,
+		ProposedCategoryName:  draft.ProposedCategoryName,
+		ProposedCategoryID:    draft.ProposedCategoryID,
+		ProposedPartType:      draft.ProposedPartType,
 	}
 	if draft.MatchedProduct != nil {
 		item.MatchedProduct = &struct {
@@ -802,6 +895,26 @@ func compactDraftJSON(value any) string {
 	return string(encoded)
 }
 
+// EbayDraftReviewStatusClause returns the WHERE fragment and arguments that
+// select drafts by automated review state.
+//
+// It is a pure function so the three cases (unreviewed, a concrete state, and
+// "no filter") can be asserted without a database: getting `unreviewed` wrong
+// would silently hide every untouched draft from the queue filter.
+func EbayDraftReviewStatusClause(reviewStatus string) (string, []any, bool) {
+	value := strings.TrimSpace(reviewStatus)
+	switch {
+	case value == "":
+		return "", nil, false
+	case value == "unreviewed":
+		// An unreviewed draft has no stored state, so an equality comparison
+		// would match nothing and the filter would look broken.
+		return "ai_review_status IS NULL OR ai_review_status = ''", nil, true
+	default:
+		return "ai_review_status = ?", []any{value}, true
+	}
+}
+
 func applyEbayImportDraftFilters(query **gorm.DB, filters EbayImportDraftFilters) {
 	if query == nil || *query == nil {
 		return
@@ -818,6 +931,9 @@ func applyEbayImportDraftFilters(query **gorm.DB, filters EbayImportDraftFilters
 	}
 	if strings.TrimSpace(filters.Brand) != "" {
 		*query = (*query).Where("LOWER(normalized_brand) = LOWER(?)", strings.TrimSpace(filters.Brand))
+	}
+	if clause, args, ok := EbayDraftReviewStatusClause(filters.AIReviewStatus); ok {
+		*query = (*query).Where(clause, args...)
 	}
 }
 

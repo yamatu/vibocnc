@@ -16,6 +16,63 @@ export interface EbayImportDraftFilters {
   status?: string;
   match_status?: string;
   brand?: string;
+  /**
+   * Filter by automated review state. `ready` lists the drafts whose AI proposal
+   * is waiting for approval; `unreviewed` lists the rest.
+   */
+  ai_review_status?: string;
+}
+
+/**
+ * Automated AI review.
+ *
+ * A review pass reads each draft, identifies the part, resolves or creates a
+ * `Brand > Component type` category, and writes a complete proposal. Nothing is
+ * published until approveReview is called, which is what keeps an automated
+ * pass from silently creating indexed product pages.
+ */
+export interface EbayDraftReviewJob {
+  id: string;
+  status: 'queued' | 'running' | 'paused' | 'completed' | 'completed_with_errors' | 'failed' | 'cancelled';
+  total: number;
+  processed: number;
+  ready: number;
+  rejected: number;
+  failed: number;
+  stage?: string;
+  message?: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+/** One log line of a review pass. */
+export interface EbayDraftReviewJobItem {
+  id: number;
+  job_id: string;
+  draft_id: number;
+  model?: string;
+  title?: string;
+  status: 'queued' | 'running' | 'ready' | 'rejected' | 'failed';
+  level: 'info' | 'success' | 'warn' | 'error';
+  message?: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A review job plus its log, returned by one poll. */
+export interface EbayDraftReviewJobSnapshot {
+  job: EbayDraftReviewJob;
+  items: EbayDraftReviewJobItem[];
+}
+
+/** Counts of drafts by review state, for the queue header. */
+export interface EbayDraftReviewSummary {
+  counts: Record<string, number>;
+  total: number;
 }
 
 export interface EbayImportDraftConfirmResponse {
@@ -41,6 +98,9 @@ export interface EbayImportDraftBulkConfirmResponse {
 export interface EbayImportDraftSelectionResponse {
   ids: number[];
   total: number;
+  /** True when the matching set was larger than the server-side id cap. */
+  truncated?: boolean;
+  limit?: number;
 }
 
 export interface EbayImportDraftUploadResult {
@@ -396,6 +456,163 @@ export class EbayImportDraftService {
       return response.data.data;
     }
     throw new Error(response.data.message || 'Failed to bulk delete eBay import drafts');
+  }
+
+  /**
+   * Delete every draft matching the current filters, described as a filter
+   * rather than a list of ids.
+   *
+   * "Select all" in a review queue can address more rows than a request body or
+   * a single `WHERE id IN (...)` can carry, which is why the id-array path
+   * returned 500 once the queue grew. Sending the filter keeps the request tiny
+   * and deletes the exact set the admin is looking at.
+   */
+  static async bulkDeleteByFilter(
+    filters: EbayImportDraftFilters = {},
+    statuses: string[]
+  ): Promise<{ deleted: number; matched: number }> {
+    const response = await apiClient.post<APIResponse<{ deleted: number; matched: number }>>(
+      '/admin/ebay-import-drafts/bulk-delete',
+      {
+        delete_all_selected: true,
+        search: filters.search || '',
+        status: filters.status || '',
+        match_status: filters.match_status || '',
+        brand: filters.brand || '',
+        statuses,
+      }
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to bulk delete eBay import drafts');
+  }
+
+  // ------------------------------------------------------------ AI review --
+
+  /**
+   * Start an automated review pass.
+   *
+   * Pass explicit ids when the admin selected rows, or `allFiltered` with the
+   * active filters to review everything matching the current view. The server
+   * re-reads the drafts either way, so a stale page cannot queue rows that have
+   * since been imported.
+   */
+  static async startAIReview(payload: {
+    ids?: number[];
+    all_filtered?: boolean;
+    search?: string;
+    status?: string;
+    match_status?: string;
+    brand?: string;
+    ai_review_status?: string;
+  }): Promise<EbayDraftReviewJob> {
+    const response = await apiClient.post<APIResponse<EbayDraftReviewJob>>(
+      '/admin/ebay-import-drafts/ai-review',
+      payload
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to start AI review');
+  }
+
+  /** Poll one review job together with its log lines. */
+  static async getAIReviewJob(jobId: string, logLimit = 500): Promise<EbayDraftReviewJobSnapshot> {
+    const response = await apiClient.get<APIResponse<EbayDraftReviewJobSnapshot>>(
+      `/admin/ebay-import-drafts/ai-review/${jobId}`,
+      { params: { log_limit: logLimit } }
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to load AI review job');
+  }
+
+  /**
+   * Reconnect to an in-flight pass after a page reload. Without this a long run
+   * looks like it disappeared.
+   */
+  static async getLatestAIReviewJob(logLimit = 500): Promise<EbayDraftReviewJobSnapshot | null> {
+    const response = await apiClient.get<APIResponse<EbayDraftReviewJobSnapshot | null>>(
+      '/admin/ebay-import-drafts/ai-review/latest',
+      { params: { log_limit: logLimit } }
+    );
+    if (response.data.success) {
+      return response.data.data ?? null;
+    }
+    throw new Error(response.data.message || 'Failed to load the latest AI review job');
+  }
+
+  static async pauseAIReviewJob(jobId: string): Promise<EbayDraftReviewJob> {
+    const response = await apiClient.post<APIResponse<EbayDraftReviewJob>>(
+      `/admin/ebay-import-drafts/ai-review/${jobId}/pause`
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to pause the AI review job');
+  }
+
+  static async resumeAIReviewJob(jobId: string): Promise<EbayDraftReviewJob> {
+    const response = await apiClient.post<APIResponse<EbayDraftReviewJob>>(
+      `/admin/ebay-import-drafts/ai-review/${jobId}/resume`
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to resume the AI review job');
+  }
+
+  static async cancelAIReviewJob(jobId: string): Promise<EbayDraftReviewJob> {
+    const response = await apiClient.post<APIResponse<EbayDraftReviewJob>>(
+      `/admin/ebay-import-drafts/ai-review/${jobId}/cancel`
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to cancel the AI review job');
+  }
+
+  /** Counts of drafts by review state, for the queue header. */
+  static async getAIReviewSummary(): Promise<EbayDraftReviewSummary> {
+    const response = await apiClient.get<APIResponse<EbayDraftReviewSummary>>(
+      '/admin/ebay-import-drafts/ai-review/summary'
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to load the AI review summary');
+  }
+
+  /**
+   * Publish approved proposals. This is the only call that creates products from
+   * a reviewed draft.
+   */
+  static async approveAIReview(
+    ids: number[],
+    action?: string
+  ): Promise<EbayBulkConfirmTaskSnapshot> {
+    const response = await apiClient.post<APIResponse<EbayBulkConfirmTaskSnapshot>>(
+      '/admin/ebay-import-drafts/ai-review/approve',
+      { ids, action }
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to approve the reviewed drafts');
+  }
+
+  /** Discard proposals. The listings stay in the queue for a human. */
+  static async rejectAIReview(ids: number[], reason?: string): Promise<{ rejected: number }> {
+    const response = await apiClient.post<APIResponse<{ rejected: number }>>(
+      '/admin/ebay-import-drafts/ai-review/reject',
+      { ids, reason }
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to reject the reviewed drafts');
   }
 }
 

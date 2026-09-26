@@ -201,3 +201,45 @@ eBay 精确型号 listing
   与规格调研一样属于 draft-only 任务，恢复时会重新入队 `running` 项。
 - 每一项只调用 `StoreProductProfileDraft`，不写任何商品字段。
 - `ebay_ingest` 令牌无权调用该接口。
+
+### 采集草稿自动审核（采集 → 上架）
+
+上面的画像接口作用于**已有产品**。把**抓取草稿**变成可上架产品的是另一条流水线，
+入口在 `Admin → eBay Drafts → 采集草稿`：
+
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/ebay-import-drafts/ai-review/summary` | 各审核状态计数 |
+| `GET` | `/api/v1/admin/ebay-import-drafts/ai-review/latest` | 最近一次任务，刷新后可续接 |
+| `POST` | `/api/v1/admin/ebay-import-drafts/ai-review` | 发起审核（`{ids}` 或 `{all_filtered, ...filters}`） |
+| `GET` | `/api/v1/admin/ebay-import-drafts/ai-review/:jobId` | 任务快照 + 逐项结果 |
+| `POST` | `/api/v1/admin/ebay-import-drafts/ai-review/:jobId/{pause,resume,cancel}` | 暂停 / 继续 / 取消 |
+| `POST` | `/api/v1/admin/ebay-import-drafts/ai-review/approve` | **上架**选中的待批准草稿 |
+| `POST` | `/api/v1/admin/ebay-import-drafts/ai-review/reject` | 丢弃提案，草稿保留 |
+
+关键约束：
+
+- **审核不发布。** 审核只把提案写回草稿（`ai_review_status = ready`），生成
+  产品只发生在 `approve`，且复用 `confirmDraftImport`，与人工确认走完全相同的
+  校验、去重与 upsert。**没有自动发布开关**。
+- **分类按「品牌 > 类型」创建。** 先复用已确认分类，再复用推断命中的现有分支，
+  最后才 `ResolveOrCreateCategoryForAdministrator`（父节点=品牌，子节点=类型，
+  如 `Fanuc > Fanuc Drive`）。创建需同时满足 `IsConfirmedProductCategory` 且
+  `!IsGenericProductType`，泛化的 “Spare Part” 永远不会建节点。
+- **价格直接用采集价**（`NormalizedPrice`）。市场 `price_sync` 系数是另一套
+  面向已有产品的可选机制，这里不套用。
+- 列表支持 `ai_review_status` 筛选（`ready` = 待批准，`unreviewed` = 未审核），
+  草稿表格直接显示待批准徽标、AI 建议分类和失败原因。
+
+完整说明（数据模型、状态机、为何不复用 `AIAgentSEOJob`）：`docs/EBAY_DRAFT_REVIEW.md`。
+
+### 页面结构
+
+`/admin/ebay-import-drafts` 是采集链路的唯一 hub，两个页签：
+
+- **采集草稿** —— 草稿队列、批量确认/删除、JSON 导入任务日志、上述 AI 审核面板。
+- **市场调研 / 价格** —— 原 `/admin/ebay-market` 的内容（报价、价格建议、画像审核、
+  插件令牌设置）。旧地址 `/admin/ebay-market` 会重定向到 `?tab=market`。
+
+`Admin → Spec Research`（`/admin/spec-drafts`）页面已移除；相关
+`/admin/products/spec-drafts` 接口保留，仍服务于产品编辑页与画像审核面板。

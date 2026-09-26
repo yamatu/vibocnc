@@ -232,6 +232,19 @@ export interface EbayImportDraftListItem {
   imported_at?: string;
   created_at: string;
   updated_at: string;
+  /**
+   * Automated review state: '' (unreviewed), queued, processing, ready,
+   * approved, rejected or failed. 'ready' means a proposal is waiting for the
+   * administrator to approve it.
+   */
+  ai_review_status?: string;
+  ai_review_error?: string;
+  /** The generated title awaiting approval. */
+  proposed_name?: string;
+  /** The category the pass matched or created. */
+  proposed_category_name?: string;
+  proposed_category_id?: number;
+  proposed_part_type?: string;
   matched_product?: {
     id: number;
     sku: string;

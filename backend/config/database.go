@@ -140,6 +140,8 @@ func ConnectDatabase() {
 			&models.EbayImportJSONTaskItem{},
 			&models.EbayMarketQuote{},
 			&models.PriceSyncChange{},
+			&models.EbayDraftReviewJob{},
+			&models.EbayDraftReviewJobItem{},
 			&models.IntegrationToken{},
 			&models.ProductProfileDraft{},
 			&models.PurchaseLink{},

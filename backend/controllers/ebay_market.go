@@ -228,21 +228,33 @@ func (mc *EbayMarketController) Summary(c *gin.Context) {
 
 	policy := services.CurrentCommercePolicy()
 
+	data := gin.H{
+		"total_quotes":      totalQuotes,
+		"quotes_with_price": withPrice,
+		"total_products":    totalProducts,
+		"last_scraped_at":   latestMarketScrapeTime(db),
+		"policy": gin.H{
+			"enabled":       policy.PriceSyncEnabled,
+			"factor":        policy.PriceSyncFactor,
+			"min_samples":   policy.PriceSyncMinSamples,
+			"max_delta_pct": policy.PriceSyncMaxDeltaPct,
+			"round_to":      policy.PriceSyncRoundTo,
+		},
+	}
+
+	// A scoped API token can only reach this endpoint if its scope allows it, so
+	// echoing the scope back lets a client (the browser extension) confirm which
+	// credential it is holding without a second request. Session users have no
+	// scope and get nothing extra.
+	if scope, exists := c.Get("token_scope"); exists {
+		if scopeText, ok := scope.(string); ok && scopeText != "" {
+			data["token_scope"] = scopeText
+		}
+	}
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Data: gin.H{
-			"total_quotes":      totalQuotes,
-			"quotes_with_price": withPrice,
-			"total_products":    totalProducts,
-			"last_scraped_at":   latestMarketScrapeTime(db),
-			"policy": gin.H{
-				"enabled":       policy.PriceSyncEnabled,
-				"factor":        policy.PriceSyncFactor,
-				"min_samples":   policy.PriceSyncMinSamples,
-				"max_delta_pct": policy.PriceSyncMaxDeltaPct,
-				"round_to":      policy.PriceSyncRoundTo,
-			},
-		},
+		Data:    data,
 	})
 }
 

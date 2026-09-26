@@ -55,6 +55,7 @@ func SetupRoutes(r *gin.Engine) {
 	productSpecDraftController := &controllers.ProductSpecDraftController{}
 	indexNowController := &controllers.IndexNowController{}
 	ebayImportDraftController := &controllers.EbayImportDraftController{}
+	ebayDraftReviewController := controllers.NewEbayDraftReviewController()
 	ebayMarketController := &controllers.EbayMarketController{}
 	integrationTokenController := &controllers.IntegrationTokenController{}
 	productProfileDraftController := &controllers.ProductProfileDraftController{}
@@ -337,6 +338,19 @@ func SetupRoutes(r *gin.Engine) {
 				ebayImportDrafts.POST("/bulk-confirm/tasks/:taskId/pause", ebayImportDraftController.PauseBulkConfirmTask)
 				ebayImportDrafts.POST("/bulk-confirm/tasks/:taskId/resume", ebayImportDraftController.ResumeBulkConfirmTask)
 				ebayImportDrafts.POST("/bulk-recheck", ebayImportDraftController.BulkRecheck)
+
+				// Automated AI review. These are registered before "/:id" because gin
+				// matches in registration order and "/:id" would otherwise capture
+				// "ai-review" as a draft id.
+				ebayImportDrafts.GET("/ai-review/summary", ebayDraftReviewController.ReviewQueueSummary)
+				ebayImportDrafts.GET("/ai-review/latest", ebayDraftReviewController.GetLatestReviewJob)
+				ebayImportDrafts.POST("/ai-review", ebayDraftReviewController.StartReview)
+				ebayImportDrafts.POST("/ai-review/approve", ebayImportDraftController.ApproveReview)
+				ebayImportDrafts.POST("/ai-review/reject", ebayDraftReviewController.RejectReview)
+				ebayImportDrafts.GET("/ai-review/:jobId", ebayDraftReviewController.GetReviewJob)
+				ebayImportDrafts.POST("/ai-review/:jobId/pause", ebayDraftReviewController.PauseReviewJob)
+				ebayImportDrafts.POST("/ai-review/:jobId/resume", ebayDraftReviewController.ResumeReviewJob)
+				ebayImportDrafts.POST("/ai-review/:jobId/cancel", ebayDraftReviewController.CancelReviewJob)
 				// POST alias keeps bulk deletion compatible with proxies that reject
 				// request bodies on DELETE while retaining the legacy DELETE route.
 				ebayImportDrafts.POST("/bulk-delete", ebayImportDraftController.BulkDelete)

@@ -95,6 +95,10 @@ export type {
   EbayImportDraftConfirmResponse,
   EbayImportDraftBulkConfirmResponse,
   EbayImportDraftJSONTaskSnapshot,
+  EbayDraftReviewJob,
+  EbayDraftReviewJobItem,
+  EbayDraftReviewJobSnapshot,
+  EbayDraftReviewSummary,
 } from './ebay-import-draft.service';
 
 // API Service class that combines all services
