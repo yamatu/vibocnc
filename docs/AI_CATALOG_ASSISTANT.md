@@ -144,3 +144,60 @@ A06B-6079-H206 = 960.50 USD
 自动创建分类仍然受词汇表门禁：产品类型若不在内置类型词典、且分类树中不存在同名节点，
 默认拒绝创建，错误信息会要求管理员批准；批量任务需显式传 `allow_new_product_types`，
 复核队列的“允许新建分类类型”也需要管理员逐次勾选。
+
+## eBay 证据驱动的产品画像
+
+后台 **eBay Market** 页面提供独立的“AI 产品画像”流程，用于处理数据库里只有型号、无法判断产品类型的记录。
+
+### 数据与审核流
+
+```text
+eBay 精确型号 listing
+  → AI 识别 brand / part_type / what_it_is / functions / applications / cited specs
+  → ProductProfileDraft（pending）
+  → 管理员审核标题、分类、描述和 SEO 预览
+  → 批准后写产品字段
+  → 引用规格转 ProductSpecDraft（仍为 pending）
+  → Spec Research 再次逐条审核后才写 technical_specs
+```
+
+关键约束：
+
+- `POST /admin/ebay-market/identify` 默认只创建画像草稿，不修改产品。
+- 型号唯一匹配本地产品时自动关联；同型号对应多个产品时保持未关联，不猜测。
+- 同一产品/型号的新草稿会把旧 pending 草稿标为 `superseded`。
+- 批准前保存产品 `updated_at` 快照；产品在识别后被编辑时返回 `stale_profile_draft`，除非管理员显式强制。
+- 标题格式固定为 `Brand Model Product Type`，不会保留 eBay 的 `Used`、`Fast delivery`、`Quality Guaranteed` 等噪音。
+- 描述和 SEO 使用结构化画像生成，商业承诺读取 `CommercePolicySetting`，不硬编码时效/质保/退货条件。
+- 默认只填充空白或过短文案；覆盖成熟文案必须勾选 `overwrite_existing`。
+- 外来品牌词通过 `ForeignBrandMentions` 检查；含其他制造商品牌的公开文案不会进入草稿。
+- AI 返回的规格必须有 `source_url`；批准画像也不会直接发布规格，而是生成 `ProductSpecDraft`。
+- 分类通过现有 taxonomy gate。新产品类型默认禁止创建，只有管理员勾选后才能增加分类节点。
+
+### 画像接口
+
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| `POST` | `/api/v1/admin/ebay-market/identify` | 读取型号的 eBay 证据、调用 AI、默认创建 pending 画像草稿 |
+| `POST` | `/api/v1/admin/ebay-market/identify/jobs` | 批量识别：为有精确型号证据、尚无待审画像的产品排队（`202`） |
+| `GET` | `/api/v1/admin/ebay-market/profile-drafts` | 按状态列出画像审核队列 |
+| `GET` | `/api/v1/admin/ebay-market/profile-drafts/:id` | 查看产品当前值、建议内容和 listing 证据 |
+| `POST` | `/api/v1/admin/ebay-market/profile-drafts/:id/approve` | 管理员显式应用标题/分类/内容；规格仅转审核草稿 |
+| `POST` | `/api/v1/admin/ebay-market/profile-drafts/:id/reject` | 拒绝，不修改产品 |
+
+`ebay_ingest` API Token 无权访问画像审核或批准接口；它只能上传证据和草稿。
+
+### 批量识别任务
+
+单型号 `identify` 是同步调用；批量识别走 AI 任务队列
+（`selection_mode = product_identification`），避免长请求超时并可在重启后恢复：
+
+- 候选选择复用 `MatchProductsForMarketQuotes`，因此型号冲突与品牌前缀规则
+  不会与报价页漂移。
+- 只选**精确型号**有 eBay 证据、`is_active`、且有可用型号标识的产品。
+- 已有 pending 画像草稿、或已在其他 AI 任务 `queued/running` 的产品自动跳过，
+  防止重复审核行与重复 AI 消耗。
+- 任务在创建时固定 AI profile（`pinAIAgentSEOJobProfile`），沿用现有暂停/恢复；
+  与规格调研一样属于 draft-only 任务，恢复时会重新入队 `running` 项。
+- 每一项只调用 `StoreProductProfileDraft`，不写任何商品字段。
+- `ebay_ingest` 令牌无权调用该接口。

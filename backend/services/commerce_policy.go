@@ -1,6 +1,7 @@
 package services
 
 import (
+	"math"
 	"regexp"
 	"strings"
 	"sync"
@@ -163,6 +164,22 @@ func NormalizeCommercePolicy(setting models.CommercePolicySetting) models.Commer
 	}
 	setting.ReturnPolicyCountry = country
 	setting.ReturnPolicyNotes = strings.TrimSpace(setting.ReturnPolicyNotes)
+
+	// Market-price synchronization is opt-in and only produces suggestions until
+	// an administrator explicitly applies selected rows. Clamp every numeric
+	// guard here so a malformed admin payload cannot disable its safety limits.
+	if math.IsNaN(setting.PriceSyncFactor) || math.IsInf(setting.PriceSyncFactor, 0) || setting.PriceSyncFactor < 0.1 || setting.PriceSyncFactor > 5 {
+		setting.PriceSyncFactor = defaults.PriceSyncFactor
+	}
+	if setting.PriceSyncMinSamples < 1 || setting.PriceSyncMinSamples > 100 {
+		setting.PriceSyncMinSamples = defaults.PriceSyncMinSamples
+	}
+	if math.IsNaN(setting.PriceSyncMaxDeltaPct) || math.IsInf(setting.PriceSyncMaxDeltaPct, 0) || setting.PriceSyncMaxDeltaPct < 1 || setting.PriceSyncMaxDeltaPct > 1000 {
+		setting.PriceSyncMaxDeltaPct = defaults.PriceSyncMaxDeltaPct
+	}
+	if math.IsNaN(setting.PriceSyncRoundTo) || math.IsInf(setting.PriceSyncRoundTo, 0) || setting.PriceSyncRoundTo < 0 || setting.PriceSyncRoundTo > 10000 {
+		setting.PriceSyncRoundTo = defaults.PriceSyncRoundTo
+	}
 
 	return setting
 }

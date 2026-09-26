@@ -51,6 +51,9 @@ type Product struct {
 	MetaDescription string `json:"meta_description" gorm:"type:text"`
 	MetaKeywords    string `json:"meta_keywords" gorm:"type:text"`
 	DisableAutoSEO  bool   `json:"disable_auto_seo" gorm:"default:false;index"`
+	// PriceLocked exempts a product from market price suggestions. The
+	// administrator sets it when a price is contractual or manually curated.
+	PriceLocked     bool   `json:"price_locked" gorm:"default:false;index"`
 	ImageURLs       string `json:"image_urls" gorm:"type:json"`
 
 	// Enhanced fields for fanucworld.com compatibility

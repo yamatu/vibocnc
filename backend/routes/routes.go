@@ -55,6 +55,9 @@ func SetupRoutes(r *gin.Engine) {
 	productSpecDraftController := &controllers.ProductSpecDraftController{}
 	indexNowController := &controllers.IndexNowController{}
 	ebayImportDraftController := &controllers.EbayImportDraftController{}
+	ebayMarketController := &controllers.EbayMarketController{}
+	integrationTokenController := &controllers.IntegrationTokenController{}
+	productProfileDraftController := &controllers.ProductProfileDraftController{}
 	aiAgentController := &controllers.AIAgentController{}
 	services.StartEbayAutoImportDaemon(ebayImportDraftController.ConfirmDraftFn())
 	services.StartProductCatalogImportDaemon(db)
@@ -343,6 +346,41 @@ func SetupRoutes(r *gin.Engine) {
 				ebayImportDrafts.POST("/:id/recheck", ebayImportDraftController.Recheck)
 				ebayImportDrafts.POST("/:id/confirm", ebayImportDraftController.Confirm)
 				ebayImportDrafts.DELETE("/:id", ebayImportDraftController.Delete)
+			}
+
+			// eBay market research (crawler output + price suggestions).
+			// The crawler pushes quotes here; price changes are only ever applied
+			// through the explicit price-sync/apply call.
+			ebayMarket := admin.Group("/ebay-market")
+			ebayMarket.Use(middleware.EditorOrAdmin())
+			{
+				ebayMarket.POST("/ingest", ebayMarketController.Ingest)
+				ebayMarket.GET("/summary", ebayMarketController.Summary)
+				ebayMarket.POST("/identify", ebayMarketController.IdentifyProduct)
+				ebayMarket.POST("/identify/jobs", ebayMarketController.StartIdentificationJob)
+				ebayMarket.GET("/profile-drafts", productProfileDraftController.List)
+				ebayMarket.GET("/profile-drafts/:id", productProfileDraftController.Get)
+				ebayMarket.POST("/profile-drafts/:id/approve", middleware.AdminOnly(), productProfileDraftController.Approve)
+				ebayMarket.POST("/profile-drafts/:id/reject", middleware.AdminOnly(), productProfileDraftController.Reject)
+				ebayMarket.POST("/quotes/clear", middleware.AdminOnly(), ebayMarketController.Clear)
+				ebayMarket.GET("/quotes", ebayMarketController.List)
+				ebayMarket.GET("/quotes/:id", ebayMarketController.Get)
+				ebayMarket.DELETE("/quotes/:id", middleware.AdminOnly(), ebayMarketController.Delete)
+				ebayMarket.POST("/price-sync/preview", ebayMarketController.PreviewPrices)
+				ebayMarket.POST("/price-sync/apply", middleware.AdminOnly(), ebayMarketController.ApplyPrices)
+			}
+
+			// API tokens are machine credentials, so the entire group is
+			// admin-only: an editor must not be able to mint a credential that
+			// outlives their own access.
+			integrationTokens := admin.Group("/integration-tokens")
+			integrationTokens.Use(middleware.AdminOnly())
+			{
+				integrationTokens.GET("", integrationTokenController.List)
+				integrationTokens.POST("", integrationTokenController.Create)
+				integrationTokens.PATCH("/:id", integrationTokenController.Update)
+				integrationTokens.POST("/:id/revoke", integrationTokenController.Revoke)
+				integrationTokens.DELETE("/:id", integrationTokenController.Delete)
 			}
 
 			// Shipping template management (admin and editor access)

@@ -24,6 +24,13 @@ export const FALLBACK_COMMERCE_POLICY: CommercePolicySetting = {
   return_shipping_payer: 'shared',
   return_policy_country: 'US',
   return_policy_notes: '',
+  // Internal pricing controls are unused by storefront helpers. They are kept
+  // here only because the admin/public policy share one transport type.
+  price_sync_enabled: false,
+  price_sync_factor: 1,
+  price_sync_min_samples: 3,
+  price_sync_max_delta_pct: 50,
+  price_sync_round_to: 0,
 };
 
 /** Comma separated carrier list, defaulting to the advertised carriers. */

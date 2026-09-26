@@ -447,6 +447,10 @@ func (ac *AIAgentController) GetSEOJob(c *gin.Context) {
 		c.JSON(http.StatusForbidden, models.APIResponse{Success: false, Message: "Only administrators can view category optimization task items"})
 		return
 	}
+	if job.SelectionMode == aiSEOIdentificationSelectionMode && !isAdminRequest(c) {
+		c.JSON(http.StatusForbidden, models.APIResponse{Success: false, Message: "Only administrators can view product identification task items"})
+		return
+	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: job})
 }
 
@@ -637,6 +641,10 @@ func runAIAgentSEOJob(jobID, workerToken string) {
 	}
 	if claimedJob.SelectionMode == aiSEOSpecSelectionMode {
 		processSpecResearchJob(jobID, workerToken, claimedJob.Prompt)
+		return
+	}
+	if claimedJob.SelectionMode == aiSEOIdentificationSelectionMode {
+		processIdentificationJob(jobID, workerToken)
 		return
 	}
 	profileID, err := loadAIAgentSEOJobProfileID(db, jobID)

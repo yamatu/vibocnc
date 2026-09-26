@@ -589,19 +589,21 @@ func failQueuedSpecResearchItems(jobID, message string) {
 // jobRequeuesRunningItemsOnResume reports whether a job type owns work that an
 // in-flight worker may still be finishing when the job is paused and resumed.
 // Content jobs own product fields and are never requeued; draft-writing jobs
-// (category optimization, specification research) can safely redo an item whose
-// result was never applied.
+// (category optimization, specification research, product identification) can
+// safely redo an item whose result was never applied.
 func jobRequeuesRunningItemsOnResume(db *gorm.DB, jobID string) (bool, error) {
 	var job models.AIAgentSEOJob
 	if err := db.Select("selection_mode").First(&job, "id = ?", jobID).Error; err != nil {
 		return false, err
 	}
-	return job.SelectionMode == aiSEOCategorySelectionMode || job.SelectionMode == aiSEOSpecSelectionMode, nil
+	return job.SelectionMode == aiSEOCategorySelectionMode ||
+		job.SelectionMode == aiSEOSpecSelectionMode ||
+		job.SelectionMode == aiSEOIdentificationSelectionMode, nil
 }
 
 // finalizeDraftJob atomically releases residual items and closes a job that only
-// ever wrote review rows. It is shared by category optimization and
-// specification research, which differ only in the residual item summary.
+// ever wrote review rows. Category optimization, specification research and
+// product identification differ only in the residual item summary.
 func finalizeDraftJob(db *gorm.DB, jobID, workerToken string, workerErrors []string, leftoverSummary string) (bool, error) {
 	finished := false
 	err := db.Transaction(func(tx *gorm.DB) error {

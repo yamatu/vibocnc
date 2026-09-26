@@ -15,6 +15,7 @@ import {
   UserGroupIcon
 } from '@heroicons/react/24/outline';
 import AdminLayout from '@/components/admin/AdminLayout';
+import ApiTokenManager from '@/components/admin/ApiTokenManager';
 import { apiClient } from '@/lib/api';
 import Link from 'next/link';
 import { useAdminI18n } from '@/lib/admin-i18n';
@@ -491,6 +492,9 @@ export default function AdminUsersPage() {
             </div>
           )}
         </div>
+
+        {/* Machine credentials for the crawler and other integrations. */}
+        <ApiTokenManager />
       </div>
     </AdminLayout>
   );

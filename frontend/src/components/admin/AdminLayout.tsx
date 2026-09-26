@@ -47,6 +47,7 @@ const navigation = [
   { key: 'nav.dashboard', name: 'Dashboard', href: '/admin', icon: HomeIcon },
   { key: 'nav.products', name: 'Products', href: '/admin/products', icon: CubeIcon },
   { key: 'nav.ebayDrafts', name: 'eBay Drafts', href: '/admin/ebay-import-drafts', icon: ClipboardDocumentListIcon },
+  { key: 'nav.ebayMarket', name: 'eBay Market', href: '/admin/ebay-market', icon: ChartBarIcon },
   { key: 'nav.categories', name: 'Categories', href: '/admin/categories', icon: TagIcon },
   { key: 'nav.orders', name: 'Orders', href: '/admin/orders', icon: ShoppingBagIcon },
   { key: 'nav.customers', name: 'Customers', href: '/admin/customers', icon: UserCircleIcon },

@@ -71,7 +71,8 @@ func (cc *CommercePolicyController) UpdateSettings(c *gin.Context) {
 }
 
 // GetPublicSettings is consumed by the storefront (server side) to render the
-// visible promise and the schema.org shipping / return data.
+// visible promise and the schema.org shipping / return data. Internal eBay
+// pricing controls are excluded from this public response.
 func (cc *CommercePolicyController) GetPublicSettings(c *gin.Context) {
 	setting, err := services.GetCommercePolicy(config.GetDB())
 	if err != nil {
@@ -82,5 +83,5 @@ func (cc *CommercePolicyController) GetPublicSettings(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: setting})
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: setting.Public()})
 }

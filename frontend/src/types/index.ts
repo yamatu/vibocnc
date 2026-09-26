@@ -841,6 +841,12 @@ export interface CommercePolicySetting {
   return_shipping_payer: 'shared' | 'customer' | 'merchant' | string;
   return_policy_country: string;
   return_policy_notes: string;
+  /** eBay market pricing is opt-in and always previewed before manual apply. */
+  price_sync_enabled: boolean;
+  price_sync_factor: number;
+  price_sync_min_samples: number;
+  price_sync_max_delta_pct: number;
+  price_sync_round_to: number;
   created_at?: string;
   updated_at?: string;
 }

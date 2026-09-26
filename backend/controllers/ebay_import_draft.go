@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -56,6 +57,7 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 		Title        string   `json:"title"`
 		MatchStatus  string   `json:"match_status"`
 		Status       string   `json:"status"`
+		Duplicate    bool     `json:"duplicate,omitempty"`
 		Errors       []string `json:"errors,omitempty"`
 		ImportedImgs int      `json:"imported_images"`
 	}
@@ -65,6 +67,27 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 	errorCount := 0
 
 	for _, item := range req.Items {
+		item = services.NormalizeEbayImportDraftPayload(item)
+		// Browser retries are common when image imports take a while. Resolve the
+		// stable eBay identity before doing web lookup/image work so retrying a
+		// successful-but-timed-out request returns the existing draft rather than
+		// filling the review queue with duplicates.
+		if existing, found, lookupErr := findExistingEbayImportDraft(db, item); lookupErr != nil {
+			results = append(results, uploadItemResult{Title: ebayUploadString(item["product_title"]), Status: services.EbayDraftStatusFailed, Errors: []string{lookupErr.Error()}})
+			errorCount++
+			continue
+		} else if found {
+			results = append(results, uploadItemResult{
+				DraftID:     existing.ID,
+				Title:       existing.TitleRaw,
+				MatchStatus: existing.MatchStatus,
+				Status:      existing.Status,
+				Duplicate:   true,
+			})
+			successCount++
+			continue
+		}
+
 		built := services.BuildEbayImportDraftWithContext(c.Request.Context(), db, item)
 		draft := built.Draft
 		if len(built.Errors) > 0 {
@@ -103,6 +126,73 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 			"results":       results,
 		},
 	})
+}
+
+// findExistingEbayImportDraft makes direct browser uploads idempotent. The
+// strongest marketplace identifiers are checked first, with source URL as the
+// final fallback. It intentionally does not compare the title: sellers edit
+// titles, while a listing id remains stable.
+func findExistingEbayImportDraft(db *gorm.DB, item map[string]any) (models.EbayImportDraft, bool, error) {
+	var existing models.EbayImportDraft
+	if db == nil {
+		return existing, false, errors.New("database connection failed")
+	}
+	site := strings.TrimSpace(ebayUploadString(item["source_site"]))
+	if site == "" {
+		site = strings.TrimSpace(ebayUploadString(item["site"]))
+	}
+	if site == "" {
+		site = "ebay"
+	}
+
+	listingID := strings.TrimSpace(ebayUploadString(item["listing_id"]))
+	itemID := strings.TrimSpace(ebayUploadString(item["product_id"]))
+	if itemID == "" {
+		itemID = strings.TrimSpace(ebayUploadString(item["ebay_item_id"]))
+	}
+	sourceURL := strings.TrimSpace(ebayUploadString(item["product_url"]))
+	if sourceURL == "" {
+		sourceURL = strings.TrimSpace(ebayUploadString(item["source_url"]))
+	}
+
+	conditions := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	if listingID != "" {
+		conditions = append(conditions, "listing_id = ?")
+		args = append(args, listingID)
+	}
+	if itemID != "" {
+		conditions = append(conditions, "ebay_item_id = ?")
+		args = append(args, itemID)
+	}
+	if sourceURL != "" {
+		conditions = append(conditions, "source_url = ?")
+		args = append(args, sourceURL)
+	}
+	if len(conditions) == 0 {
+		return existing, false, nil
+	}
+
+	err := db.Where("source_site = ?", site).
+		Where("("+strings.Join(conditions, " OR ")+")", args...).
+		Order("id DESC").First(&existing).Error
+	if err == nil {
+		return existing, true, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.EbayImportDraft{}, false, nil
+	}
+	return models.EbayImportDraft{}, false, err
+}
+
+func ebayUploadString(value any) string {
+	if value == nil {
+		return ""
+	}
+	if text, ok := value.(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func (ec *EbayImportDraftController) StartJSONImport(c *gin.Context) {

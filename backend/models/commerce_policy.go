@@ -46,6 +46,25 @@ type CommercePolicySetting struct {
 	ReturnPolicyCountry string `json:"return_policy_country" gorm:"size:2;default:'US'"`
 	ReturnPolicyNotes   string `json:"return_policy_notes" gorm:"type:text"`
 
+	// --- eBay market price sync -------------------------------------------
+	// The crawler researches eBay median prices per model number. Nothing is
+	// written to a product automatically: these settings only control which
+	// suggestions the admin review screen is willing to offer.
+	//
+	// PriceSyncEnabled          master switch for the whole suggestion engine.
+	// PriceSyncFactor           multiplier applied to the eBay median price.
+	//                           Default 1.0 means "follow eBay as-is".
+	// PriceSyncMinSamples       listings required before a suggestion is offered.
+	// PriceSyncMaxDeltaPct      changes beyond this percentage are flagged for
+	//                           manual review instead of being auto-marked ready.
+	// PriceSyncRoundTo          rounding step for the suggested price (e.g. 1.00
+	//                           or 5.00). 0 disables rounding.
+	PriceSyncEnabled     bool    `json:"price_sync_enabled" gorm:"default:false"`
+	PriceSyncFactor      float64 `json:"price_sync_factor" gorm:"type:decimal(6,3);default:1.000"`
+	PriceSyncMinSamples  int     `json:"price_sync_min_samples" gorm:"default:3"`
+	PriceSyncMaxDeltaPct float64 `json:"price_sync_max_delta_pct" gorm:"type:decimal(6,2);default:50.00"`
+	PriceSyncRoundTo     float64 `json:"price_sync_round_to" gorm:"type:decimal(8,2);default:0.00"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -79,5 +98,10 @@ func DefaultCommercePolicy() CommercePolicySetting {
 		ReturnWindowText:             "1 year",
 		ReturnShippingPayer:          ReturnShippingPayerShared,
 		ReturnPolicyCountry:          "US",
+		PriceSyncEnabled:             false,
+		PriceSyncFactor:              1.0,
+		PriceSyncMinSamples:          3,
+		PriceSyncMaxDeltaPct:         50,
+		PriceSyncRoundTo:             0,
 	}
 }

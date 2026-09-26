@@ -8,7 +8,7 @@ import "time"
 type AIAgentSEOJob struct {
 	ID            string `json:"id" gorm:"primaryKey;size:36"`
 	Prompt        string `json:"prompt" gorm:"type:text"`
-	SelectionMode string `json:"selection_mode" gorm:"size:32;default:'selected'"` // selected, auto_candidates, auto_failed, category_optimization
+	SelectionMode string `json:"selection_mode" gorm:"size:32;default:'selected'"` // selected, auto_candidates, auto_failed, category_optimization, spec_research, product_identification
 	Status        string `json:"status" gorm:"size:32;index;not null"`             // queued, running, paused, cancelled, completed, completed_with_errors, failed
 	// AIProfileID pins queued and resumed work to the profile selected when the
 	// job was created. Name/model snapshots keep completed jobs auditable even

@@ -324,7 +324,7 @@ export interface AIAgentSEOJob {
   id: string;
   prompt: string;
   focus?: AIAgentSEOFocus[];
-  selection_mode: 'selected' | 'auto_candidates' | 'auto_failed' | 'category_optimization' | 'spec_research';
+  selection_mode: 'selected' | 'auto_candidates' | 'auto_failed' | 'category_optimization' | 'spec_research' | 'product_identification';
   status: AIAgentSEOJobStatus;
   ai_profile_id?: number;
   ai_profile_name?: string;
