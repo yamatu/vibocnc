@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -81,12 +82,27 @@ func (rc *EbayDraftReviewController) StartReview(c *gin.Context) {
 	if userID := currentAdminUserID(c); userID != nil {
 		createdBy = *userID
 	}
-	job, err := services.StartEbayDraftReviewJob(ids, createdBy, client)
+	job, skipped, err := services.StartEbayDraftReviewJob(ids, createdBy, client)
 	if err != nil {
+		// The failure reason is the whole point of this response: the UI can only
+		// tell an administrator which drafts to fix if the message says what
+		// disqualified them.
 		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "Failed to start AI review", Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "AI review started", Data: job})
+	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: ebayReviewStartedMessage(job.Total, skipped), Data: job})
+}
+
+// ebayReviewStartedMessage reports how much of the request actually became work.
+//
+// A pass silently smaller than the selection is how an administrator ends up
+// waiting on a job that was never going to process the rows they picked, so the
+// skipped counts travel with the success response instead of a bare "started".
+func ebayReviewStartedMessage(queued int, skipped services.EbayReviewSkipCounts) string {
+	if summary := skipped.Summary(); summary != "" {
+		return fmt.Sprintf("AI review started for %d draft(s); skipped %s", queued, summary)
+	}
+	return "AI review started"
 }
 
 // resolveReviewDraftIDs expands a filter into draft ids, bounded by the same

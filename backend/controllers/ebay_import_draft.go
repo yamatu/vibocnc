@@ -450,8 +450,13 @@ func (ec *EbayImportDraftController) SelectionIDs(c *gin.Context) {
 	// Refuse to hand back an id array too large for a follow-up request body or a
 	// single `WHERE id IN (...)`. The client falls back to a filter-based delete
 	// instead, which has no such ceiling.
+	//
+	// The match count is captured before the id list is cut: reporting the length
+	// of the truncated slice made the client believe only `limit` drafts matched,
+	// which is what made "select all" look capped at 5000 rows of a larger queue.
+	matched := len(ids)
 	truncated := false
-	if len(ids) > services.MaxEbayImportDraftSelectionIDs {
+	if matched > services.MaxEbayImportDraftSelectionIDs {
 		ids = ids[:services.MaxEbayImportDraftSelectionIDs]
 		truncated = true
 	}
@@ -460,7 +465,7 @@ func (ec *EbayImportDraftController) SelectionIDs(c *gin.Context) {
 		Message: "Draft selection retrieved successfully",
 		Data: models.EbayImportDraftSelectionResponse{
 			IDs:       ids,
-			Total:     int64(len(ids)),
+			Total:     int64(matched),
 			Truncated: truncated,
 			Limit:     services.MaxEbayImportDraftSelectionIDs,
 		},

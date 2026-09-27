@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { EbayImportDraftService } from '@/services';
 import type { EbayDraftReviewJobItem, EbayDraftReviewJobSnapshot } from '@/services';
+import { getErrorMessage } from '@/lib/errors';
 
 /** Runs that are still making progress and therefore worth polling. */
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'paused'];
@@ -156,7 +157,10 @@ export default function AIReviewPanel({
       queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
       toast.success(`已开始 AI 审核 ${created.total} 条草稿 / reviewing ${created.total} drafts`);
     },
-    onError: (error: Error) => toast.error(error.message || 'AI 审核启动失败'),
+    // `error.message` on a rejected request is axios' own "Request failed with
+    // status code 409", which hides the server's explanation. getErrorMessage
+    // reads the response body, where the reason a selection was refused lives.
+    onError: (error) => toast.error(getErrorMessage(error, 'AI 审核启动失败 / failed to start AI review')),
   });
 
   const controlMutation = useMutation({
@@ -170,7 +174,7 @@ export default function AIReviewPanel({
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review', jobId] });
       queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
     },
-    onError: (error: Error) => toast.error(error.message || '操作失败'),
+    onError: (error) => toast.error(getErrorMessage(error, '操作失败 / action failed')),
   });
 
   const approveMutation = useMutation({
@@ -182,7 +186,7 @@ export default function AIReviewPanel({
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review'] });
       onApproved?.();
     },
-    onError: (error: Error) => toast.error(error.message || '上架失败'),
+    onError: (error) => toast.error(getErrorMessage(error, '上架失败 / approval failed')),
   });
 
   const rejectMutation = useMutation({
@@ -193,7 +197,7 @@ export default function AIReviewPanel({
       queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review'] });
     },
-    onError: (error: Error) => toast.error(error.message || '拒绝失败'),
+    onError: (error) => toast.error(getErrorMessage(error, '拒绝失败 / rejection failed')),
   });
 
   /** Draft ids that produced a usable proposal, in log order. */

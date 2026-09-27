@@ -317,7 +317,48 @@ function EbayImportDraftsContent() {
   });
 
   // Deleting everything the filters match goes through a filter-based request.
-  // Sending tens of thousands of ids in one body (and one `WHERE id IN (...)`) is
+  /**
+ * The four stages of the draft queue, in the order a row moves through them.
+ *
+ * Each stage is just a filter combination, so a step both states the order of
+ * operations and applies it. Previously that order was only discoverable by
+ * working through the dropdowns one at a time.
+ */
+type WorkflowStep = {
+  key: string;
+  zh: string;
+  en: string;
+  params: Record<string, string | undefined>;
+};
+
+const WORKFLOW_STEPS: WorkflowStep[] = [
+  {
+    key: 'new',
+    zh: '① 新品待确认',
+    en: '1. New items',
+    params: { status: 'pending', match_status: 'new_unique', ai_review_status: undefined },
+  },
+  {
+    key: 'review',
+    zh: '② 待 AI 审核',
+    en: '2. To review',
+    params: { status: 'pending', match_status: undefined, ai_review_status: 'unreviewed' },
+  },
+  {
+    key: 'approve',
+    zh: '③ 待批准上架',
+    en: '3. To approve',
+    params: { status: undefined, match_status: undefined, ai_review_status: 'ready' },
+  },
+  {
+    key: 'published',
+    zh: '④ 已上架',
+    en: '4. Published',
+    params: { status: 'imported', match_status: undefined, ai_review_status: undefined },
+  },
+];
+
+// Sending tens of thousands of ids in one body (and one `WHERE id IN (...)`) is
   // what produced the 500 on the select-all path.
   const bulkDeleteAllMutation = useMutation({
     mutationFn: () =>
@@ -339,8 +380,8 @@ function EbayImportDraftsContent() {
         setSelectionCoversAll(true);
         toast.success(
           locale === 'zh'
-            ? `匹配草稿超过 ${result.limit} 条，已切换为按筛选条件删除`
-            : `More than ${result.limit} drafts match; switching to filter-based delete`
+            ? `已选中当前筛选条件下的全部 ${result.total} 条（超过 ${result.limit} 条，删除时按筛选条件整批执行）`
+            : `Selected all ${result.total} matching drafts; delete applies to every one of them`
         );
         return;
       }
@@ -617,6 +658,73 @@ function EbayImportDraftsContent() {
         {labelMap[draft.match_status] || draft.match_status}
       </span>
     );
+  };
+
+  const workflowStepActive = (step: WorkflowStep) =>
+    (step.params.status || '') === status &&
+    (step.params.match_status || '') === matchStatus &&
+    (step.params.ai_review_status || '') === aiReviewStatus;
+
+  /**
+   * What this row needs next, and - when it is blocked - why.
+   *
+   * Every row looks alike in a list this size, but the pipeline is scrape ->
+   * human confirm -> AI review -> publish and a row can stall at any of those.
+   * The AI review refuses a draft with no model or part number, so naming that
+   * on the row is the difference between a queue an operator can work through
+   * and one that silently rejects a whole batch.
+   */
+  const nextStepHint = (draft: EbayImportDraftListItem): { text: string; tone: string } => {
+    const zh = locale === 'zh';
+    const identifier =
+      draft.normalized_model || draft.normalized_part_number || draft.normalized_mpn || '';
+    const title = (draft.normalized_title || draft.title_raw || '').trim();
+
+    if (draft.status === 'imported') {
+      return { text: zh ? '已完成，无需操作' : 'Published', tone: 'text-emerald-700' };
+    }
+    if (draft.status === 'skipped') {
+      return { text: zh ? '已跳过' : 'Skipped', tone: 'text-gray-500' };
+    }
+    if (draft.ai_review_status === 'ready') {
+      return {
+        text: zh ? '可上架：勾选后点「上架选中的」' : 'Ready: approve to publish',
+        tone: 'text-indigo-700',
+      };
+    }
+    if (draft.ai_review_status === 'queued' || draft.ai_review_status === 'processing') {
+      return { text: zh ? 'AI 审核中，请等待' : 'AI reviewing', tone: 'text-indigo-600' };
+    }
+    if (draft.ai_review_status === 'approved') {
+      return { text: zh ? '已批准，正在上架' : 'Approved, importing', tone: 'text-indigo-600' };
+    }
+    // The two preflight conditions the AI review enforces. Reporting them here
+    // means a batch that cannot be reviewed says so before it is selected.
+    if (!title) {
+      return {
+        text: zh ? '缺少标题，无法识别；请到详情页补全' : 'No title: cannot be identified',
+        tone: 'text-amber-700',
+      };
+    }
+    if (!identifier) {
+      return {
+        text: zh ? '缺少型号/料号，AI 会跳过；请先补型号' : 'No model: AI review will skip it',
+        tone: 'text-amber-700',
+      };
+    }
+    if (draft.match_status === 'matched_exact') {
+      return {
+        text: zh ? '已在售：先确认是否重复' : 'Already listed: confirm first',
+        tone: 'text-amber-700',
+      };
+    }
+    if (draft.status === 'failed') {
+      return { text: zh ? '导入失败，打开详情查看原因' : 'Import failed', tone: 'text-red-700' };
+    }
+    return {
+      text: zh ? '可审核：勾选后点「审核选中的」' : 'Reviewable: run AI review',
+      tone: 'text-gray-600',
+    };
   };
 
   return (
@@ -1031,9 +1139,43 @@ function EbayImportDraftsContent() {
           }}
         />
 
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">
+              {locale === 'zh' ? '处理流程：' : 'Workflow:'}
+            </span>
+            {WORKFLOW_STEPS.map((step) => {
+              const active = workflowStepActive(step);
+              return (
+                <button
+                  key={step.key}
+                  type="button"
+                  onClick={() => updateParams(step.params)}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-medium ${
+                    active
+                      ? 'border-blue-500 bg-blue-50 text-blue-800'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {locale === 'zh' ? step.zh : step.en}
+                </button>
+              );
+            })}
+            <span className="text-xs text-gray-500">
+              {locale === 'zh'
+                ? '选阶段 → 勾选草稿 → 用右侧按钮审核 / 上架 / 删除'
+                : 'Pick a stage, tick drafts, then run an action'}
+            </span>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
           <p className="text-sm text-blue-900" role="status" aria-live="polite">
             {locale === 'zh' ? `已选择 ${selectedIds.length} 条草稿` : `${selectedIds.length} draft(s) selected`}
+            {allDraftsSelected &&
+              (locale === 'zh'
+                ? `（本筛选共 ${total} 条，删除会整批生效）`
+                : ` (all ${total} matching drafts; delete applies to all of them)`)}
           </p>
           <label className="flex items-center gap-2 text-sm text-blue-900">
             <span>{locale === 'zh' ? '每页显示' : 'Rows per page'}</span>
@@ -1121,6 +1263,7 @@ function EbayImportDraftsContent() {
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '建议分类' : 'Suggested Category'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '匹配' : 'Match'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '状态' : 'Status'}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '下一步' : 'Next Step'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '上传时间' : 'Uploaded'}</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '操作' : 'Actions'}</th>
                   </tr>
@@ -1190,6 +1333,12 @@ function EbayImportDraftsContent() {
                             AI 失败：{draft.ai_review_error}
                           </div>
                         )}
+                      </td>
+                      <td className="px-4 py-4 text-sm">
+                        {(() => {
+                          const hint = nextStepHint(draft);
+                          return <span className={hint.tone}>{hint.text}</span>;
+                        })()}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-500">
                         <div>{new Date(draft.created_at).toLocaleDateString()}</div>

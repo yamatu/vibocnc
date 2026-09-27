@@ -20,60 +20,86 @@ import (
 func ParseModelFromFilename(filename string) string {
 	// Remove file extension
 	nameWithoutExt := strings.TrimSuffix(filename, getFileExtension(filename))
-	upperName := strings.ToUpper(nameWithoutExt)
+	return extractModelFromText(nameWithoutExt, true)
+}
 
-	// Model families, most specific first. Patterns are matched against the
-	// upper-cased filename so every result is returned in upper case. Brand-
-	// anchored patterns are listed before the loose numeric ones, otherwise
-	// "A02B-0120-C041" would be truncated to "0120-C041".
-	patterns := []string{
-		// Siemens SIMATIC / SINAMICS / motors: 6ES7215-1AG40-0XB0, 6SN1118-0DJ21-0AA1
-		`6[A-Z]{2}\d{4}-\d[A-Z]{2}\d{2}-\d[A-Z]{2}\d`,
-		`6[A-Z]{2}\d{4}-\d[A-Z]{2}\d{2}`,
-		`1[A-Z]{2}\d{4}-\d[A-Z]{2}\d{2}-\d[A-Z]{2}\d`,
-		// FANUC: A##B-####-#### (amplifiers, motors, boards)
-		`A\d{2}B-\d{4}-[A-Z]\d{3}[A-Z0-9]*`,
-		// FANUC encoder / pulse coder: A###-####-T###
-		`A\d{3}-\d{4}-[A-Z]\d{3}[A-Z0-9]*`,
-		// Mitsubishi MELSERVO / MELSEC: MR-J4-40A, MR-J3-70B, HC-KFS43, FX3U-16MT
-		`MR-[A-Z]\d[A-Z]?-\d{2,4}[A-Z]?`,
-		`HC-[A-Z]{2,4}\d{2,4}[A-Z]?`,
-		`(?:FX|Q|RJ|R)\d{1,2}[A-Z]{1,2}(?:-[A-Z0-9]{1,10}){1,3}`,
-		// Yaskawa: SGDV-2R8A01A, SGMJV-04ADE6S
-		`SG[A-Z]{2}-[A-Z0-9]{4,12}`,
-		// Omron: CJ2M-CPU31, CS1W-ID211, E3Z-D62, R88M-K40030H
-		`(?:CJ|CS|CP|CQM)\d[A-Z]{0,2}(?:-[A-Z0-9]{1,12}){1,2}`,
-		`(?:E3Z|E2E|R88M|R88D)-[A-Z0-9]{2,14}`,
-		// ABB: DSQC-664, ACS580-01-046A-4
-		`DSQC-?\d{3,4}`,
-		`ACS\d{3}-[A-Z0-9-]{4,20}`,
-		// Delta / Schneider: ASDA-B2-0421, ATV320U07N4C, TM241CE24T
-		`ASDA-[A-Z]\d(?:-[A-Z0-9]{3,10})?`,
-		`ATV\d{3}[A-Z0-9]{4,12}`,
-		`TM\d{3}[A-Z0-9]{4,12}`,
-		// Allen-Bradley / Rockwell: 1756-L61, 1769-IF4, 1794-IB16, 2094-BM01
-		`\d{4}-[A-Z]{1,3}\d{1,3}[A-Z]{0,3}`,
-		// Loosely structured manufacturer formats (A1-2345-ABCD and similar)
-		`[A-Z]\d{2,3}[A-Z]?-\d{4}-[A-Z0-9]{4,}`,
-		`A\d{2}B-\d{4}`,
-		`A\d{3}-\d{4}`,
-	}
+// ExtractModelFromText pulls the first part number out of free-form text such as
+// a marketplace listing title.
+//
+// Marketplace listings frequently carry no structured "Model" attribute, while
+// the title almost always names the part. Recovering it here is what makes such
+// a draft reviewable at all, because product identification requires a model.
+//
+// Only the known part-number families are considered, so marketing prose is
+// never coerced into a model number.
+func ExtractModelFromText(text string) string {
+	return extractModelFromText(text, false)
+}
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		if match := re.FindString(upperName); match != "" {
+// modelFamilies lists part-number families, most specific first. Patterns are
+// matched against upper-cased input, so every result is returned in upper case.
+// Brand-anchored patterns are listed before the loose numeric ones, otherwise
+// "A02B-0120-C041" would be truncated to "0120-C041".
+//
+// They are compiled once rather than per call: the same table serves filename
+// parsing and listing-title parsing, both of which run once per imported row.
+var modelFamilies = []*regexp.Regexp{
+	// Siemens SIMATIC / SINAMICS / motors: 6ES7215-1AG40-0XB0, 6SN1118-0DJ21-0AA1
+	regexp.MustCompile(`6[A-Z]{2}\d{4}-\d[A-Z]{2}\d{2}-\d[A-Z]{2}\d`),
+	regexp.MustCompile(`6[A-Z]{2}\d{4}-\d[A-Z]{2}\d{2}`),
+	regexp.MustCompile(`1[A-Z]{2}\d{4}-\d[A-Z]{2}\d{2}-\d[A-Z]{2}\d`),
+	// FANUC: A##B-####-#### (amplifiers, motors, boards)
+	regexp.MustCompile(`A\d{2}B-\d{4}-[A-Z]\d{3}[A-Z0-9]*`),
+	// FANUC encoder / pulse coder: A###-####-T###
+	regexp.MustCompile(`A\d{3}-\d{4}-[A-Z]\d{3}[A-Z0-9]*`),
+	// Mitsubishi MELSERVO / MELSEC: MR-J4-40A, MR-J3-70B, HC-KFS43, FX3U-16MT
+	regexp.MustCompile(`MR-[A-Z]\d[A-Z]?-\d{2,4}[A-Z]?`),
+	regexp.MustCompile(`HC-[A-Z]{2,4}\d{2,4}[A-Z]?`),
+	regexp.MustCompile(`(?:FX|Q|RJ|R)\d{1,2}[A-Z]{1,2}(?:-[A-Z0-9]{1,10}){1,3}`),
+	// Yaskawa: SGDV-2R8A01A, SGMJV-04ADE6S, SGD7S-2R8A00A, SGMPS-04A
+	// The suffix runs to three letters (SGMJV, SGMPS), so the family is matched
+	// with {2,4} — a fixed {2} silently never matched those listings.
+	regexp.MustCompile(`SG[A-Z]{2,4}-[A-Z0-9]{4,12}`),
+	// Omron: CJ2M-CPU31, CS1W-ID211, E3Z-D62, R88M-K40030H
+	regexp.MustCompile(`(?:CJ|CS|CP|CQM)\d[A-Z]{0,2}(?:-[A-Z0-9]{1,12}){1,2}`),
+	regexp.MustCompile(`(?:E3Z|E2E|R88M|R88D)-[A-Z0-9]{2,14}`),
+	// ABB: DSQC-664, ACS580-01-046A-4
+	regexp.MustCompile(`DSQC-?\d{3,4}`),
+	regexp.MustCompile(`ACS\d{3}-[A-Z0-9-]{4,20}`),
+	// Delta / Schneider: ASDA-B2-0421, ATV320U07N4C, TM241CE24T
+	regexp.MustCompile(`ASDA-[A-Z]\d(?:-[A-Z0-9]{3,10})?`),
+	regexp.MustCompile(`ATV\d{3}[A-Z0-9]{4,12}`),
+	regexp.MustCompile(`TM\d{3}[A-Z0-9]{4,12}`),
+	// Allen-Bradley / Rockwell: 1756-L61, 1769-IF4, 1794-IB16, 2094-BM01
+	regexp.MustCompile(`\d{4}-[A-Z]{1,3}\d{1,3}[A-Z]{0,3}`),
+	// Loosely structured manufacturer formats (A1-2345-ABCD and similar)
+	regexp.MustCompile(`[A-Z]\d{2,3}[A-Z]?-\d{4}-[A-Z0-9]{4,}`),
+	regexp.MustCompile(`A\d{2}B-\d{4}`),
+	regexp.MustCompile(`A\d{3}-\d{4}`),
+}
+
+// looseModelFormat matches a dashed alphanumeric token that no known family
+// claimed.
+//
+// It is only applied to filenames. A title is prose, where such a token is far
+// more likely to be marketing copy ("NEW-2024-LOT") than a part number, and a
+// wrong model is worse than no model: it would be compared against the AI's
+// reading of the listing and reject a correct identification as a mismatch.
+var looseModelFormat = regexp.MustCompile(`[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+`)
+
+// extractModelFromText returns the first part number found in text.
+//
+// allowLoose enables the unstructured fallback described on looseModelFormat.
+func extractModelFromText(text string, allowLoose bool) string {
+	upper := strings.ToUpper(text)
+	for _, pattern := range modelFamilies {
+		if match := pattern.FindString(upper); match != "" {
 			return match
 		}
 	}
-
-	// If no pattern matches, try to extract any alphanumeric sequence
-	// that looks like a model number (contains letters and numbers with dashes)
-	fallbackPattern := `[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+`
-	re := regexp.MustCompile(fallbackPattern)
-	if match := re.FindString(upperName); match != "" {
-		return match
+	if allowLoose {
+		return looseModelFormat.FindString(upper)
 	}
-
 	return ""
 }
 

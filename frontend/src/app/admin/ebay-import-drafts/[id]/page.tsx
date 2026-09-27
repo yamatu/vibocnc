@@ -13,14 +13,11 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import AdminLayout from '@/components/admin/AdminLayout';
+import CategoryCombobox from '@/components/admin/CategoryCombobox';
 import { CategoryService, EbayImportDraftService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
 import { useAdminI18n } from '@/lib/admin-i18n';
-
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
-};
+import { getErrorMessage } from '@/lib/errors';
 
 const buildDraftUpdatePayload = (form: {
   normalized_title: string;
@@ -280,12 +277,19 @@ export default function EbayImportDraftDetailPage() {
                       </span>
                     )}
                   </div>
-                  <select value={form.suggested_category_id} onChange={(e) => setForm((prev) => ({ ...prev, suggested_category_id: e.target.value }))} className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm">
-                    <option value="">{locale === 'zh' ? '请选择分类' : 'Select category'}</option>
-                    {activeLeafCategories.map((category) => (
-                      <option key={category.id} value={category.id}>{category.path ? category.path.split('/').join(' > ') : category.name}</option>
-                    ))}
-                  </select>
+                  {/* A taxonomy has hundreds of leaves, so a native select cannot
+                      be searched and the reviewer scrolls a flat list of paths.
+                      The combobox filters by name, slug, path and description. */}
+                  <CategoryCombobox
+                    categories={activeLeafCategories}
+                    value={form.suggested_category_id}
+                    onChange={(categoryId) => setForm((prev) => ({ ...prev, suggested_category_id: String(categoryId) }))}
+                    placeholder={
+                      locale === 'zh'
+                        ? '输入关键词搜索分类（名称 / 路径 / 型号关键词）'
+                        : 'Type to search categories (name / path / keyword)'
+                    }
+                  />
                   {isCategoryMissing ? (
                     <p className="mt-2 text-sm text-amber-700">{categoryRequiredMessage}</p>
                   ) : null}

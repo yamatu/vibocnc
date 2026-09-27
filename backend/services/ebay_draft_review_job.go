@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,74 @@ const (
 	EbayReviewMaxItems = 2000
 )
 
+// EbayReviewSkipReasons is the stable order of preflight rejections, so the same
+// selection always produces the same sentence.
+var EbayReviewSkipReasons = []string{"missing_identifier", "missing_title", "already_processed"}
+
+// EbayReviewSkipReasonText turns a preflight reason code into the reason an
+// administrator can act on.
+func EbayReviewSkipReasonText(reason string) string {
+	switch reason {
+	case "missing_identifier":
+		return "no model or part number"
+	case "missing_title":
+		return "no title"
+	case "already_processed":
+		return "already imported or skipped"
+	default:
+		return reason
+	}
+}
+
+// EbayReviewSkipCounts counts, per reason, the selected drafts that a review
+// pass could not take.
+type EbayReviewSkipCounts map[string]int
+
+// Summary renders the counts as "<reason>: <count>, ..." in a stable order.
+func (c EbayReviewSkipCounts) Summary() string {
+	parts := make([]string, 0, len(c))
+	known := make(map[string]struct{}, len(EbayReviewSkipReasons))
+	for _, reason := range EbayReviewSkipReasons {
+		known[reason] = struct{}{}
+		if count := c[reason]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%s: %d", EbayReviewSkipReasonText(reason), count))
+		}
+	}
+	// A reason introduced elsewhere must still be reported rather than silently
+	// dropped from the summary.
+	extra := make([]string, 0, len(c))
+	for reason, count := range c {
+		if count <= 0 {
+			continue
+		}
+		if _, ok := known[reason]; ok {
+			continue
+		}
+		extra = append(extra, fmt.Sprintf("%s: %d", EbayReviewSkipReasonText(reason), count))
+	}
+	sort.Strings(extra)
+	return strings.Join(append(parts, extra...), ", ")
+}
+
+// EbayNoReviewableDraftsError explains a selection in which every draft failed
+// the preflight.
+//
+// The bare "no reviewable drafts were selected" it replaces was unactionable: a
+// batch of scraped listings is usually missing the model the identifier check
+// requires, and nothing in the old message said so.
+type EbayNoReviewableDraftsError struct {
+	Selected int
+	Skipped  EbayReviewSkipCounts
+}
+
+func (e *EbayNoReviewableDraftsError) Error() string {
+	summary := e.Skipped.Summary()
+	if summary == "" {
+		return fmt.Sprintf("none of the %d selected drafts can be reviewed", e.Selected)
+	}
+	return fmt.Sprintf("none of the %d selected drafts can be reviewed (%s)", e.Selected, summary)
+}
+
 var ebayReviewCancelMu sync.Mutex
 var ebayReviewCancels = map[string]context.CancelFunc{}
 
@@ -45,13 +114,13 @@ func StartEbayDraftReviewJob(
 	draftIDs []uint,
 	createdByID uint,
 	client IdentificationClient,
-) (*models.EbayDraftReviewJob, error) {
+) (*models.EbayDraftReviewJob, EbayReviewSkipCounts, error) {
 	db := config.GetDB()
 	if db == nil {
-		return nil, fmt.Errorf("database is not configured")
+		return nil, nil, fmt.Errorf("database is not configured")
 	}
 	if len(draftIDs) == 0 {
-		return nil, fmt.Errorf("at least one draft is required")
+		return nil, nil, fmt.Errorf("at least one draft is required")
 	}
 	if len(draftIDs) > EbayReviewMaxItems {
 		draftIDs = draftIDs[:EbayReviewMaxItems]
@@ -64,16 +133,20 @@ func StartEbayDraftReviewJob(
 		Select("id", "status", "normalized_title", "normalized_model", "normalized_part_number", "normalized_mpn", "title_raw").
 		Where("id IN ?", draftIDs).
 		Find(&drafts).Error; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	reviewable := make([]models.EbayImportDraft, 0, len(drafts))
+	skipped := EbayReviewSkipCounts{}
 	for _, draft := range drafts {
-		if _, ok := EbayDraftPreflight(draft); ok {
+		reason, ok := EbayDraftPreflight(draft)
+		if ok {
 			reviewable = append(reviewable, draft)
+			continue
 		}
+		skipped[reason]++
 	}
 	if len(reviewable) == 0 {
-		return nil, fmt.Errorf("no reviewable drafts were selected")
+		return nil, nil, &EbayNoReviewableDraftsError{Selected: len(draftIDs), Skipped: skipped}
 	}
 
 	job := &models.EbayDraftReviewJob{
@@ -84,7 +157,9 @@ func StartEbayDraftReviewJob(
 		CreatedByID: createdByID,
 	}
 	items := make([]models.EbayDraftReviewJobItem, 0, len(reviewable))
+	reviewableIDs := make([]uint, 0, len(reviewable))
 	for _, draft := range reviewable {
+		reviewableIDs = append(reviewableIDs, draft.ID)
 		items = append(items, models.EbayDraftReviewJobItem{
 			JobID:   job.ID,
 			DraftID: draft.ID,
@@ -104,16 +179,18 @@ func StartEbayDraftReviewJob(
 			return err
 		}
 		// Mark the drafts so the list view shows them as in-flight and a second
-		// click cannot queue the same row twice.
+		// click cannot queue the same row twice. Only the drafts that actually got
+		// an item are marked: a skipped draft has nothing to process, so flagging
+		// it as queued would strand it in the review state forever.
 		return tx.Model(&models.EbayImportDraft{}).
-			Where("id IN ? AND status NOT IN ?", draftIDs, []string{EbayDraftStatusImported, EbayDraftStatusSkipped}).
+			Where("id IN ? AND status NOT IN ?", reviewableIDs, []string{EbayDraftStatusImported, EbayDraftStatusSkipped}).
 			Update("ai_review_status", EbayAIReviewQueued).Error
 	}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	go RunEbayDraftReviewJob(job.ID, client)
-	return job, nil
+	return job, skipped, nil
 }
 
 // RunEbayDraftReviewJob executes a queued or paused job.

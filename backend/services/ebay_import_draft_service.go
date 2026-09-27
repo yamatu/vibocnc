@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"fanuc-backend/models"
+	"fanuc-backend/utils"
 
 	"gorm.io/gorm"
 )
@@ -183,6 +184,15 @@ func BuildEbayImportDraftWithContext(ctx context.Context, db *gorm.DB, raw map[s
 	}
 	if model == "" {
 		model = partNumber
+	}
+	// Many marketplace listings carry no structured "Model" attribute, so the
+	// payload arrives without a model at all — while the title almost always
+	// names the part. Product identification requires a model, so without this a
+	// scraped draft can never be reviewed: it sits in the queue as dead weight no
+	// batch can pick up. Only known part-number families are matched, so prose is
+	// never coerced into a model number.
+	if model == "" {
+		model = NormalizeProductModel(utils.ExtractModelFromText(title))
 	}
 	normalizedTitle := normalizeDraftTitle(title)
 	priceValue := parsePriceFloat(priceRaw)

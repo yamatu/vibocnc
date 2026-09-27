@@ -64,6 +64,22 @@ is how the queue surfaces the rows that are waiting.
 1. **Preflight** (`EbayDraftPreflight`) — refuse anything already imported or
    skipped, anything with no identifier, and anything with no title. A draft that
    fails here is marked, not silently dropped.
+
+   The identifier is `NormalizedPartNumber` → `NormalizedMPN` →
+   `NormalizedModel`, and identification cannot run without one. Marketplace
+   listings frequently have no *Model* item specific, so
+   `BuildEbayImportDraftWithContext` falls back to the part number written in the
+   listing **title** (`utils.ExtractModelFromText`, matching the known part-number
+   families only). Without that fallback such listings were permanently
+   unreviewable: every batch reported *no reviewable drafts were selected*. A
+   title that names no known part still yields no identifier, and such a draft
+   must stay out of the queue rather than be guessed at.
+
+   A selection whose drafts all fail the preflight returns `409` with each reason
+   and its count (`services.EbayNoReviewableDraftsError`); a selection that only
+   partly fails says so in the `202` message, so a batch that is quietly smaller
+   than the selection is never mistaken for a full run. Only the drafts that got
+   a job item are marked `queued`.
 2. **Identify** — `IdentifyProduct` reads the model's eBay evidence (item
    specifics and category path rank above listing prose) and returns a
    `ProductProfile`. A model mismatch between the draft and the profile aborts
@@ -156,6 +172,25 @@ filter look like an empty queue rather than a bug.
 The drafts table itself shows a `待批准` badge, the AI-proposed category, and the
 error text for `failed` / `rejected` rows, so the queue is usable without opening
 the panel.
+
+### Queue navigation
+
+The page carries the scrape → confirm → review → publish order itself:
+
+- A **workflow strip** (`WORKFLOW_STEPS`) is four presets over the existing
+  filters (新品待确认 / 待 AI 审核 / 待批准上架 / 已上架), so the next step is a click
+  rather than a combination of dropdowns. Each step is only a filter, so it
+  cannot show a different set than the filters it sets.
+- A **下一步** column says what a row needs and, when it is blocked, why —
+  `缺少型号/料号，AI 会跳过` is reported on the row *before* a batch is selected,
+  instead of surfacing as a 409 afterwards.
+- **Select all** addresses the filter, and the delete runs as a filter-based
+  statement rather than an id array, so a queue of any size is deleted whole. The
+  selection banner states that the delete covers every matching draft.
+
+Error toasts go through `getErrorMessage`, which appends the API's `error`
+detail to its `message` headline: the headline alone ("Failed to start AI
+review") is not actionable.
 
 ## Not implemented on purpose
 
