@@ -19,6 +19,12 @@ import { getErrorMessage } from '@/lib/errors';
 /** Runs that are still making progress and therefore worth polling. */
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'paused'];
 
+/**
+ * Page sizes for the proposal list. They match the drafts list so the two
+ * selectors stay in step, and the server caps at 200 regardless.
+ */
+const READY_PAGE_SIZES = [50, 100, 200];
+
 const JOB_STATUS_LABELS: Record<string, string> = {
   queued: '排队中',
   running: '处理中',
@@ -85,6 +91,11 @@ export default function AIReviewPanel({
   // deliberate choice rather than something the review button does implicitly.
   const [autoPublish, setAutoPublish] = useState(false);
   const [selectedForApproval, setSelectedForApproval] = useState<number[]>([]);
+  // The proposal list is paged independently of the log. A run over tens of
+  // thousands of drafts produces far more ready rows than one page can hold, and
+  // rendering them all made the list unusable (and the response enormous).
+  const [readyPage, setReadyPage] = useState(1);
+  const [readyPageSize, setReadyPageSize] = useState(100);
   const logRef = useRef<HTMLDivElement | null>(null);
   const announcedCompletion = useRef<string | null>(null);
 
@@ -116,6 +127,31 @@ export default function AIReviewPanel({
 
   const job = jobQuery.data?.job;
   const items = useMemo(() => jobQuery.data?.items ?? [], [jobQuery.data]);
+
+  // The proposal list is its own query so paging never refetches the log and a
+  // 10k-row job does not have to be shipped to the browser to see 100 rows.
+  const readyQuery = useQuery({
+    queryKey: ['ebay-ai-review', jobId, 'ready', readyPage, readyPageSize],
+    queryFn: () =>
+      EbayImportDraftService.getAIReviewJobItems(jobId as string, {
+        status: 'ready',
+        page: readyPage,
+        pageSize: readyPageSize,
+      }),
+    enabled: Boolean(jobId),
+    staleTime: 0,
+  });
+
+  // A new pass replaces the proposals, so paging must restart rather than land on
+  // a page that no longer exists.
+  useEffect(() => {
+    setReadyPage(1);
+    setSelectedForApproval([]);
+  }, [jobId]);
+
+  const readyItems = readyQuery.data?.items ?? [];
+  const readyTotal = readyQuery.data?.total ?? job?.ready ?? 0;
+  const readyPageCount = Math.max(1, Math.ceil(readyTotal / readyPageSize));
 
   // Surface the completion once, then refresh the draft list so the new
   // proposals appear in the table.
@@ -214,10 +250,10 @@ export default function AIReviewPanel({
     onError: (error) => toast.error(getErrorMessage(error, '拒绝失败 / rejection failed')),
   });
 
-  /** Draft ids that produced a usable proposal, in log order. */
+  /** Draft ids on the current page that produced a usable proposal. */
   const readyDraftIds = useMemo(
-    () => items.filter((item) => item.status === 'ready').map((item) => item.draft_id),
-    [items]
+    () => readyItems.filter((item) => item.status === 'ready').map((item) => item.draft_id),
+    [readyItems]
   );
 
   const toggleApproval = (draftId: number) => {
@@ -401,20 +437,25 @@ export default function AIReviewPanel({
             ))}
           </div>
 
-          {readyDraftIds.length > 0 && (
+          {(readyTotal > 0 || readyDraftIds.length > 0) && (
             <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-emerald-900">
-                  {readyDraftIds.length} 条草稿已生成待批准方案
+                  共 {readyTotal} 条草稿已生成待批准方案
                   {selectedForApproval.length > 0 && `，已选 ${selectedForApproval.length} 条`}
+                  {readyPageCount > 1 && `（第 ${readyPage} / ${readyPageCount} 页）`}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setSelectedForApproval(readyDraftIds)}
+                    onClick={() =>
+                      setSelectedForApproval((current) =>
+                        Array.from(new Set([...current, ...readyDraftIds]))
+                      )
+                    }
                     className="rounded border border-emerald-300 bg-white px-3 py-1.5 text-xs hover:bg-emerald-50"
                   >
-                    全选待批准
+                    本页全选
                   </button>
                   <button
                     type="button"
@@ -445,23 +486,74 @@ export default function AIReviewPanel({
               {/* Approving publishes products, so the consequence is spelled out
                   before the click rather than after. */}
               <ul className="mt-2 grid gap-1 text-xs text-emerald-900 sm:grid-cols-2">
-                {items
-                  .filter((item) => item.status === 'ready')
-                  .map((item) => (
-                    <li key={item.id} className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedForApproval.includes(item.draft_id)}
-                        onChange={() => toggleApproval(item.draft_id)}
-                        className="mt-0.5 h-3.5 w-3.5"
-                      />
-                      <span className="min-w-0">
-                        <span className="font-medium">{item.model || `#${item.draft_id}`}</span>
-                        <span className="block truncate text-emerald-800">{item.title}</span>
-                      </span>
-                    </li>
-                  ))}
+                {readyItems.map((item) => (
+                  <li key={item.id} className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedForApproval.includes(item.draft_id)}
+                      onChange={() => toggleApproval(item.draft_id)}
+                      className="mt-0.5 h-3.5 w-3.5"
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium">{item.model || `#${item.draft_id}`}</span>
+                      <span className="block truncate text-emerald-800">{item.title}</span>
+                    </span>
+                  </li>
+                ))}
               </ul>
+              {readyItems.length === 0 && (
+                <p className="mt-2 text-xs text-emerald-800">
+                  {readyQuery.isLoading ? '正在加载待批准列表…' : '本页没有待批准草稿'}
+                </p>
+              )}
+
+              {/* Paging controls live with the list they page, and a page size
+                  choice keeps a large queue workable instead of rendering every
+                  proposal at once. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-emerald-900">
+                <button
+                  type="button"
+                  onClick={() => setReadyPage((page) => Math.max(1, page - 1))}
+                  disabled={readyPage <= 1}
+                  className="rounded border border-emerald-300 bg-white px-2 py-1 hover:bg-emerald-50 disabled:opacity-40"
+                >
+                  上一页
+                </button>
+                <span>
+                  {readyPage} / {readyPageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReadyPage((page) => Math.min(readyPageCount, page + 1))}
+                  disabled={readyPage >= readyPageCount}
+                  className="rounded border border-emerald-300 bg-white px-2 py-1 hover:bg-emerald-50 disabled:opacity-40"
+                >
+                  下一页
+                </button>
+                <label className="ml-2 flex items-center gap-1">
+                  每页
+                  <select
+                    value={readyPageSize}
+                    onChange={(event) => {
+                      setReadyPageSize(Number(event.target.value));
+                      setReadyPage(1);
+                    }}
+                    className="rounded border border-emerald-300 bg-white px-1.5 py-1"
+                  >
+                    {READY_PAGE_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                  条
+                </label>
+                {readyQuery.isError && (
+                  <span className="text-red-700">
+                    {getErrorMessage(readyQuery.error, '待批准列表加载失败')}
+                  </span>
+                )}
+              </div>
               <p className="mt-2 text-xs text-emerald-800">
                 上架会创建或更新商品页面，并沿用草稿中的 eBay 采集价格。
               </p>

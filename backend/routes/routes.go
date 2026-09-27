@@ -353,6 +353,7 @@ func SetupRoutes(r *gin.Engine) {
 				ebayImportDrafts.POST("/ai-review/approve", ebayImportDraftController.ApproveReview)
 				ebayImportDrafts.POST("/ai-review/reject", ebayDraftReviewController.RejectReview)
 				ebayImportDrafts.GET("/ai-review/:jobId", ebayDraftReviewController.GetReviewJob)
+				ebayImportDrafts.GET("/ai-review/:jobId/items", ebayDraftReviewController.GetReviewJobItems)
 				ebayImportDrafts.POST("/ai-review/:jobId/pause", ebayDraftReviewController.PauseReviewJob)
 				ebayImportDrafts.POST("/ai-review/:jobId/resume", ebayDraftReviewController.ResumeReviewJob)
 				ebayImportDrafts.POST("/ai-review/:jobId/cancel", ebayDraftReviewController.CancelReviewJob)

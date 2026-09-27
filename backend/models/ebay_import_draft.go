@@ -100,6 +100,20 @@ type EbayImportDraft struct {
 
 type EbayImportDraftUploadRequest struct {
 	Items []map[string]interface{} `json:"items" binding:"required,min=1"`
+	// IncludeImages decides whether the scraped eBay image URLs are kept on the
+	// draft. Uploading them means the product page can show the seller's photos
+	// (and leaves the site open to a hotlink complaint), so the plugin lets an
+	// operator choose per upload. A pointer distinguishes "not sent" from
+	// "explicitly false": when it is nil the images are kept, which is the
+	// historical behaviour.
+	IncludeImages *bool `json:"include_images"`
+}
+
+// WantsImages reports whether an upload should keep scraped image URLs.
+// Keeping them is the default because it matches what the crawler has always
+// done; a caller has to say otherwise.
+func (r EbayImportDraftUploadRequest) WantsImages() bool {
+	return r.IncludeImages == nil || *r.IncludeImages
 }
 
 type EbayImportDraftUpdateRequest struct {

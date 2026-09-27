@@ -186,6 +186,46 @@ func parseReviewLogLimit(raw string) int {
 	return 500
 }
 
+// GetReviewJobItems handles GET /admin/ebay-import-drafts/ai-review/:jobId/items
+//
+// The log lines and the approval list are different questions over the same rows.
+// A run can produce more log lines than a page can hold, so the proposals an
+// operator has to act on are paged on their own, by outcome, with a real total.
+func (rc *EbayDraftReviewController) GetReviewJobItems(c *gin.Context) {
+	db := config.GetDB()
+	jobID := strings.TrimSpace(c.Param("jobId"))
+	if _, err := services.GetEbayDraftReviewJob(db, jobID); err != nil {
+		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Review job not found", Error: "not_found"})
+		return
+	}
+
+	page := 1
+	if value, err := strconv.Atoi(strings.TrimSpace(c.Query("page"))); err == nil && value > 0 {
+		page = value
+	}
+	pageSize := services.EbayReviewItemPageSizeDefault
+	if value, err := strconv.Atoi(strings.TrimSpace(c.Query("page_size"))); err == nil && value > 0 {
+		pageSize = value
+	}
+
+	result, err := services.ListEbayDraftReviewJobItemsPaged(
+		db,
+		jobID,
+		strings.TrimSpace(c.Query("status")),
+		page,
+		pageSize,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load review items", Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Review items loaded",
+		Data:    result,
+	})
+}
+
 // GetLatestReviewJob handles GET /admin/ebay-import-drafts/ai-review/latest
 //
 // A page reload must be able to find a run already in flight; otherwise a long

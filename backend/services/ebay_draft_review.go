@@ -115,9 +115,7 @@ func EbayDraftPreflight(draft models.EbayImportDraft) (string, bool) {
 // would create a category named after a misread part number, and those are
 // expensive to clean up once products point at them.
 func ResolveDraftReviewCategory(db *gorm.DB, draft models.EbayImportDraft, profile ProductProfile) (uint, string, bool, error) {
-	brand := firstNonEmptyString(profile.Brand, draft.NormalizedBrand)
 	model := firstNonEmptyString(profile.Model, draft.NormalizedModel, draftIdentifier(draft))
-	partType := strings.TrimSpace(profile.PartType)
 
 	// A suggested category already validated against the taxonomy wins: an
 	// administrator or the earlier classification pass has confirmed it.
@@ -130,13 +128,7 @@ func ResolveDraftReviewCategory(db *gorm.DB, draft models.EbayImportDraft, profi
 		}
 	}
 
-	inference := InferProductCategory(brand, model)
-	if strings.TrimSpace(inference.PartType) == "" {
-		inference.PartType = partType
-	}
-	if inference.BrandKey == "" {
-		inference.BrandKey = NormalizeBrandKey(brand)
-	}
+	inference := inferReviewCategory(profile, draft, model)
 
 	// Reuse first. ResolveExistingCategoryForInference only returns a category
 	// whose path actually corroborates the inference, so a generic "Drives"
@@ -145,6 +137,19 @@ func ResolveDraftReviewCategory(db *gorm.DB, draft models.EbayImportDraft, profi
 		var category models.Category
 		if err := db.Select("id", "name").First(&category, existing).Error; err == nil {
 			return category.ID, category.Name, false, nil
+		}
+	}
+
+	// The AI's own category wording is a second chance at a match when the part
+	// type alone did not corroborate a branch. It is only used as a matching hint
+	// against existing categories, never to name a new one, so a vague AI label
+	// cannot mint a vague branch.
+	if hint := strings.TrimSpace(profile.ProductCategory); hint != "" && !IsGenericProductType(hint) {
+		if existing, err := ResolveExistingCategoryForInference(db, inference, hint); err == nil && existing > 0 {
+			var category models.Category
+			if err := db.Select("id", "name").First(&category, existing).Error; err == nil {
+				return category.ID, category.Name, false, nil
+			}
 		}
 	}
 
@@ -166,6 +171,30 @@ func ResolveDraftReviewCategory(db *gorm.DB, draft models.EbayImportDraft, profi
 		return created, "", isNew, nil
 	}
 	return category.ID, category.Name, isNew, nil
+}
+
+// inferReviewCategory combines the AI's reading of a listing with the keyword
+// inference the plain classification pass uses.
+//
+// InferProductCategory only pattern-matches a model number, so it cannot tell a
+// servo amplifier from a spindle motor when both share a part-number family. The
+// AI read the listing's title, item specifics and marketplace category, so a
+// specific type from the AI replaces the guess. A generic label never does: it
+// would land the product on a vague taxonomy node, and those are expensive to
+// clean up once products point at them.
+func inferReviewCategory(profile ProductProfile, draft models.EbayImportDraft, model string) ProductCategoryInference {
+	brand := firstNonEmptyString(profile.Brand, draft.NormalizedBrand)
+	inference := InferProductCategory(brand, model)
+	if aiType := strings.TrimSpace(profile.PartType); aiType != "" && !IsGenericProductType(aiType) {
+		inference.PartType = aiType
+	}
+	if strings.TrimSpace(inference.PartType) == "" {
+		inference.PartType = strings.TrimSpace(profile.PartType)
+	}
+	if inference.BrandKey == "" {
+		inference.BrandKey = NormalizeBrandKey(brand)
+	}
+	return inference
 }
 
 // --------------------------------------------------------------- the pass --

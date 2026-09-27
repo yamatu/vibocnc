@@ -159,7 +159,22 @@ func BuildEbayImportDraft(db *gorm.DB, raw map[string]any) EbayImportDraftBuildR
 // bounded local-first/web-evidence path as spreadsheet imports. The context is
 // supplied by the request so an upload can be cancelled without leaving a
 // search request running in the background.
+// BuildEbayImportDraftWithContext builds a draft and keeps the scraped images,
+// which is the historical behaviour for every caller that has no opinion.
 func BuildEbayImportDraftWithContext(ctx context.Context, db *gorm.DB, raw map[string]any) EbayImportDraftBuildResult {
+	return BuildEbayImportDraftWithOptions(ctx, db, raw, EbayImportDraftBuildOptions{IncludeImages: true})
+}
+
+// EbayImportDraftBuildOptions carries the choices a caller makes about a draft.
+type EbayImportDraftBuildOptions struct {
+	// IncludeImages keeps the scraped eBay image URLs on the draft. When false the
+	// listing still lands in the queue with its content, but its photos are not
+	// linked from the storefront.
+	IncludeImages bool
+}
+
+// BuildEbayImportDraftWithOptions builds a draft from a scraped payload.
+func BuildEbayImportDraftWithOptions(ctx context.Context, db *gorm.DB, raw map[string]any, options EbayImportDraftBuildOptions) EbayImportDraftBuildResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -171,8 +186,12 @@ func BuildEbayImportDraftWithContext(ctx context.Context, db *gorm.DB, raw map[s
 	raw = NormalizeEbayImportDraftPayload(raw)
 
 	rawJSON, _ := json.Marshal(raw)
-	title := firstNonEmptyString(raw["product_title"], raw["title"])
-	description := firstNonEmptyString(raw["description_full"], raw["description_html"], raw["description"])
+	// Scraped titles and descriptions are HTML. They are reduced to text here, at
+	// the single point where the payload becomes a draft, so no downstream caller
+	// has to remember to do it and the stored raw payload remains the untouched
+	// record of what was scraped.
+	title := SanitizeListingTitle(firstNonEmptyString(raw["product_title"], raw["title"]))
+	description := SanitizeListingDescription(firstNonEmptyString(raw["description_full"], raw["description_html"], raw["description"]))
 	priceRaw := firstNonEmptyString(raw["current_price"], raw["price"])
 	currencyRaw := detectCurrency(raw, priceRaw)
 	brand := CanonicalBrandName(firstNonEmptyString(raw["brand"]))
@@ -198,6 +217,14 @@ func BuildEbayImportDraftWithContext(ctx context.Context, db *gorm.DB, raw map[s
 	priceValue := parsePriceFloat(priceRaw)
 	mainImage := normalizeURLString(firstNonEmptyString(raw["main_image"], raw["image"]))
 	imageURLs := collectImageURLs(raw)
+	if !options.IncludeImages {
+		// The URLs are dropped rather than filtered downstream, so an image-free
+		// draft cannot have its photos reattached by a later step that assumes
+		// ImageSourceURLs is populated. The main image is cleared too: leaving it
+		// behind would still hotlink one of the seller's photos.
+		imageURLs = nil
+		mainImage = ""
+	}
 	mediaAssetIDs := []uint{}
 	if !isShopifyImportPayload(raw) {
 		// eBay imports keep the historical local-media behavior. Shopify
@@ -1510,16 +1537,25 @@ func detectCurrency(raw map[string]any, priceRaw string) string {
 }
 
 func normalizeDraftTitle(title string) string {
-	title = strings.Join(strings.Fields(strings.TrimSpace(title)), " ")
-	return strings.TrimSpace(title)
+	// Titles carry HTML too (a stray <br>, an entity, a seller's tag). A title is
+	// one line, so any markup is removed rather than turned into a break.
+	title = SanitizeListingTitle(title)
+	return strings.Join(strings.Fields(title), " ")
 }
 
 func normalizeURLString(raw string) string {
 	return strings.TrimSpace(raw)
 }
 
+// cleanDraftDescription reduces a scraped listing description to readable text.
+//
+// It used to be a bare TrimSpace, which passed the seller's raw HTML straight
+// into product.description: tags, inline styles, scripts and shipping boilerplate
+// all appeared on the storefront. Sanitizing here covers every caller that
+// builds a product from a draft, including the manual confirm and bulk import
+// paths as well as the reviewed-draft approval.
 func cleanDraftDescription(value string) string {
-	return strings.TrimSpace(value)
+	return SanitizeListingDescription(value)
 }
 
 func defaultTrimmed(value string, fallback string) string {

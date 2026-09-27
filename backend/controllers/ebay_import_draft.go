@@ -133,7 +133,9 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 			continue
 		}
 
-		built := services.BuildEbayImportDraftWithContext(c.Request.Context(), db, item)
+		built := services.BuildEbayImportDraftWithOptions(c.Request.Context(), db, item, services.EbayImportDraftBuildOptions{
+			IncludeImages: req.WantsImages(),
+		})
 		draft := built.Draft
 		if len(built.Errors) > 0 {
 			draft.FailureReason = strings.Join(built.Errors, "; ")

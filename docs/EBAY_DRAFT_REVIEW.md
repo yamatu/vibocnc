@@ -48,6 +48,7 @@ asserts that ordering.
 | `GET` | `/ai-review/latest` | Most recent job, so a reload reconnects to a running pass |
 | `POST` | `/ai-review` | Start a pass: `{ids}` or `{all_filtered, ...filters}` (`202`) |
 | `GET` | `/ai-review/:jobId` | Job snapshot + per-item results |
+| `GET` | `/ai-review/:jobId/items` | Paged item results: `?status=ready&page=1&page_size=100` |
 | `POST` | `/ai-review/:jobId/pause` | Stop after the in-flight items |
 | `POST` | `/ai-review/:jobId/resume` | Requeue interrupted items and continue |
 | `POST` | `/ai-review/:jobId/cancel` | Abandon the job |
@@ -84,9 +85,20 @@ is how the queue surfaces the rows that are waiting.
    specifics and category path rank above listing prose) and returns a
    `ProductProfile`. A model mismatch between the draft and the profile aborts
    the item rather than writing a proposal for the wrong part.
+
+   The evidence set is not only the market quotes. `LookupMarketQuote` returns
+   nothing when a model has never been quoted, and a draft reviewed with no
+   evidence at all leaves the AI guessing from a model number alone.
+   `DraftEvidenceFromDraft` (`services/ebay_draft_evidence.go`) therefore always
+   appends an item built from the draft itself — title, `category_breadcrumb` /
+   `category_leaf`, the sanitised description, item specifics in any of their
+   several shapes, condition and brand/model — with market quotes ranked ahead of
+   it. That is what lets the AI classify from the title and the marketplace
+   category rather than from the model number.
 3. **Title** — `BuildProfileProductTitle`. A `skipped` status here means the
    existing name already matches the generated one, which is a success, not a
-   failure.
+   failure. A `ready` status replaces the raw scraped title with
+   `composeStandardProductTitle` (`brand + model + part type`).
 4. **Category** — `ResolveDraftReviewCategory` (see below).
 5. **Content** — `BuildProfileContent` for description and SEO. Generated copy
    never names a brand other than the product's own; foreign brand mentions are
@@ -97,7 +109,16 @@ written to `products`.
 
 ## Category resolution
 
-`ResolveDraftReviewCategory` tries, in order:
+`ResolveDraftReviewCategory` decides the part type with `inferReviewCategory`,
+which starts from `InferProductCategory(brand, model)` and then lets a **specific**
+AI `PartType` replace it. `InferProductCategory` only pattern-matches the model
+number, so it cannot separate a servo amplifier from a spindle motor that share a
+part-number family; the AI has read the title, the item specifics and the eBay
+category. A generic label never replaces the inference — `IsGenericProductType`
+is checked first — because a vague taxonomy node is expensive to clean up once
+products point at it.
+
+It then tries, in order:
 
 1. The draft's own `SuggestedCategoryID`, but **only** when
    `taxonomy_status == matched` — an unconfirmed suggestion is not proof.
@@ -167,7 +188,15 @@ filter look like an empty queue rather than a bug.
 
 - Start a pass over the selected rows, or everything matching the current filter.
 - Pause / resume / cancel, with a terminal-style log.
-- A list of `ready` drafts with checkboxes and per-row approve / reject.
+- The **待批准** list is paged, 50/100/200 per page (default 100). A pass over
+  tens of thousands of drafts produces far more proposals than one screen can
+  hold, and the panel used to render every `ready` row at once from the capped
+  job log — which is why a large run looked empty. `GET
+  /ai-review/:jobId/items` counts the matching rows before it pages, so the
+  header reports how many proposals exist, not just how many are on screen.
+  `本页全选` adds the visible page to the selection so paging does not discard
+  it, and the selection is what gets approved, not the page.
+- Per-row checkboxes with approve / reject.
 
 The drafts table itself shows a `待批准` badge, the AI-proposed category, and the
 error text for `failed` / `rejected` rows, so the queue is usable without opening

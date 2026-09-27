@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -450,12 +451,18 @@ func processEbayReviewItem(ctx context.Context, jobID, workerToken string, item 
 		return
 	}
 
-	// eBay market quotes collected for this model are the strongest evidence
-	// available: they carry item specifics and the marketplace category path,
-	// which the listing title alone does not.
+	// eBay market quotes collected for this model are strong evidence: they carry
+	// item specifics and the marketplace category path. But a freshly scraped
+	// queue usually has no quote yet, and relying on one alone meant the review
+	// saw an empty payload and had to classify the part from its model number.
+	// The draft's own listing is evidence too, so it is always included, with the
+	// market quote taking precedence because it aggregates several listings.
 	var evidence []models.EbayMarketEvidenceItem
 	if quote, err := LookupMarketQuote(db, draft.NormalizedBrand, firstNonEmptyString(draft.NormalizedModel, draftIdentifier(draft))); err == nil && quote != nil {
 		evidence = MarketEvidenceItems(*quote)
+	}
+	if draftEvidence := DraftEvidenceFromDraft(draft); !isBlankEvidenceListing(draftEvidence) {
+		evidence = append(evidence, draftEvidence)
 	}
 
 	// A previously confirmed product name gives the title builder a "before"
@@ -819,13 +826,88 @@ func GetEbayDraftReviewJob(db *gorm.DB, jobID string) (*models.EbayDraftReviewJo
 }
 
 // ListEbayDraftReviewJobItems returns the log lines for a job.
+//
+// The cap exists because a run over tens of thousands of drafts produces that
+// many log lines, and the aggregate counters on the job row already tell the
+// whole story. Items are returned newest-first so the tail of a live run is what
+// an operator sees, rather than only the first few hundred rows of a very large
+// queue.
 func ListEbayDraftReviewJobItems(db *gorm.DB, jobID string, limit int) ([]models.EbayDraftReviewJobItem, error) {
 	if limit <= 0 || limit > 2000 {
 		limit = 500
 	}
 	var items []models.EbayDraftReviewJobItem
-	err := db.Where("job_id = ?", jobID).Order("id ASC").Limit(limit).Find(&items).Error
-	return items, err
+	// Fetch the newest rows, then present them oldest-first so the log still reads
+	// top to bottom.
+	err := db.Where("job_id = ?", jobID).Order("id DESC").Limit(limit).Find(&items).Error
+	if err != nil {
+		return items, err
+	}
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+	return items, nil
+}
+
+// EbayReviewItemPage is one page of a job's items, filtered by status.
+//
+// The approval list needs the `ready` rows specifically. A page over the log
+// would bury them: a run that rejects most of its input puts every ready row
+// past the log cap, which is exactly the case where an operator has proposals to
+// act on and the UI showed an empty list.
+type EbayReviewItemPage struct {
+	Items    []models.EbayDraftReviewJobItem `json:"items"`
+	Total    int64                           `json:"total"`
+	Page     int                             `json:"page"`
+	PageSize int                             `json:"page_size"`
+	Status   string                          `json:"status"`
+}
+
+// EbayReviewItemPageSizeMax bounds a page. It matches the drafts list cap so the
+// two selectors stay in step.
+const EbayReviewItemPageSizeMax = 200
+
+// EbayReviewItemPageSizeDefault is the page size a caller gets without asking.
+const EbayReviewItemPageSizeDefault = 100
+
+// ListEbayDraftReviewJobItemsPaged returns one page of a job's items.
+//
+// status filters on the item's own outcome; "" returns every status. The total is
+// the count *before* pagination, so the UI can tell an operator how many proposals
+// exist instead of only how many are on the current page.
+func ListEbayDraftReviewJobItemsPaged(db *gorm.DB, jobID string, status string, page int, pageSize int) (EbayReviewItemPage, error) {
+	result := EbayReviewItemPage{Status: strings.TrimSpace(status), Page: 1, PageSize: 50}
+	if db == nil {
+		return result, errors.New("database is nil")
+	}
+	if page > 0 {
+		result.Page = page
+	}
+	if pageSize > 0 {
+		result.PageSize = pageSize
+	}
+	if result.PageSize > EbayReviewItemPageSizeMax {
+		result.PageSize = EbayReviewItemPageSizeMax
+	}
+
+	query := db.Model(&models.EbayDraftReviewJobItem{}).Where("job_id = ?", jobID)
+	if result.Status != "" {
+		query = query.Where("status = ?", result.Status)
+	}
+	if err := query.Count(&result.Total).Error; err != nil {
+		return result, err
+	}
+
+	offset := (result.Page - 1) * result.PageSize
+	items := []models.EbayDraftReviewJobItem{}
+	// Ordered by draft id so paging is stable: a live run appending rows must not
+	// shift a row from one page to the next.
+	err := query.Order("draft_id ASC").Offset(offset).Limit(result.PageSize).Find(&items).Error
+	if err != nil {
+		return result, err
+	}
+	result.Items = items
+	return result, nil
 }
 
 // GetLatestEbayDraftReviewJob returns the most recent job so the page can

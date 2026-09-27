@@ -75,6 +75,20 @@ export interface EbayDraftReviewJobSnapshot {
   items: EbayDraftReviewJobItem[];
 }
 
+/**
+ * One page of a review job's items, filtered by outcome.
+ *
+ * `total` counts every matching item before pagination, so the UI can say how
+ * many proposals exist rather than only how many are on screen.
+ */
+export interface EbayDraftReviewJobItemPage {
+  items: EbayDraftReviewJobItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  status: string;
+}
+
 /** Counts of drafts by review state, for the queue header. */
 export interface EbayDraftReviewSummary {
   counts: Record<string, number>;
@@ -538,6 +552,27 @@ export class EbayImportDraftService {
       return response.data.data;
     }
     throw new Error(response.data.message || 'Failed to load AI review job');
+  }
+
+  /** Page through the items of a review job by outcome. */
+  static async getAIReviewJobItems(
+    jobId: string,
+    options: { status?: string; page?: number; pageSize?: number } = {}
+  ): Promise<EbayDraftReviewJobItemPage> {
+    const response = await apiClient.get<APIResponse<EbayDraftReviewJobItemPage>>(
+      `/admin/ebay-import-drafts/ai-review/${jobId}/items`,
+      {
+        params: {
+          status: options.status,
+          page: options.page,
+          page_size: options.pageSize,
+        },
+      }
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to load AI review items');
   }
 
   /**
