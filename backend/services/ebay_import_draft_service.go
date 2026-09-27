@@ -259,8 +259,13 @@ func BuildEbayImportDraftWithContext(ctx context.Context, db *gorm.DB, raw map[s
 		MainImageSourceURL:    mainImage,
 		ImageSourceURLs:       string(imageURLsJSON),
 		MediaAssetIDs:         string(mediaIDsJSON),
-		ImportAction:          defaultImportAction(matchStatus),
-		Status:                deriveDraftStatus(matchStatus, taxonomyStatus),
+		// Declared `type:json`, and MySQL rejects an empty string there with
+		// "Invalid JSON text: The document is empty" (error 3140). Only the AI
+		// review pass ever fills this, but the column still has to start as a
+		// document or every upload is rejected at INSERT.
+		ProposedImages: "[]",
+		ImportAction:   defaultImportAction(matchStatus),
+		Status:         deriveDraftStatus(matchStatus, taxonomyStatus),
 	}
 	result.Inference = inference
 	result.ClassificationModel = classificationModel

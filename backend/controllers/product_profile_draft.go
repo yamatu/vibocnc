@@ -420,11 +420,13 @@ func createSpecDraftFromProfile(tx *gorm.DB, profileDraft models.ProductProfileD
 		Status:         "pending",
 		Confidence:     result.Confidence,
 		CandidatesJSON: services.BuildSpecDraftPayload(result),
-		EvidenceJSON:   services.SpecEvidenceJSON(result.Evidence),
-		SpecsJSON:      services.TechnicalSpecsJSON(services.SpecCandidatesToMap(candidates)),
-		Notes:          result.Notes,
-		RequestedBy:    requestedBy,
-		JobID:          "profile-draft-" + strconv.FormatUint(uint64(profileDraft.ID), 10),
+		// Both helpers return "" when nothing was found and these are
+		// `type:json` columns, which MySQL refuses to store an empty string in.
+		EvidenceJSON: services.JSONArrayOrEmpty(services.SpecEvidenceJSON(result.Evidence)),
+		SpecsJSON:    services.JSONObjectOrEmpty(services.TechnicalSpecsJSON(services.SpecCandidatesToMap(candidates))),
+		Notes:        result.Notes,
+		RequestedBy:  requestedBy,
+		JobID:        "profile-draft-" + strconv.FormatUint(uint64(profileDraft.ID), 10),
 	}
 	if err := tx.Create(&draft).Error; err != nil {
 		return 0, err

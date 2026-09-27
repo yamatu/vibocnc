@@ -236,6 +236,15 @@ func (sc *ProductSpecDraftController) ApproveDraft(c *gin.Context) {
 
 	existing := services.ParseTechnicalSpecs(product.TechnicalSpecs)
 	researched := services.SpecCandidatesToMap(candidates)
+	if len(researched) == 0 {
+		// TechnicalSpecsJSON returns "" for an empty map and technical_specs is a
+		// `type:json` column, so approving a draft that proposes nothing reached
+		// MySQL as an empty document and failed with error 3140. There is
+		// nothing to apply in that case anyway, so say that instead of writing a
+		// blank value over the product's table.
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "This draft has no parameters to apply. Run the research again before approving it."})
+		return
+	}
 	added := 0
 	skipped := 0
 	for label, value := range researched {
@@ -267,7 +276,7 @@ func (sc *ProductSpecDraftController) ApproveDraft(c *gin.Context) {
 		Confidence: draft.Confidence,
 		Notes:      draft.Notes,
 	})
-	draft.SpecsJSON = encoded
+	draft.SpecsJSON = services.JSONObjectOrEmpty(encoded)
 	if err := db.Save(&draft).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Specifications saved but the draft could not be updated", Error: err.Error()})
 		return
@@ -394,7 +403,7 @@ func buildAndStoreSpecDraft(ctx context.Context, in specDraftInput) (*models.Pro
 		Status:         "pending",
 		Confidence:     result.Confidence,
 		CandidatesJSON: services.BuildSpecDraftPayload(result),
-		EvidenceJSON:   services.SpecEvidenceJSON(result.Evidence),
+		EvidenceJSON:   services.JSONArrayOrEmpty(services.SpecEvidenceJSON(result.Evidence)),
 		Notes:          result.Notes,
 		RequestedBy:    in.UserID,
 		JobID:          in.JobID,
@@ -408,7 +417,11 @@ func buildAndStoreSpecDraft(ctx context.Context, in specDraftInput) (*models.Pro
 			draft.Brand = in.Product.Brand
 		}
 	}
-	draft.SpecsJSON = services.TechnicalSpecsJSON(services.SpecCandidatesToMap(result.Candidates))
+	// SpecEvidenceJSON and TechnicalSpecsJSON both return "" when research
+	// found nothing, but specs_json and evidence_json are `type:json` columns
+	// that reject an empty string, so a model with no evidence would fail the
+	// whole research job at INSERT instead of queueing an empty draft.
+	draft.SpecsJSON = services.JSONObjectOrEmpty(services.TechnicalSpecsJSON(services.SpecCandidatesToMap(result.Candidates)))
 
 	// A new draft replaces the older pending proposals for the same product and
 	// model. Without this, re-running research with Force piled up identical
