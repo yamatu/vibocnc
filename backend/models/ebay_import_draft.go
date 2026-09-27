@@ -193,6 +193,10 @@ type EbayImportDraftAIReviewRequest struct {
 	MatchStatus    string `json:"match_status"`
 	Brand          string `json:"brand"`
 	AIReviewStatus string `json:"ai_review_status"`
+	// AutoPublish asks the run to import each draft whose proposal comes back
+	// ready, instead of leaving it for approval. It is an explicit opt-in and is
+	// recorded on the job, because publishing creates indexed URLs.
+	AutoPublish bool `json:"auto_publish"`
 }
 
 // EbayImportDraftAIApproveRequest publishes approved proposals.

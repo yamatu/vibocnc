@@ -87,6 +87,84 @@ var modelFamilies = []*regexp.Regexp{
 // reading of the listing and reject a correct identification as a mismatch.
 var looseModelFormat = regexp.MustCompile(`[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+`)
 
+// modelFamiliesSpaced matches the same families written with spaces instead of
+// hyphens, which is how sellers often retype them ("A06B 6079 H208"). Only
+// families whose parts are all long enough to be unambiguous are included, so a
+// two-digit group cannot swallow a following word. Matches are re-joined with
+// hyphens to give the canonical form.
+var modelFamiliesSpaced = []*regexp.Regexp{
+	regexp.MustCompile(`\bA\d{2}B\s+\d{4}\s+[A-Z]\d{3}[A-Z0-9]*\b`),
+	regexp.MustCompile(`\bA\d{3}\s+\d{4}\s+[A-Z]\d{3}[A-Z0-9]*\b`),
+	regexp.MustCompile(`\bMR[\s-]?[A-Z]\d[A-Z]?\s+\d{2,4}[A-Z]?\b`),
+	regexp.MustCompile(`\bSG[A-Z]{2,4}\s+[A-Z0-9]{4,12}\b`),
+}
+
+// hyphenateSpacedModel normalises a space-separated match, keeping the hyphen
+// that belongs to the family prefix itself (MR-J4 40A -> MR-J4-40A).
+func hyphenateSpacedModel(match string) string {
+	fields := strings.Fields(match)
+	if len(fields) < 2 {
+		return ""
+	}
+	return strings.Join(fields, "-")
+}
+
+// stripHyphenModelFamilies matches family prefixes written without their hyphen
+// and with the separators removed entirely ("A06B6079H208"). Sellers do this to
+// fit a title length limit, and the result is otherwise unparseable.
+var stripHyphenModelFamilies = []*regexp.Regexp{
+	// A leading \b keeps these from matching inside a longer token, and no
+	// trailing \b is used: at the end of a token that runs into a path segment
+	// ("A16B22030880/04A") a word boundary does not fall where the model ends.
+	//
+	// The longer forms are listed first. Go's regexp is leftmost-first, not
+	// longest-match, so a bare prefix placed earlier would truncate
+	// "A06B6079H208" to "A06B6079".
+	regexp.MustCompile(`\bA\d{2}B\d{4}[A-Z]\d{3}[A-Z0-9]*`),
+	regexp.MustCompile(`\bA\d{3}\d{4}[A-Z]\d{3}[A-Z0-9]*`),
+	// A##B-#### / A###-#### with a four-digit second group and no letter group
+	// ("A16B22030880" is A16B-2203-0880, "A8602000" is A860-2000). The second
+	// group is greedy up to four digits so the tail is not dropped.
+	regexp.MustCompile(`\bA\d{2}B\d{4,8}`),
+	regexp.MustCompile(`\bA\d{3}\d{4,8}`),
+	regexp.MustCompile(`\bMR[A-Z]\d[A-Z]?\d{2,4}[A-Z]?`),
+}
+
+// canonicallyHyphenate restores the separators of a hyphen-less model so it
+// compares equal to the same model written normally. A06B6079H208 ->
+// A06B-6079-H208; MRJ440A -> MR-J4-40A.
+func canonicallyHyphenate(match string) string {
+	switch {
+	case regexp.MustCompile(`^A\d{3}\d{4}[A-Z]\d{3}`).MatchString(match):
+		// A###-####-T###
+		return match[:4] + "-" + match[4:8] + "-" + match[8:]
+	case regexp.MustCompile(`^A\d{2}B\d{4}[A-Z]\d{3}`).MatchString(match):
+		// A##B-####-X###
+		return match[:4] + "-" + match[4:8] + "-" + match[8:]
+	case regexp.MustCompile(`^A\d{2}B\d{4,8}$`).MatchString(match):
+		// A##B-#### or A##B-####-#### (A16B22030880 -> A16B-2203-0880)
+		if len(match) > 8 {
+			return match[:4] + "-" + match[4:8] + "-" + match[8:]
+		}
+		return match[:4] + "-" + match[4:]
+	case regexp.MustCompile(`^A\d{3}\d{4,8}$`).MatchString(match):
+		// A###-#### or A###-####-####. The tail beyond the first four digits is
+		// split at four so A8602000 stays A860-2000 rather than gaining an empty
+		// trailing group.
+		if len(match) > 8 {
+			return match[:4] + "-" + match[4:8] + "-" + match[8:]
+		}
+		return match[:4] + "-" + match[4:]
+	case regexp.MustCompile(`^MR[A-Z]\d`).MatchString(match):
+		// MR-J4-40A (three characters follow the MR prefix)
+		rest := match[2:]
+		if idx := strings.IndexAny(rest[2:], "0123456789"); idx >= 0 {
+			return "MR-" + rest[:idx+2] + "-" + rest[idx+2:]
+		}
+	}
+	return ""
+}
+
 // extractModelFromText returns the first part number found in text.
 //
 // allowLoose enables the unstructured fallback described on looseModelFormat.
@@ -95,6 +173,23 @@ func extractModelFromText(text string, allowLoose bool) string {
 	for _, pattern := range modelFamilies {
 		if match := pattern.FindString(upper); match != "" {
 			return match
+		}
+	}
+	// Sellers retype models with spaces or drop the separators entirely, so the
+	// same family is retried in those shapes before giving up. A miss here is
+	// what leaves a draft with no identifier at all.
+	for _, pattern := range modelFamiliesSpaced {
+		if match := pattern.FindString(upper); match != "" {
+			if hyphenated := hyphenateSpacedModel(match); hyphenated != "" {
+				return hyphenated
+			}
+		}
+	}
+	for _, pattern := range stripHyphenModelFamilies {
+		if match := pattern.FindString(upper); match != "" {
+			if hyphenated := canonicallyHyphenate(match); hyphenated != "" {
+				return hyphenated
+			}
 		}
 	}
 	if allowLoose {

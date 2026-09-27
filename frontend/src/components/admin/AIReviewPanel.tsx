@@ -81,6 +81,9 @@ export default function AIReviewPanel({
   const queryClient = useQueryClient();
   const [jobId, setJobId] = useState<string | null>(null);
   const [reviewAllFiltered, setReviewAllFiltered] = useState(false);
+  // Off by default. Publishing creates indexed product pages, so it is a
+  // deliberate choice rather than something the review button does implicitly.
+  const [autoPublish, setAutoPublish] = useState(false);
   const [selectedForApproval, setSelectedForApproval] = useState<number[]>([]);
   const logRef = useRef<HTMLDivElement | null>(null);
   const announcedCompletion = useRef<string | null>(null);
@@ -123,7 +126,13 @@ export default function AIReviewPanel({
     if (job.status === 'completed_with_errors') {
       toast.error(`AI 审核完成但有 ${job.failed} 条失败，参见日志 / finished with ${job.failed} failures`);
     } else if (job.status === 'completed') {
-      toast.success(`AI 审核完成：${job.ready} 条待批准 / ${job.ready} proposals ready`);
+      // An auto-publishing run publishes rather than queueing, so reporting a
+      // pending count would describe work that no longer exists.
+      toast.success(
+        job.auto_publish
+          ? `AI 审核完成：已上架 ${job.imported ?? 0} 条 / published ${job.imported ?? 0}`
+          : `AI 审核完成：${job.ready} 条待批准 / ${job.ready} proposals ready`
+      );
     }
     onReviewFinished?.();
   }, [job, onReviewFinished]);
@@ -146,8 +155,9 @@ export default function AIReviewPanel({
               match_status: filters.match_status,
               brand: filters.brand,
               ai_review_status: filters.ai_review_status,
+              auto_publish: autoPublish,
             }
-          : { ids: selectedIds }
+          : { ids: selectedIds, auto_publish: autoPublish }
       ),
     onSuccess: (created) => {
       setSelectedForApproval([]);
@@ -155,7 +165,11 @@ export default function AIReviewPanel({
       setJobId(created.id);
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review'] });
       queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
-      toast.success(`已开始 AI 审核 ${created.total} 条草稿 / reviewing ${created.total} drafts`);
+      toast.success(
+        autoPublish
+          ? `已开始 AI 审核并自动上架 ${created.total} 条草稿 / reviewing and publishing ${created.total} drafts`
+          : `已开始 AI 审核 ${created.total} 条草稿 / reviewing ${created.total} drafts`
+      );
     },
     // `error.message` on a rejected request is axios' own "Request failed with
     // status code 409", which hides the server's explanation. getErrorMessage
@@ -225,7 +239,8 @@ export default function AIReviewPanel({
           </h2>
           <p className="mt-1 max-w-2xl text-xs text-gray-600">
             AI 会识别每个草稿的产品身份、自动匹配或新建「品牌 &gt; 部件类型」分类、生成标题、
-            描述与 SEO。生成的方案处于<strong>待批准</strong>状态，只有你勾选后才会真正上架。
+            描述与 SEO。默认生成<strong>待批准</strong>方案，由你勾选后上架；
+            勾选下方「直接上架」则可一次跑完识别与发布。
           </p>
         </div>
 
@@ -242,6 +257,7 @@ export default function AIReviewPanel({
               : reviewAllFiltered
                 ? '审核全部筛选结果'
                 : '审核全部待处理'}
+            {autoPublish ? '并上架' : ''}
           </button>
           {isActive && (
             <>
@@ -294,6 +310,26 @@ export default function AIReviewPanel({
         </span>
       </div>
 
+      {/* Publishing is separate from reviewing, because reviewing is reversible
+          (a proposal you can reject) and publishing is not (a live URL). */}
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-700">
+        <label className="inline-flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={autoPublish}
+            onChange={(event) => setAutoPublish(event.target.checked)}
+            disabled={isActive}
+            className="h-3.5 w-3.5"
+          />
+          审核通过后<strong>直接上架</strong>（不经人工确认）
+        </label>
+        <span className={autoPublish ? 'text-amber-700' : 'text-gray-500'}>
+          {autoPublish
+            ? '识别成功即发布商品。识别失败的草稿仍留在队列中，不会上架。'
+            : '默认只生成待批准方案，你勾选后才上架。'}
+        </span>
+      </div>
+
       {job && (
         <div className="mt-4 rounded border border-gray-200 bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -314,7 +350,14 @@ export default function AIReviewPanel({
               <span className="text-xs text-gray-500">任务 {job.id.slice(0, 8)}</span>
             </div>
             <div className="flex items-center gap-3 text-xs">
-              <span className="text-emerald-700">待批准 {job.ready}</span>
+              {job.auto_publish ? (
+                <span className="text-emerald-700">已上架 {job.imported ?? 0}</span>
+              ) : (
+                <span className="text-emerald-700">待批准 {job.ready}</span>
+              )}
+              {(job.import_failed ?? 0) > 0 && (
+                <span className="text-red-700">上架失败 {job.import_failed}</span>
+              )}
               <span className="text-amber-700">跳过 {job.rejected}</span>
               {job.failed > 0 && <span className="text-red-700">失败 {job.failed}</span>}
               <span className="text-gray-500">

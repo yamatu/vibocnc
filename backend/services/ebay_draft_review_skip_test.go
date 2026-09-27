@@ -77,6 +77,58 @@ func knownEbayReviewSkipReason(reason string) bool {
 	return false
 }
 
+// TestSkipCountsExcludeRecoveredFromFailureSummary keeps a rescue out of the
+// refusal text: "91 drafts refused (model recovered from title: 91)" would read
+// as a contradiction.
+func TestSkipCountsExcludeRecoveredFromFailureSummary(t *testing.T) {
+	counts := EbayReviewSkipCounts{
+		"missing_identifier":      2,
+		EbayReviewRecoveredReason: 91,
+	}
+	summary := counts.Summary()
+	if strings.Contains(summary, EbayReviewRecoveredReason) || strings.Contains(summary, "recovered") {
+		t.Fatalf("Summary() = %q, a recovery must not appear as a refusal reason", summary)
+	}
+	if !strings.Contains(summary, "no model or part number: 2") {
+		t.Fatalf("Summary() = %q, want the real refusal", summary)
+	}
+	if got := counts.RecoveredSummary(); !strings.Contains(got, "91") {
+		t.Fatalf("RecoveredSummary() = %q, want it to report 91", got)
+	}
+
+	// And with no rescue there is nothing to announce.
+	if got := (EbayReviewSkipCounts{"missing_identifier": 1}).RecoveredSummary(); got != "" {
+		t.Fatalf("RecoveredSummary() = %q, want empty", got)
+	}
+}
+
+// TestSkipSamplesShowRealTitles is the diagnostic that turns "91 drafts were
+// refused" into "here is what their titles look like".
+func TestSkipSamplesShowRealTitles(t *testing.T) {
+	samples := EbayReviewSkipSamples{}
+	for i := 0; i < 50; i++ {
+		samples.note("missing_identifier", "Title number 1")
+	}
+	if got := len(samples["missing_identifier"]); got != EbayReviewSkipSampleLimit {
+		t.Fatalf("collected %d samples, want the limit of %d", got, EbayReviewSkipSampleLimit)
+	}
+
+	// A missing title carries no information and must not occupy a slot.
+	samples.note("missing_identifier", "")
+	samples.note("missing_identifier", "   ")
+	block := samples.SamplesBlock()
+	if strings.Contains(block, "|  |") {
+		t.Fatalf("SamplesBlock() = %q, must not contain an empty sample", block)
+	}
+	if !strings.Contains(block, "no model or part number") {
+		t.Fatalf("SamplesBlock() = %q, want the human reason label", block)
+	}
+
+	if got := (EbayReviewSkipSamples{}).SamplesBlock(); got != "" {
+		t.Fatalf("SamplesBlock() = %q, want empty for no samples", got)
+	}
+}
+
 func TestEbayReviewSkipCountsSummary(t *testing.T) {
 	cases := []struct {
 		name    string

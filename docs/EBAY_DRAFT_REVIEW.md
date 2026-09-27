@@ -192,10 +192,40 @@ Error toasts go through `getErrorMessage`, which appends the API's `error`
 detail to its `message` headline: the headline alone ("Failed to start AI
 review") is not actionable.
 
+## Publishing inside the run
+
+The pass does not publish. A run publishes only when the request sets
+`auto_publish`, which the UI exposes as 「直接上架」 (off by default, and stated in
+both the button label and the option's help text).
+
+`auto_publish` changes *when* a draft is imported, never *how*:
+
+- `services.publishReadyDraft` calls the import entry point the import
+  controller registers via `RegisterConfirmDraftImport` at startup. That is the
+  same `confirmReviewedDraft` the manual approve button calls, so an
+  auto-published product gets identical validation, duplicate handling and
+  upsert. A second import path would be a second definition of "approved".
+- A skip reason (`not_ready`, a duplicate, invalid data) is **not** counted as
+  published. It is reported as an import failure so the run's summary says
+  "published N" only when N products exist.
+- `ready` and `imported` are separate counters, and an auto-publishing run's
+  completion message reports `imported` rather than `ready`: describing a
+  published draft as "pending approval" would describe work that no longer
+  exists.
+- The flag lives on the job row, so a resumed run publishes only if it was
+  asked to. The publisher itself is a function and cannot be persisted, so
+  `RunEbayDraftReviewJob` re-registers it for any job whose `auto_publish` is
+  set — otherwise a run resumed after a restart would report every ready draft
+  as an import failure.
+- Publishers are keyed by job id, so a review-only run cannot start publishing
+  because another job enabled it.
+
 ## Not implemented on purpose
 
-- **No auto-publish.** There is no setting that lets the pass publish. Approval
-  is always an explicit, attributed action.
+- **No auto-publish by default.** The pass publishes only when the caller opts
+  in per run (see above). There is no stored setting that makes publishing the
+  default, because a default is exactly what turns a review queue into an
+  unattended publisher.
 - **No spec publishing.** Cited parameters become pending `ProductSpecDraft`
   rows, which are reviewed separately.
 - **No re-review of `ready` rows.** The default selection excludes rows that

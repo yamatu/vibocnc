@@ -23,6 +23,18 @@ type EbayDraftReviewJob struct {
 	Rejected int `json:"rejected" gorm:"not null;default:0"`
 	Failed   int `json:"failed" gorm:"not null;default:0"`
 
+	// AutoPublish requests that a draft which produced a ready proposal is
+	// imported in the same run. It is recorded on the job so the progress view can
+	// state what the run will do, and so an operator reading the job later can
+	// tell whether products appeared because a human approved them or because the
+	// run was asked to publish.
+	AutoPublish bool `json:"auto_publish" gorm:"not null;default:false"`
+
+	// Imported counts drafts this run published (only non-zero with AutoPublish).
+	Imported int `json:"imported" gorm:"not null;default:0"`
+	// ImportFailed counts drafts whose import errored after a ready proposal.
+	ImportFailed int `json:"import_failed" gorm:"not null;default:0"`
+
 	// Stage is a human-readable line describing the current work, so a long run
 	// is not a silent progress bar.
 	Stage   string `json:"stage" gorm:"size:255"`

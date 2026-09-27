@@ -56,6 +56,11 @@ func SetupRoutes(r *gin.Engine) {
 	indexNowController := &controllers.IndexNowController{}
 	ebayImportDraftController := &controllers.EbayImportDraftController{}
 	ebayDraftReviewController := controllers.NewEbayDraftReviewController()
+	// An auto-publishing review run imports through the import controller's own
+	// path, so an auto-published product is validated identically to one a human
+	// approved. Registered here rather than imported to keep the two controllers
+	// independent.
+	ebayImportDraftController.RegisterAutoPublishImport()
 	ebayMarketController := &controllers.EbayMarketController{}
 	integrationTokenController := &controllers.IntegrationTokenController{}
 	productProfileDraftController := &controllers.ProductProfileDraftController{}

@@ -39,6 +39,12 @@ export interface EbayDraftReviewJob {
   ready: number;
   rejected: number;
   failed: number;
+  /** Whether this run was asked to publish ready proposals instead of queueing them. */
+  auto_publish?: boolean;
+  /** Set only on an auto-publishing run: drafts it published. */
+  imported?: number;
+  /** Set only on an auto-publishing run: ready proposals whose import errored. */
+  import_failed?: number;
   stage?: string;
   message?: string;
   error?: string;
@@ -55,7 +61,7 @@ export interface EbayDraftReviewJobItem {
   draft_id: number;
   model?: string;
   title?: string;
-  status: 'queued' | 'running' | 'ready' | 'rejected' | 'failed';
+  status: 'queued' | 'running' | 'ready' | 'rejected' | 'failed' | 'imported' | 'import_failed';
   level: 'info' | 'success' | 'warn' | 'error';
   message?: string;
   error?: string;
@@ -506,6 +512,11 @@ export class EbayImportDraftService {
     match_status?: string;
     brand?: string;
     ai_review_status?: string;
+    /**
+     * Import each draft whose proposal comes back ready, instead of leaving it
+     * for approval. Opt-in: the review pass never publishes on its own.
+     */
+    auto_publish?: boolean;
   }): Promise<EbayDraftReviewJob> {
     const response = await apiClient.post<APIResponse<EbayDraftReviewJob>>(
       '/admin/ebay-import-drafts/ai-review',

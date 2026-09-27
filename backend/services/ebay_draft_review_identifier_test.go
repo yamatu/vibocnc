@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fanuc-backend/utils"
 	"testing"
 
 	"fanuc-backend/models"
@@ -114,5 +115,52 @@ func TestScrapedPayloadWithoutAnyModelStaysUnreviewable(t *testing.T) {
 	}
 	if reason != "missing_identifier" {
 		t.Fatalf("preflight reason = %q, want missing_identifier", reason)
+	}
+}
+
+// TestLegacyDraftWithoutStoredModelIsRescuedFromTitle covers the backlog that
+// was scraped before the builder parsed titles: those rows hold no model even
+// though the title names the part, so every batch refused all of them.
+//
+// The rescue runs in the job's preflight, which is where a stored backlog can
+// still be fixed without re-scraping. This asserts the extraction and the
+// preflight agree, which is the pair that decides whether the row is queued.
+func TestLegacyDraftWithoutStoredModelIsRescuedFromTitle(t *testing.T) {
+	legacy := []struct {
+		title string
+		want  string
+	}{
+		{"FANUC A06B-6079-H208 Servo Amplifier Module TESTED", "A06B-6079-H208"},
+		{"Siemens 6ES7215-1AG40-0XB0 SIMATIC S7-1200", "6ES7215-1AG40-0XB0"},
+		{"Mitsubishi MR-J4-40A servo drive", "MR-J4-40A"},
+		{"Yaskawa SGDV-2R8A01A servo pack", "SGDV-2R8A01A"},
+	}
+	for _, tc := range legacy {
+		t.Run(tc.title, func(t *testing.T) {
+			// A stored row: title present, every identifier column empty - which
+			// is exactly why the batch was refused.
+			draft := models.EbayImportDraft{
+				Status:          EbayDraftStatusPending,
+				TitleRaw:        tc.title,
+				NormalizedTitle: tc.title,
+			}
+			if reason, ok := EbayDraftPreflight(draft); ok {
+				t.Fatalf("precondition failed: expected %q to be refused, got reason %q", tc.title, reason)
+			}
+
+			// The rescue the job applies.
+			parsed := utils.ExtractModelFromText(firstNonEmptyString(draft.NormalizedTitle, draft.TitleRaw))
+			if parsed == "" {
+				t.Fatalf("title %q yielded no model, so this backlog stays unrereviewable", tc.title)
+			}
+			draft.NormalizedModel = NormalizeProductModel(parsed)
+
+			if !SameMarketModel(draftIdentifier(draft), tc.want) {
+				t.Fatalf("rescued identifier = %q, want %q", draftIdentifier(draft), tc.want)
+			}
+			if reason, ok := EbayDraftPreflight(draft); !ok {
+				t.Fatalf("rescued draft is still refused: %q", reason)
+			}
+		})
 	}
 }

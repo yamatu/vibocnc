@@ -1,6 +1,9 @@
 package utils
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestExtractModelFromTextCoversKnownFamilies pins the part-number families that
 // a marketplace listing title is expected to yield. A draft with no model can
@@ -91,5 +94,49 @@ func TestExtractModelFromTextIgnoresExtension(t *testing.T) {
 	title := "FANUC A06B-6079-H208. Tested, working pull."
 	if got := ExtractModelFromText(title); got != "A06B-6079-H208" {
 		t.Fatalf("ExtractModelFromText(%q) = %q, want %q", title, got, "A06B-6079-H208")
+	}
+}
+
+// TestExtractModelFromTextHandlesSellerSpacing covers the shapes sellers actually
+// type when they retype a model for a listing title: spaces instead of hyphens,
+// or all separators dropped to save characters. A miss here is what leaves a
+// scraped draft with no identifier, which blocks it from AI review entirely.
+func TestExtractModelFromTextHandlesSellerSpacing(t *testing.T) {
+	cases := map[string]string{
+		"A06B 6079 H208":   "A06B-6079-H208",
+		"A06B6079H208":     "A06B-6079-H208",
+		"A16B22030880":     "A16B-2203-0880",
+		"A16B22030880/04A": "A16B-2203-0880",
+		"A16B2203":         "A16B-2203",
+		"A8602000T301":     "A860-2000-T301",
+		"A8602000":         "A860-2000",
+		"A02B0120C041":     "A02B-0120-C041",
+		"A02B0120":         "A02B-0120",
+		"MR J4 40A":        "MR-J4-40A",
+		"MRJ440A":          "MR-J4-40A",
+		"SGDV 2R8A01A":     "SGDV-2R8A01A",
+	}
+	for input, want := range cases {
+		if got := ExtractModelFromText(input); got != want {
+			t.Errorf("ExtractModelFromText(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+// TestExtractModelFromTextDoesNotTruncateDashlessModel guards the subtle failure
+// where a shorter alternative earlier in the family list matches first, silently
+// dropping the tail of a longer model.
+func TestExtractModelFromTextDoesNotTruncateDashlessModel(t *testing.T) {
+	if got := ExtractModelFromText("A06B6079H208"); got != "A06B-6079-H208" {
+		t.Fatalf("got %q, the trailing group was dropped", got)
+	}
+	if got := ExtractModelFromText("A16B22030880"); got != "A16B-2203-0880" {
+		t.Fatalf("got %q, the second group was truncated", got)
+	}
+	// A trailing hyphen would compare unequal to the same model written normally.
+	for _, input := range []string{"A8602000", "A02B0120", "A16B2203"} {
+		if got := ExtractModelFromText(input); strings.HasSuffix(got, "-") {
+			t.Fatalf("ExtractModelFromText(%q) = %q, trailing separator", input, got)
+		}
 	}
 }

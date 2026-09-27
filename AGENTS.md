@@ -139,6 +139,7 @@ backend/
 - Generated copy must never name a brand other than the product's own — foreign brand mentions are detected by `services.ForeignBrandMentions` (token based, so "ABB" never matches inside "cable") and trigger a content refresh
 - Content regeneration is **opt-in**; never mass-rewrite indexed pages
 - Brand-prefixed part numbers resolve for every brand: `services.StripKnownBrandPrefix` + `services.KnownBrandDisplayNames` (backend SKU lookup, XLSX importer, media filenames via `utils.ParseModelFromFilename`) and `stripBrandPrefixFromModel` (`frontend/src/lib/utils.ts`)
+- **Model numbers are extracted from listing titles** with `utils.ExtractModelFromText` (strict, known families only) — `ParseModelFromFilename` keeps the loose dashed fallback for machine-generated filenames. Titles are prose, and a *wrong* model is worse than none: it would be compared against the AI's reading of the listing and reject a correct identification as `model_mismatch`. Sellers also write models with spaces (`A06B 6079 H208`) or no separators at all (`A06B6079H208`), so both shapes are normalised back to the canonical hyphenated form. Scraped eBay drafts often have no "Model" item specific at all, so without this fallback they hold no identifier and can never be reviewed
 - Legacy product URLs keep working: `toProductPathId` still strips a leading `FANUC-` (intentional — do not change without a redirect plan)
 
 #### What the model number alone can fill

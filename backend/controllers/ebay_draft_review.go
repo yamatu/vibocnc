@@ -82,7 +82,10 @@ func (rc *EbayDraftReviewController) StartReview(c *gin.Context) {
 	if userID := currentAdminUserID(c); userID != nil {
 		createdBy = *userID
 	}
-	job, skipped, err := services.StartEbayDraftReviewJob(ids, createdBy, client)
+	job, skipped, err := services.StartEbayDraftReviewJobWithOptions(ids, createdBy, client, services.EbayDraftReviewJobOptions{
+		AutoPublish: req.AutoPublish,
+		Publisher:   services.PublishReadyDraft,
+	})
 	if err != nil {
 		// The failure reason is the whole point of this response: the UI can only
 		// tell an administrator which drafts to fix if the message says what
@@ -99,10 +102,14 @@ func (rc *EbayDraftReviewController) StartReview(c *gin.Context) {
 // waiting on a job that was never going to process the rows they picked, so the
 // skipped counts travel with the success response instead of a bare "started".
 func ebayReviewStartedMessage(queued int, skipped services.EbayReviewSkipCounts) string {
-	if summary := skipped.Summary(); summary != "" {
-		return fmt.Sprintf("AI review started for %d draft(s); skipped %s", queued, summary)
+	message := fmt.Sprintf("AI review started for %d draft(s)", queued)
+	if recovered := skipped.RecoveredSummary(); recovered != "" {
+		message += fmt.Sprintf("; %s", recovered)
 	}
-	return "AI review started"
+	if summary := skipped.Summary(); summary != "" {
+		message += fmt.Sprintf("; skipped %s", summary)
+	}
+	return message
 }
 
 // resolveReviewDraftIDs expands a filter into draft ids, bounded by the same
@@ -266,6 +273,19 @@ func (ec *EbayImportDraftController) ApproveReview(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "Approval task started", Data: snapshot})
+}
+
+// RegisterAutoPublishImport wires the import entry point an auto-publishing
+// review run uses.
+//
+// It is called once at startup. Registering rather than importing avoids a cycle
+// between the review controller and the import controller, and means the
+// published product goes through the exact function the manual approve button
+// calls.
+func (ec *EbayImportDraftController) RegisterAutoPublishImport() {
+	services.RegisterConfirmDraftImport(func(ctx context.Context, draftID uint) (int, string, error) {
+		return ec.confirmReviewedDraft(ctx, draftID, "import", nil)
+	})
 }
 
 // confirmReviewedDraft applies a stored proposal and then imports it.
