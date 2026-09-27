@@ -44,6 +44,25 @@ func ebayJSONTaskErrorStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
+// ebayUploadResponseMessage decides the status and message for a batch upload.
+//
+// A batch in which nothing was accepted is a failure, so it must not be
+// reported with the success wording: the client surfaced that wording as the
+// error text, which made an all-items-failed upload look like it had worked and
+// left the caller with nothing to act on.
+func ebayUploadResponseMessage(successCount, errorCount int, reasons []string) (int, string) {
+	if successCount == 0 {
+		if len(reasons) > 0 {
+			return http.StatusBadRequest, "eBay import drafts rejected: " + strings.Join(reasons, " | ")
+		}
+		return http.StatusBadRequest, "eBay import drafts rejected"
+	}
+	if errorCount > 0 {
+		return http.StatusPartialContent, fmt.Sprintf("eBay import drafts partially processed (%d failed)", errorCount)
+	}
+	return http.StatusCreated, "eBay import drafts processed"
+}
+
 func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 	var req models.EbayImportDraftUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -65,6 +84,31 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 	results := make([]uploadItemResult, 0, len(req.Items))
 	successCount := 0
 	errorCount := 0
+	// Keep a few per-item reasons. Without them a rejected batch can only be
+	// answered with generic wording, which reads like success and leaves the
+	// caller with no way to act.
+	reasons := make([]string, 0, 3)
+	noteReason := func(messages ...string) {
+		for _, message := range messages {
+			if len(reasons) >= 3 {
+				return
+			}
+			message = strings.TrimSpace(message)
+			if message == "" {
+				continue
+			}
+			seen := false
+			for _, existing := range reasons {
+				if existing == message {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				reasons = append(reasons, message)
+			}
+		}
+	}
 
 	for _, item := range req.Items {
 		item = services.NormalizeEbayImportDraftPayload(item)
@@ -73,6 +117,7 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 		// successful-but-timed-out request returns the existing draft rather than
 		// filling the review queue with duplicates.
 		if existing, found, lookupErr := findExistingEbayImportDraft(db, item); lookupErr != nil {
+			noteReason(lookupErr.Error())
 			results = append(results, uploadItemResult{Title: ebayUploadString(item["product_title"]), Status: services.EbayDraftStatusFailed, Errors: []string{lookupErr.Error()}})
 			errorCount++
 			continue
@@ -94,6 +139,7 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 			draft.FailureReason = strings.Join(built.Errors, "; ")
 		}
 		if err := db.Create(&draft).Error; err != nil {
+			noteReason(err.Error())
 			results = append(results, uploadItemResult{Title: draft.TitleRaw, MatchStatus: draft.MatchStatus, Status: services.EbayDraftStatusFailed, Errors: append(built.Errors, err.Error())})
 			errorCount++
 			continue
@@ -109,16 +155,11 @@ func (ec *EbayImportDraftController) Upload(c *gin.Context) {
 		successCount++
 	}
 
-	status := http.StatusCreated
-	if successCount == 0 {
-		status = http.StatusBadRequest
-	} else if errorCount > 0 {
-		status = http.StatusPartialContent
-	}
+	status, message := ebayUploadResponseMessage(successCount, errorCount, reasons)
 
 	c.JSON(status, models.APIResponse{
 		Success: successCount > 0,
-		Message: "eBay import drafts processed",
+		Message: message,
 		Data: gin.H{
 			"total":         len(req.Items),
 			"success_count": successCount,
