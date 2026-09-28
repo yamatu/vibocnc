@@ -94,92 +94,135 @@ func BuildProfileContent(profile ProductProfile, catalog ProfileContentCatalog) 
 	policy := CurrentCommercePolicy()
 	brand := strings.TrimSpace(profile.Brand)
 	model := strings.TrimSpace(profile.Model)
-	partType := strings.TrimSpace(profile.PartType)
+	partType := CanonicalizeProductTypeFromText(profile.PartType)
+	if partType == "" {
+		partType = strings.TrimSpace(profile.PartType)
+	}
 
+	identity := strings.TrimSpace(strings.Join(nonEmptyStrings(brand, model), " "))
 	subject := strings.TrimSpace(strings.Join(nonEmptyStrings(brand, model, partType), " "))
 	if subject == "" {
-		subject = model
+		subject = identity
 	}
 
-	content := ProfileContent{}
-
-	// Short description: what it is, in one line.
-	summary := strings.TrimSpace(profile.WhatItIs)
+	clean := func(value string) string {
+		return strings.TrimSpace(SanitizeListingDescription(value))
+	}
+	summary := clean(profile.WhatItIs)
 	if summary == "" {
-		summary = "Original " + partType + " for " + brand + " automation equipment."
+		summary = "Original " + partType + " for " + brand + " industrial automation equipment."
 	}
-	content.ShortDescription = truncateRunesSafe(summary, 300)
 
-	// Description: identity, function, application, then the commercial promise.
-	var builder strings.Builder
-	builder.WriteString("## " + subject + "\n\n")
-	builder.WriteString(summary)
-	builder.WriteString("\n\n")
-
-	if len(profile.KeyFunctions) > 0 {
-		builder.WriteString("### Key functions\n\n")
-		for _, item := range profile.KeyFunctions {
-			builder.WriteString("- " + item + "\n")
+	// Keep the field plain text. The storefront renders this value as text, not
+	// Markdown/HTML, so seller-style headings such as ## must never be stored.
+	sections := []string{subject, "Overview", summary}
+	appendList := func(heading string, values []string) {
+		cleaned := make([]string, 0, len(values))
+		for _, value := range values {
+			if item := clean(value); item != "" {
+				cleaned = append(cleaned, item)
+			}
 		}
-		builder.WriteString("\n")
-	}
-	if len(profile.Applications) > 0 {
-		builder.WriteString("### Typical applications\n\n")
-		for _, item := range profile.Applications {
-			builder.WriteString("- " + item + "\n")
+		if len(cleaned) == 0 {
+			return
 		}
-		builder.WriteString("\n")
+		sections = append(sections, heading)
+		for _, item := range cleaned {
+			sections = append(sections, "- "+item)
+		}
 	}
-
+	appendList("Key functions", profile.KeyFunctions)
+	appendList("Typical applications", profile.Applications)
 	if len(profile.Specs) > 0 {
-		builder.WriteString("### Specifications\n\n")
+		specLines := make([]string, 0, len(profile.Specs))
 		for _, spec := range profile.Specs {
-			builder.WriteString("- **" + spec.Label + ":** " + spec.Value + "\n")
+			label := clean(spec.Label)
+			value := clean(spec.Value)
+			if label != "" && value != "" {
+				specLines = append(specLines, "- "+label+": "+value)
+			}
 		}
-		builder.WriteString("\n")
+		if len(specLines) > 0 {
+			sections = append(sections, "Specifications")
+			sections = append(sections, specLines...)
+		}
 	}
-
 	if compliance := profileComplianceParagraph(catalog, policy); compliance != "" {
-		builder.WriteString(compliance)
-		builder.WriteString("\n\n")
+		sections = append(sections, clean(compliance))
 	}
-	builder.WriteString(CommercePolicyWarrantyText(policy) + " " + CommercePolicyLeadTimeText(policy))
-	content.Description = strings.TrimSpace(builder.String())
-
-	// SEO: identity first, then the commercial promise.
-	content.MetaTitle = truncateRunesSafe(subject, 60)
-
-	metaDescription := summary
-	if catalog.SKU != "" {
-		metaDescription = subject + " — " + summary
+	commercial := strings.TrimSpace(strings.Join(nonEmptyStrings(
+		CommercePolicyWarrantyText(policy),
+		CommercePolicyLeadTimeText(policy),
+	), " "))
+	if commercial != "" {
+		sections = append(sections, commercial)
 	}
-	content.MetaDescription = truncateRunesSafe(metaDescription, 160)
+
+	content := ProfileContent{
+		ShortDescription: truncateRunesSafe(summary, 300),
+		Description:      strings.TrimSpace(strings.Join(sections, "\n\n")),
+		MetaTitle: BuildSafeMetaTitle(
+			subject+" | Vibocnc",
+			subject,
+		),
+	}
+
+	seoDescription := summary
+	if identity != "" {
+		seoDescription = identity + " " + partType + " — " + summary
+	}
+	policySEO := strings.TrimSpace(strings.Join(nonEmptyStrings(
+		seoDescription,
+		CommercePolicyWarrantyText(policy),
+		"Shipping "+shipScopeOf(policy)+".",
+	), " "))
+	content.MetaDescription = BuildSafeMetaDescription(
+		policySEO,
+		seoDescription,
+		subject+" for industrial automation maintenance and replacement.",
+	)
 
 	keywords := []string{model, brand, partType}
 	keywords = append(keywords, profile.CompatibleWith...)
 	content.MetaKeywords = truncateRunesSafe(strings.Join(uniqueNonEmptyStrings(keywords...), ", "), 255)
 
 	if len(profile.CompatibleWith) > 0 {
-		content.CompatibilityInfo = "Compatible with: " + strings.Join(profile.CompatibleWith, ", ") + "."
+		compatible := make([]string, 0, len(profile.CompatibleWith))
+		for _, value := range profile.CompatibleWith {
+			if item := clean(value); item != "" {
+				compatible = append(compatible, item)
+			}
+		}
+		if len(compatible) > 0 {
+			content.CompatibilityInfo = "Compatible with: " + strings.Join(compatible, ", ") + "."
+		}
 	}
-
 	if len(profile.Applications) > 0 {
-		content.Applications = strings.Join(profile.Applications, ", ")
+		applications := make([]string, 0, len(profile.Applications))
+		for _, value := range profile.Applications {
+			if item := clean(value); item != "" {
+				applications = append(applications, item)
+			}
+		}
+		content.Applications = strings.Join(applications, ", ")
 	}
-
 	if len(profile.Specs) > 0 {
 		specs := make(map[string]string, len(profile.Specs))
 		sources := make(map[string]string, len(profile.Specs))
 		for _, spec := range profile.Specs {
-			specs[spec.Label] = spec.Value
-			if spec.Source != "" {
-				sources[spec.Label] = spec.Source
+			label := clean(spec.Label)
+			value := clean(spec.Value)
+			if label == "" || value == "" {
+				continue
+			}
+			specs[label] = value
+			if source := strings.TrimSpace(spec.Source); source != "" {
+				sources[label] = source
 			}
 		}
 		content.TechnicalSpecs = specs
 		content.SpecSources = sources
 	}
-
 	return content
 }
 

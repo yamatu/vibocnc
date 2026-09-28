@@ -434,6 +434,12 @@ func categoryTypeMatchScore(pathNorm string, pathTokens []string, partType strin
 			return 30
 		}
 	case hasType("i/o") || hasAllType("io", "module") || hasType("input") || hasType("output"):
+		if hasType("output") && !hasType("input") && hasPath("input") && !hasPath("output") ||
+			hasType("input") && !hasType("output") && hasPath("output") && !hasPath("input") ||
+			hasType("analog") && hasPath("digital") && !hasPath("analog") ||
+			hasType("digital") && hasPath("analog") && !hasPath("digital") {
+			return 0
+		}
 		if hasPath("temperature", "communication", "positioning", "counter", "motion", "power", "bus") {
 			return 0
 		}
@@ -488,12 +494,14 @@ func categoryTypeMatchScore(pathNorm string, pathTokens []string, partType strin
 		if hasPath("display", "monitor", "crt", "lcd") {
 			return 30
 		}
+	// PLC is a specific controller type; never let the generic control-word
+	// branch accept a Control Board (or a motor controller) first.
+	case hasType("plc") || hasAllType("programmable", "logic"):
+		if hasPath("plc", "programmable") && !hasPath("board", "motor", "temperature", "motion") {
+			return 36
+		}
 	case hasType("cnc") || hasType("control") || hasType("system") || hasType("controller"):
 		if hasPath("cnc", "control", "system", "controller") {
-			return 30
-		}
-	case hasType("plc") || hasAllType("programmable", "logic"):
-		if hasPath("plc", "programmable", "controller") {
 			return 30
 		}
 	case hasAllType("photoelectric", "sensor"):
@@ -1389,6 +1397,34 @@ func inferOmronCategoryInference(model string) ProductCategoryInference {
 	upper := NormalizeProductModel(model)
 	compact := compactModel(upper)
 	switch {
+	case hasAnyPrefix(compact, "W4S1"):
+		return confirmedInference("omron", "Industrial Ethernet Switch", "industrial-ethernet-switches", "omron:model-ethernet-switch", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "E3X"):
+		return confirmedInference("omron", "Fiber Optic Sensor", "fiber-optic-sensors", "omron:model-fiber-sensor", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "E3FA", "E3S", "E3NX"):
+		return confirmedInference("omron", "Photoelectric Sensor", "photoelectric-sensors", "omron:model-photoelectric-sensor", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "H3CA", "H3CR"):
+		return confirmedInference("omron", "Timer Relay", "timer-relays", "omron:model-timer-relay", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "H5S"):
+		return confirmedInference("omron", "Digital Timer", "digital-timers", "omron:model-digital-timer", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "3G3"):
+		return confirmedInference("omron", "Variable Frequency Drive", "variable-frequency-drives", "omron:model-frequency-drive", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "NS", "NB", "NT"):
+		return confirmedInference("omron", "Operator Panel / HMI", "operator-panels-hmi", "omron:model-panel", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "F3SP"):
+		return confirmedInference("omron", "Safety Light Curtain", "safety-light-curtains", "omron:model-safety-curtain", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "G7SA", "G9SA"):
+		return confirmedInference("omron", "Safety Relay", "safety-relays", "omron:model-safety-relay", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "D4NL"):
+		return confirmedInference("omron", "Safety Door Switch", "safety-door-switches", "omron:model-safety-door", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "V600"):
+		return confirmedInference("omron", "RFID Controller", "rfid-controllers", "omron:model-rfid-controller", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "E5"):
+		return confirmedInference("omron", "Temperature Controller", "temperature-controllers", "omron:model-temperature-controller", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "CRT1", "DRT2", "SRT2"):
+		return confirmedInference("omron", "Remote Terminal Module", "remote-terminal-modules", "omron:model-remote-terminal", firstModelFamily(upper))
+	case hasAnyPrefix(compact, "CJ1WSCU", "CS1WSCU"):
+		return confirmedInference("omron", "Communication Interface Module", "communication-interface-modules", "omron:model-communication", firstModelFamily(upper))
 	case hasAnyPrefix(compact, "CJ1WID", "CJ1WOD", "CJ1WAD", "CJ1WDA", "CJ1WMAD", "CS1WID", "CS1WOD", "CS1WAD", "CS1WDA"):
 		return confirmedInference("omron", "I/O Module", "i-o-modules", "omron:model-io", firstModelFamily(upper))
 	case hasAnyPrefix(compact, "CJ1WPA", "CJ1WPD", "CS1WPA", "CS1WPD"):

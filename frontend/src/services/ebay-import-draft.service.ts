@@ -6,6 +6,7 @@ import {
   EbayImportDraftListResponse,
   EbayImportDraftUpdateRequest,
   EbayBulkConfirmTaskSnapshot,
+  EbaySourceCategoryOption,
   Product,
 } from '@/types';
 
@@ -16,6 +17,7 @@ export interface EbayImportDraftFilters {
   status?: string;
   match_status?: string;
   brand?: string;
+  source_site?: string;
   /**
    * Filter by automated review state. `ready` lists the drafts whose AI proposal
    * is waiting for approval; `unreviewed` lists the rest.
@@ -210,6 +212,8 @@ export class EbayImportDraftService {
         status: filters.status || '',
         match_status: filters.match_status || '',
         brand: filters.brand || '',
+        source_site: filters.source_site || '',
+        ai_review_status: filters.ai_review_status || '',
         eligible_only: eligibleOnly,
       }
     );
@@ -385,6 +389,24 @@ export class EbayImportDraftService {
     throw new Error(response.data.message || 'Failed to update eBay import draft');
   }
 
+  /**
+   * The category vocabulary the stored drafts of one source site carry, most
+   * used first.
+   *
+   * The eBay taxonomy is captured by the crawler, so it cannot come from this
+   * store's own category tree; the options are read back off the drafts that
+   * were actually scraped.
+   */
+  static async getSourceCategories(site: 'ebay' | 'b-automationservice'): Promise<EbaySourceCategoryOption[]> {
+    const response = await apiClient.get<
+      APIResponse<{ site: string; options: EbaySourceCategoryOption[] }>
+    >(`/admin/ebay-import-drafts/source-categories?site=${encodeURIComponent(site)}`);
+    if (response.data.success && response.data.data) {
+      return response.data.data.options || [];
+    }
+    throw new Error(response.data.message || 'Failed to load source categories');
+  }
+
   static async recheck(id: number): Promise<EbayImportDraftDetail> {
     const response = await apiClient.post<APIResponse<EbayImportDraftDetail>>(`/admin/ebay-import-drafts/${id}/recheck`);
     if (response.data.success && response.data.data) {
@@ -393,10 +415,10 @@ export class EbayImportDraftService {
     throw new Error(response.data.message || 'Failed to recheck eBay import draft');
   }
 
-  static async confirm(id: number, action?: string): Promise<EbayImportDraftConfirmResponse> {
+  static async confirm(id: number, action?: string, includeImages?: boolean): Promise<EbayImportDraftConfirmResponse> {
     const response = await apiClient.post<APIResponse<EbayImportDraftConfirmResponse>>(
       `/admin/ebay-import-drafts/${id}/confirm`,
-      action ? { action } : {}
+      { action, include_images: includeImages }
     );
     if (response.data.success && response.data.data) {
       return response.data.data;
@@ -404,10 +426,10 @@ export class EbayImportDraftService {
     throw new Error(response.data.message || 'Failed to confirm eBay import draft');
   }
 
-  static async bulkConfirm(ids: number[], action?: string): Promise<EbayBulkConfirmTaskSnapshot> {
+  static async bulkConfirm(ids: number[], action?: string, includeImages?: boolean): Promise<EbayBulkConfirmTaskSnapshot> {
     const response = await apiClient.post<APIResponse<EbayBulkConfirmTaskSnapshot>>(
       '/admin/ebay-import-drafts/bulk-confirm',
-      { ids, action }
+      { ids, action, include_images: includeImages }
     );
     if (response.data.success && response.data.data) {
       return response.data.data;
@@ -447,6 +469,12 @@ export class EbayImportDraftService {
     );
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Failed to resume bulk confirm task');
+  }
+
+  static async reopenOrphaned(): Promise<{ reopened: number }> {
+    const response = await apiClient.post<APIResponse<{ reopened: number }>>('/admin/ebay-import-drafts/reopen-orphaned');
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Failed to reopen orphaned drafts');
   }
 
   static async bulkRecheck(ids: number[]): Promise<{ updated: number; total: number }> {
@@ -499,6 +527,8 @@ export class EbayImportDraftService {
         status: filters.status || '',
         match_status: filters.match_status || '',
         brand: filters.brand || '',
+        source_site: filters.source_site || '',
+        ai_review_status: filters.ai_review_status || '',
         statuses,
       }
     );
@@ -525,7 +555,9 @@ export class EbayImportDraftService {
     status?: string;
     match_status?: string;
     brand?: string;
+    source_site?: string;
     ai_review_status?: string;
+    category_mode?: 'source' | 'mixed' | string;
     /**
      * Import each draft whose proposal comes back ready, instead of leaving it
      * for approval. Opt-in: the review pass never publishes on its own.
@@ -637,11 +669,13 @@ export class EbayImportDraftService {
    */
   static async approveAIReview(
     ids: number[],
-    action?: string
+    action?: string,
+    includeImages?: boolean,
+    options: { allReadyNewUnique?: boolean; sourceSite?: string; categoryMode?: string } = {}
   ): Promise<EbayBulkConfirmTaskSnapshot> {
     const response = await apiClient.post<APIResponse<EbayBulkConfirmTaskSnapshot>>(
       '/admin/ebay-import-drafts/ai-review/approve',
-      { ids, action }
+      { ids, action, include_images: includeImages, all_ready_new_unique: options.allReadyNewUnique, source_site: options.sourceSite, category_mode: options.categoryMode }
     );
     if (response.data.success && response.data.data) {
       return response.data.data;

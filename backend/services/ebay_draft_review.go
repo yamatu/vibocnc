@@ -8,6 +8,7 @@ import (
 
 	"fanuc-backend/config"
 	"fanuc-backend/models"
+	"fanuc-backend/utils"
 
 	"gorm.io/gorm"
 )
@@ -62,6 +63,13 @@ type EbayDraftReviewInput struct {
 	// ProductName is the current catalogue name when this draft matches an
 	// existing product, used as the "before" side of the title decision.
 	ProductName string
+	// TitleCandidate is an unconfirmed model the caller recovered from the
+	// listing title because the draft carries no identifier of its own. It is a
+	// hint rather than an identity: it makes a draft reviewable, and the model's
+	// own reading of the listing is allowed to overrule it (see ReviewDraft).
+	TitleCandidate string
+	// CategoryMode selects the source taxonomy or the mixed brand/type taxonomy.
+	CategoryMode string
 }
 
 // ------------------------------------------------------------------ checks --
@@ -82,11 +90,41 @@ func draftIdentifier(draft models.EbayImportDraft) string {
 // not when it cannot. It is exported so the job layer can skip unusable rows
 // before spending a model call on them.
 func EbayDraftPreflight(draft models.EbayImportDraft) (string, bool) {
+	return EbayDraftPreflightWithIdentifier(draft, draftIdentifier(draft))
+}
+
+// EbayDraftReviewIdentifier returns the identifier a review should work from:
+// the draft's own columns when it has one, otherwise the caller's title
+// candidate.
+//
+// speculative reports that the identifier is a guess recovered from the title
+// rather than something the listing recorded as a field, which is not a detail:
+// a recorded identifier that disagrees with the model's reading means the model
+// misread the listing, while a guess that disagrees means the parser met a
+// part-number family it had never seen (see modelDisagreement).
+func EbayDraftReviewIdentifier(draft models.EbayImportDraft, titleCandidate string) (identifier string, speculative bool) {
+	if identifier := draftIdentifier(draft); identifier != "" {
+		return identifier, false
+	}
+	candidate := strings.TrimSpace(titleCandidate)
+	if candidate == "" {
+		return "", false
+	}
+	return NormalizeProductModel(candidate), true
+}
+
+// EbayDraftPreflightWithIdentifier is EbayDraftPreflight with the identifier
+// supplied by the caller instead of read out of the draft's columns.
+//
+// A candidate recovered from the title is deliberately never written onto the
+// draft - a guess must not become the listing's recorded identity - so the pass
+// has to be told about it explicitly.
+func EbayDraftPreflightWithIdentifier(draft models.EbayImportDraft, identifier string) (string, bool) {
 	switch draft.Status {
 	case EbayDraftStatusImported, EbayDraftStatusSkipped:
 		return "already_processed", false
 	}
-	if draftIdentifier(draft) == "" {
+	if strings.TrimSpace(identifier) == "" {
 		return "missing_identifier", false
 	}
 	// A title is what the model reasons over. A listing with an identifier but
@@ -115,20 +153,39 @@ func EbayDraftPreflight(draft models.EbayImportDraft) (string, bool) {
 // would create a category named after a misread part number, and those are
 // expensive to clean up once products point at them.
 func ResolveDraftReviewCategory(db *gorm.DB, draft models.EbayImportDraft, profile ProductProfile) (uint, string, bool, error) {
-	model := firstNonEmptyString(profile.Model, draft.NormalizedModel, draftIdentifier(draft))
+	return ResolveDraftReviewCategoryWithMode(db, draft, profile, DraftCategoryModeMixed)
+}
 
-	// A suggested category already validated against the taxonomy wins: an
-	// administrator or the earlier classification pass has confirmed it.
+func ResolveDraftReviewCategoryWithMode(db *gorm.DB, draft models.EbayImportDraft, profile ProductProfile, categoryMode string) (uint, string, bool, error) {
+	model := firstNonEmptyString(profile.Model, draft.NormalizedModel, draftIdentifier(draft))
+	mode := NormalizeDraftCategoryMode(categoryMode)
+	if mode == DraftCategoryModeSource {
+		sourcePath := draftReviewSourceCategory(draft.SourceSite, decodeRawPayload(draft.RawPayload))
+		if strings.TrimSpace(sourcePath) != "" {
+			categoryID, path, created, err := ResolveOrCreateDraftSourceCategory(db, draft.SourceSite, sourcePath)
+			if err == nil && categoryID > 0 {
+				return categoryID, path, created, nil
+			}
+		}
+		// A missing source breadcrumb is not a reason to discard a product. The
+		// AI type then becomes the mixed-taxonomy fallback and can create a node.
+		mode = DraftCategoryModeMixed
+	}
+
+	if db == nil {
+		return 0, "", false, errors.New("database is not configured")
+	}
+	inference := inferReviewCategory(profile, draft, model)
+	// A previous deterministic match is not stronger than the listing the AI
+	// just read. Reuse it only if it also matches the new brand/type evidence.
 	if draft.SuggestedCategoryID != nil && *draft.SuggestedCategoryID > 0 {
-		if draft.TaxonomyStatus == EbayDraftTaxonomyMatched {
+		if _, err := ValidateExistingCategoryForInference(db, *draft.SuggestedCategoryID, inference); err == nil {
 			var category models.Category
 			if err := db.Select("id", "name").First(&category, *draft.SuggestedCategoryID).Error; err == nil {
 				return category.ID, category.Name, false, nil
 			}
 		}
 	}
-
-	inference := inferReviewCategory(profile, draft, model)
 
 	// Reuse first. ResolveExistingCategoryForInference only returns a category
 	// whose path actually corroborates the inference, so a generic "Drives"
@@ -185,62 +242,163 @@ func ResolveDraftReviewCategory(db *gorm.DB, draft models.EbayImportDraft, profi
 func inferReviewCategory(profile ProductProfile, draft models.EbayImportDraft, model string) ProductCategoryInference {
 	brand := firstNonEmptyString(profile.Brand, draft.NormalizedBrand)
 	inference := InferProductCategory(brand, model)
-	if aiType := strings.TrimSpace(profile.PartType); aiType != "" && !IsGenericProductType(aiType) {
-		inference.PartType = aiType
-	}
-	if strings.TrimSpace(inference.PartType) == "" {
-		inference.PartType = strings.TrimSpace(profile.PartType)
+
+	// The model read the listing itself - title, item specifics and the
+	// marketplace category - while InferProductCategory only pattern-matches the
+	// model number. When that reading names a specific component type for a
+	// concrete manufacturer, it is the better evidence, and it is what lets the
+	// draft get a category (created when the taxonomy has none) instead of being
+	// discarded as unclassifiable: the deterministic table simply has no row for
+	// most part-number families, and throwing the listing away loses a part the
+	// model had already identified.
+	//
+	// The "llm:" rule prefix is the flag the classification gate understands as
+	// "verified outside the deterministic rules", so it may only be set for a
+	// type worth publishing: a placeholder or a misread part number must never
+	// become a public node.
+	partType := CanonicalizeProductTypeFromText(profile.PartType)
+	brandKey := NormalizeBrandKey(brand)
+	if brandKey != "" && !strings.EqualFold(brandKey, "unknown") && IsPublishableProductType(partType) {
+		inference.PartType = partType
+		inference.ModelFamily = "" // A model-family hint must not override the specific listing type.
+		inference.CategorySlug = utils.GenerateSlug(partType)
+		inference.BrandKey = brandKey
+		if name := CanonicalBrandName(brandKey); name != "" {
+			inference.BrandName = name
+		}
+		inference.MatchRule = verifiedListingRule(partType)
+	} else if strings.TrimSpace(inference.PartType) == "" {
+		inference.PartType = partType
 	}
 	if inference.BrandKey == "" {
-		inference.BrandKey = NormalizeBrandKey(brand)
+		inference.BrandKey = brandKey
 	}
 	return inference
+}
+
+// draftApprovedReadingInference reconstructs the classification an approved AI
+// reading recorded on a draft.
+//
+// The import re-validates a draft's category against the taxonomy, and that
+// validation used to re-derive the component type from the model number alone -
+// the very table that could not classify the part, so an approved row whose
+// part-number family the table has no row for was sent back to the queue as
+// unresolved however good the proposal was. The approved reading is the evidence
+// the administrator accepted, so it is offered first.
+//
+// Only an approval counts: a pending proposal has not been through the step the
+// import is validating.
+func draftApprovedReadingInference(draft models.EbayImportDraft) ProductCategoryInference {
+	if draft.AIReviewStatus != EbayAIReviewApproved {
+		return ProductCategoryInference{}
+	}
+	partType := CanonicalizeProductTypeFromText(draft.SuggestedPartType)
+	brandName := strings.TrimSpace(draft.NormalizedBrand)
+	brandKey := NormalizeBrandKey(brandName)
+	if brandKey == "" || strings.EqualFold(brandKey, "unknown") || !IsPublishableProductType(partType) {
+		return ProductCategoryInference{}
+	}
+	if canonical := CanonicalBrandName(brandKey); canonical != "" {
+		brandName = canonical
+	}
+	return ProductCategoryInference{
+		BrandKey:     brandKey,
+		BrandName:    brandName,
+		PartType:     partType,
+		CategorySlug: utils.GenerateSlug(partType),
+		MatchRule:    verifiedListingRule(partType),
+	}
+}
+
+// verifiedListingRule names the rule that records "the model read this listing
+// and reported this component type". The "llm:" prefix makes
+// IsVerifiedClassificationRule accept it, which in turn lets a manufacturer
+// outside the deterministic brand registry classify cleanly.
+func verifiedListingRule(partType string) string {
+	slug := utils.GenerateSlug(partType)
+	if slug == "" {
+		slug = "product-type"
+	}
+	return "llm:listing:" + slug
+}
+
+// modelDisagreement decides what an identifier/AI-reading disagreement means.
+//
+// The two identifiers are not equally authoritative. A model that disagrees with
+// a part number the listing *recorded* has misread the listing, and publishing its
+// copy would mislabel the product, so the draft is rejected. A disagreement with
+// an unconfirmed title candidate means the opposite: the parser met a
+// part-number family it had never seen and guessed badly, while the model read
+// the listing itself - title, item specifics, marketplace category - so the
+// model's reading is the better one and the disagreement is recorded instead of
+// throwing the listing away. Rejecting there is what turned one queue of unknown
+// families into a batch that could not be reviewed at all, even though the model
+// had identified every part in it.
+func modelDisagreement(identifier string, speculative bool) (reject bool, note string) {
+	if !speculative {
+		return true, "AI 读取到的型号与草稿型号不一致 / proposed model disagrees with the draft identifier"
+	}
+	return false, "草稿型号由标题推断（未确认）：" + identifier + "，以 AI 读取为准 / unconfirmed title candidate " + identifier + " is overruled by the AI reading"
 }
 
 // --------------------------------------------------------------- the pass --
 
 // ReviewDraft runs the automated review for one draft and returns the proposal
-// to store. It performs no writes; the caller decides whether to persist, which
-// keeps the pass usable for a dry run.
+// to store. It may create missing taxonomy nodes, but never publishes a product.
+// The proposal itself is persisted separately by StoreDraftReview.
 func ReviewDraft(
 	ctx context.Context,
 	input EbayDraftReviewInput,
 	client IdentificationClient,
 ) (models.EbayImportDraft, EbayAIReviewResult, error) {
+	return reviewDraftWithDB(ctx, config.GetDB(), input, client)
+}
+
+// Explicit DB dependency lets the entire review/store/approval chain run against
+// an isolated test database without changing production configuration.
+func reviewDraftWithDB(ctx context.Context, db *gorm.DB, input EbayDraftReviewInput, client IdentificationClient) (models.EbayImportDraft, EbayAIReviewResult, error) {
 	draft := input.Draft
-	if reason, ok := EbayDraftPreflight(draft); !ok {
+	// The identifier this pass works from: the draft's own columns when it has one,
+	// otherwise the candidate the job layer recovered from the title. A candidate
+	// is never written onto the draft, so it has to be handed in and tracked
+	// separately.
+	identifier, identifierSpeculative := EbayDraftReviewIdentifier(draft, input.TitleCandidate)
+	if reason, ok := EbayDraftPreflightWithIdentifier(draft, identifier); !ok {
 		return draft, EbayAIReviewResult{Status: EbayAIReviewRejected, Reason: reason}, nil
 	}
 
-	evidence := ProductIdentificationEvidence{
-		BrandHint:        draft.NormalizedBrand,
-		Model:            firstNonEmptyString(draft.NormalizedModel, draftIdentifier(draft)),
-		ProductName:      firstNonEmptyString(input.ProductName, draft.NormalizedTitle, draft.TitleRaw),
-		SKU:              firstNonEmptyString(draft.NormalizedPartNumber, draft.NormalizedMPN),
-		PartNumber:       firstNonEmptyString(draft.NormalizedPartNumber, draft.NormalizedMPN),
-		Listings:         input.Evidence,
-		EbayCategoryPath: DominantEbayCategory(input.Evidence),
-	}
+	evidence := buildDraftReviewEvidence(input, identifier)
 
 	profile, err := IdentifyProduct(ctx, evidence, client)
 	if err != nil {
 		return draft, EbayAIReviewResult{Status: EbayAIReviewFailed, Reason: err.Error()}, err
 	}
+	// A sparse eBay description or a broad marketplace breadcrumb can make a
+	// provider return an empty/generic type. The listing title, structured
+	// specifics and eBay path are still usable evidence; fill only missing
+	// profile fields before the normal title/category pipeline runs.
+	enrichEbayReviewProfile(&profile, draft, identifier)
 
 	notes := []string{}
 
 	// The profile must agree with the listing about what part this is. A model
-	// that reads a different part number than the draft's identifier has
-	// misread the listing, and publishing its copy would mislabel the product.
-	if profile.Model != "" && !SameMarketModel(profile.Model, draftIdentifier(draft)) {
-		notes = append(notes, "AI 读取到的型号与草稿型号不一致 / proposed model disagrees with the draft identifier")
-		return draft, EbayAIReviewResult{
-			Status: EbayAIReviewRejected,
-			Reason: "model_mismatch",
-			Notes:  notes,
-		}, nil
+	// that reads a different part number than the draft's *recorded* identifier
+	// has misread the listing, and publishing its copy would mislabel the
+	// product.
+	if profile.Model != "" && !SameMarketModel(profile.Model, identifier) {
+		reject, note := modelDisagreement(identifier, identifierSpeculative)
+		notes = append(notes, note)
+		if reject {
+			return draft, EbayAIReviewResult{
+				Status: EbayAIReviewRejected,
+				Reason: "model_mismatch",
+				Notes:  notes,
+			}, nil
+		}
 	}
 
+	// Use one vocabulary for the title, content, taxonomy and import validation.
+	profile.PartType = CanonicalizeProductTypeFromText(profile.PartType)
 	title := BuildProfileProductTitle(profile, firstNonEmptyString(input.ProductName, draft.NormalizedTitle, draft.TitleRaw))
 	// "skipped" means the catalogue name already equals the canonical title. That
 	// is a successful review, not a rejection: the copy still needs generating.
@@ -257,8 +415,16 @@ func ReviewDraft(
 		return draft, EbayAIReviewResult{Status: EbayAIReviewRejected, Reason: reason, Notes: notes}, nil
 	}
 
-	db := config.GetDB()
-	categoryID, categoryName, categoryCreated, err := ResolveDraftReviewCategory(db, draft, profile)
+	categoryMode := input.CategoryMode
+	if strings.TrimSpace(categoryMode) == "" {
+		categoryMode = EffectiveDraftCategoryMode(draft)
+	}
+	categoryID, categoryName, categoryCreated, err := ResolveDraftReviewCategoryWithMode(db, draft, profile, categoryMode)
+	if NormalizeDraftCategoryMode(categoryMode) == DraftCategoryModeSource && strings.TrimSpace(draftReviewSourceCategory(draft.SourceSite, decodeRawPayload(draft.RawPayload))) != "" {
+		draft.CategoryMode = DraftCategoryModeSource
+	} else {
+		draft.CategoryMode = DraftCategoryModeMixed
+	}
 	if err != nil {
 		return draft, EbayAIReviewResult{Status: EbayAIReviewFailed, Reason: err.Error()}, err
 	}
@@ -282,9 +448,9 @@ func ReviewDraft(
 	// prose when it is substantial, but it also carries the seller's branding
 	// and shipping boilerplate. Generated copy wins by default; the raw text is
 	// kept on the draft so nothing is lost.
-	description := firstNonEmptyString(content.Description, cleanDraftDescription(draft.DescriptionRaw))
+	description := SanitizeListingDescription(firstNonEmptyString(content.Description, draft.DescriptionRaw))
 
-	draft.ProposedShortDescription = firstNonEmptyString(content.ShortDescription, truncateText(cleanDraftDescription(draft.DescriptionRaw), 320))
+	draft.ProposedShortDescription = SanitizeListingDescription(firstNonEmptyString(content.ShortDescription, truncateText(cleanDraftDescription(draft.DescriptionRaw), 320)))
 	draft.ProposedDescription = description
 	draft.ProposedCategoryID = &categoryID
 	draft.ProposedCategoryName = categoryName
@@ -292,9 +458,9 @@ func ReviewDraft(
 	draft.ProposedBrand = firstNonEmptyString(profile.Brand, draft.NormalizedBrand)
 	draft.ProposedModel = firstNonEmptyString(profile.Model, draft.NormalizedModel)
 	draft.ProposedPartType = firstNonEmptyString(profile.PartType, draft.SuggestedPartType)
-	draft.ProposedMetaTitle = firstNonEmptyString(content.MetaTitle, draft.ProposedName)
-	draft.ProposedMetaDescription = content.MetaDescription
-	draft.ProposedMetaKeywords = content.MetaKeywords
+	draft.ProposedMetaTitle = BuildSafeMetaTitle(SanitizeListingTitle(content.MetaTitle), draft.ProposedName)
+	draft.ProposedMetaDescription = BuildSafeMetaDescription(SanitizeListingTitle(content.MetaDescription), SanitizeListingTitle(draft.ProposedShortDescription))
+	draft.ProposedMetaKeywords = SanitizeListingTitle(content.MetaKeywords)
 	draft.ProposedImages = draft.ImageSourceURLs
 	draft.AIReviewStatus = EbayAIReviewReady
 	draft.AIReviewError = ""
@@ -349,10 +515,13 @@ func StoreDraftReview(db *gorm.DB, draft models.EbayImportDraft) error {
 		"proposed_images":            draft.ProposedImages,
 	}
 	if draft.AIReviewStatus == EbayAIReviewReady {
+		for key, value := range draftEditableReviewUpdates(draft) {
+			updates[key] = value
+		}
 		updates["ai_reviewed_at"] = gorm.Expr("NOW()")
 	}
 	result := db.Model(&models.EbayImportDraft{}).
-		Where("id = ? AND status NOT IN ?", draft.ID, []string{EbayDraftStatusImported, EbayDraftStatusSkipped}).
+		Where("id = ? AND status NOT IN ? AND ai_review_status IN ?", draft.ID, []string{EbayDraftStatusImported, EbayDraftStatusSkipped}, []string{EbayAIReviewQueued, EbayAIReviewProcessing}).
 		Updates(updates)
 	if result.Error != nil {
 		return result.Error
@@ -393,6 +562,7 @@ func ApplyDraftReviewToDraft(db *gorm.DB, draft *models.EbayImportDraft) error {
 
 	updates := map[string]interface{}{
 		"normalized_title":      firstNonEmptyString(draft.ProposedName, draft.NormalizedTitle, draft.TitleRaw),
+		"category_mode":         EffectiveDraftCategoryMode(*draft),
 		"normalized_price":      draft.NormalizedPrice,
 		"suggested_category_id": *draft.ProposedCategoryID,
 		"taxonomy_status":       EbayDraftTaxonomyMatched,
@@ -400,6 +570,9 @@ func ApplyDraftReviewToDraft(db *gorm.DB, draft *models.EbayImportDraft) error {
 		"meta_description":      draft.ProposedMetaDescription,
 		"meta_keywords":         draft.ProposedMetaKeywords,
 		"ai_review_status":      EbayAIReviewApproved,
+	}
+	for key, value := range draftEditableReviewUpdates(*draft) {
+		updates[key] = value
 	}
 	// The reviewed brand/model/type are the AI's reading of the listing and are
 	// only applied when it actually produced one; otherwise the existing
@@ -417,8 +590,13 @@ func ApplyDraftReviewToDraft(db *gorm.DB, draft *models.EbayImportDraft) error {
 		updates["suggested_category_name"] = value
 	}
 
-	if err := db.Model(&models.EbayImportDraft{}).Where("id = ?", draft.ID).Updates(updates).Error; err != nil {
-		return err
+	result := db.Model(&models.EbayImportDraft{}).
+		Where("id = ? AND ai_review_status = ? AND status NOT IN ?", draft.ID, EbayAIReviewReady, []string{EbayDraftStatusImported, EbayDraftStatusSkipped}).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("draft %d changed before approval; reload it first", draft.ID)
 	}
 	// Reflect the approved values back so the caller imports what it approved
 	// rather than the pre-approval row it holds in memory.
@@ -429,6 +607,7 @@ func ApplyDraftReviewToDraft(db *gorm.DB, draft *models.EbayImportDraft) error {
 	draft.MetaDescription = draft.ProposedMetaDescription
 	draft.MetaKeywords = draft.ProposedMetaKeywords
 	draft.AIReviewStatus = EbayAIReviewApproved
+	*draft = draftWithEditableReview(*draft)
 	if value, ok := updates["normalized_brand"]; ok {
 		draft.NormalizedBrand = value.(string)
 	}
@@ -465,4 +644,24 @@ func MarkDraftReviewFailed(db *gorm.DB, id uint, reason string) error {
 			"ai_review_status": EbayAIReviewFailed,
 			"ai_review_error":  truncateRunesSafe(strings.TrimSpace(reason), 1000),
 		}).Error
+}
+
+// PrepareEbayDraftForManualImport is shared by every manual import entry point.
+// Merely reviewing still does not publish; clicking either import button must
+// consume the AI result instead of silently importing the original listing.
+func PrepareEbayDraftForManualImport(db *gorm.DB, draft *models.EbayImportDraft) error {
+	if draft == nil {
+		return errors.New("draft is required")
+	}
+	if draft.Status == EbayDraftStatusImported || draft.Status == EbayDraftStatusSkipped {
+		return errors.New("draft has already been processed")
+	}
+	switch draft.AIReviewStatus {
+	case EbayAIReviewQueued, EbayAIReviewProcessing:
+		return errors.New("AI optimization is still running; wait before importing")
+	case EbayAIReviewReady:
+		return ApplyDraftReviewToDraft(db, draft)
+	default:
+		return nil
+	}
 }

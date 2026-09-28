@@ -15,6 +15,7 @@ import {
 import { EbayImportDraftService } from '@/services';
 import type { EbayDraftReviewJobItem, EbayDraftReviewJobSnapshot } from '@/services';
 import { getErrorMessage } from '@/lib/errors';
+import { queryKeys } from '@/lib/react-query';
 
 /** Runs that are still making progress and therefore worth polling. */
 const ACTIVE_JOB_STATUSES = ['queued', 'running', 'paused'];
@@ -58,6 +59,7 @@ interface AIReviewPanelProps {
     status?: string;
     match_status?: string;
     brand?: string;
+    source_site?: string;
     /**
      * Carried so a review pass started from a filtered view targets the same
      * rows the admin is looking at (notably `unreviewed`).
@@ -89,7 +91,9 @@ export default function AIReviewPanel({
   const [reviewAllFiltered, setReviewAllFiltered] = useState(false);
   // Off by default. Publishing creates indexed product pages, so it is a
   // deliberate choice rather than something the review button does implicitly.
-  const [autoPublish, setAutoPublish] = useState(false);
+  const [includeImages, setIncludeImages] = useState(false);
+  const [categoryMode, setCategoryMode] = useState<'source' | 'mixed'>('source');
+  const autoPublish = false; // This screen only optimizes; publishing is always manual.
   const [selectedForApproval, setSelectedForApproval] = useState<number[]>([]);
   // The proposal list is paged independently of the log. A run over tens of
   // thousands of drafts produces far more ready rows than one page can hold, and
@@ -173,6 +177,11 @@ export default function AIReviewPanel({
     onReviewFinished?.();
   }, [job, onReviewFinished]);
 
+  useEffect(() => {
+    if (!job?.processed) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
+  }, [job?.id, job?.processed, queryClient]);
+
   // Keep the newest log line in view, the way a terminal behaves.
   useEffect(() => {
     if (logRef.current) {
@@ -191,16 +200,18 @@ export default function AIReviewPanel({
               match_status: filters.match_status,
               brand: filters.brand,
               ai_review_status: filters.ai_review_status,
+              source_site: filters.source_site,
+              category_mode: categoryMode,
               auto_publish: autoPublish,
             }
-          : { ids: selectedIds, auto_publish: autoPublish }
+          : { ids: selectedIds, auto_publish: autoPublish, category_mode: categoryMode, source_site: filters.source_site }
       ),
     onSuccess: (created) => {
       setSelectedForApproval([]);
       announcedCompletion.current = null;
       setJobId(created.id);
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review'] });
-      queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
       toast.success(
         autoPublish
           ? `已开始 AI 审核并自动上架 ${created.total} 条草稿 / reviewing and publishing ${created.total} drafts`
@@ -222,21 +233,35 @@ export default function AIReviewPanel({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
     },
     onError: (error) => toast.error(getErrorMessage(error, '操作失败 / action failed')),
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => EbayImportDraftService.approveAIReview(selectedForApproval),
+    mutationFn: () => EbayImportDraftService.approveAIReview(selectedForApproval, undefined, includeImages),
     onSuccess: () => {
       toast.success('已开始上架，完成后产品会出现在商品列表 / publishing started');
       setSelectedForApproval([]);
-      queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review'] });
       onApproved?.();
     },
     onError: (error) => toast.error(getErrorMessage(error, '上架失败 / approval failed')),
+  });
+
+  const approveAllNewMutation = useMutation({
+    mutationFn: () => EbayImportDraftService.approveAIReview([], undefined, false, {
+      allReadyNewUnique: true,
+      sourceSite: filters.source_site,
+      categoryMode,
+    }),
+    onSuccess: () => {
+      toast.success('AI 已优化新品正在一键上架（不含来源图片） / optimized new products are publishing');
+      queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
+      onApproved?.();
+    },
+    onError: (error) => toast.error(getErrorMessage(error, 'AI 新品一键上架失败 / publish failed')),
   });
 
   const rejectMutation = useMutation({
@@ -244,7 +269,7 @@ export default function AIReviewPanel({
     onSuccess: (result) => {
       toast.success(`已拒绝 ${result.rejected} 条提案 / rejected ${result.rejected}`);
       setSelectedForApproval([]);
-      queryClient.invalidateQueries({ queryKey: ['ebay-import-drafts'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
       queryClient.invalidateQueries({ queryKey: ['ebay-ai-review'] });
     },
     onError: (error) => toast.error(getErrorMessage(error, '拒绝失败 / rejection failed')),
@@ -281,6 +306,24 @@ export default function AIReviewPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-gray-700">
+            分类来源
+            <select value={categoryMode} onChange={(event) => setCategoryMode(event.target.value as 'source' | 'mixed')} className="rounded border border-gray-300 bg-white px-2 py-1.5">
+              <option value="source">按 eBay / B-Automation 来源分类</option>
+              <option value="mixed">混合品牌 + 部件类型分类</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('确定把所有 AI 已优化且判定为新品的草稿一键上架吗？默认不带来源图片。')) approveAllNewMutation.mutate();
+            }}
+            disabled={approveAllNewMutation.isPending || isActive}
+            className="inline-flex items-center gap-1.5 rounded bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+          >
+            <CheckCircleIcon className="h-4 w-4" />
+            {approveAllNewMutation.isPending ? '上架中...' : 'AI 新品一键上架（无图）'}
+          </button>
           <button
             type="button"
             onClick={() => startMutation.mutate()}
@@ -346,24 +389,8 @@ export default function AIReviewPanel({
         </span>
       </div>
 
-      {/* Publishing is separate from reviewing, because reviewing is reversible
-          (a proposal you can reject) and publishing is not (a live URL). */}
-      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-700">
-        <label className="inline-flex items-center gap-1.5">
-          <input
-            type="checkbox"
-            checked={autoPublish}
-            onChange={(event) => setAutoPublish(event.target.checked)}
-            disabled={isActive}
-            className="h-3.5 w-3.5"
-          />
-          审核通过后<strong>直接上架</strong>（不经人工确认）
-        </label>
-        <span className={autoPublish ? 'text-amber-700' : 'text-gray-500'}>
-          {autoPublish
-            ? '识别成功即发布商品。识别失败的草稿仍留在队列中，不会上架。'
-            : '默认只生成待批准方案，你勾选后才上架。'}
-        </span>
+      <div className="mt-2 text-xs text-emerald-700">
+        自动优化标题、描述和 SEO；匹配已有分类，没有合适分类时自动创建。完成后仅保存草稿，最后由你手动上架。
       </div>
 
       {job && (
@@ -464,6 +491,7 @@ export default function AIReviewPanel({
                   >
                     清空选择
                   </button>
+                  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={includeImages} onChange={(e) => setIncludeImages(e.target.checked)} disabled={approveMutation.isPending} />上架时使用来源图片（可关闭避开水印）</label>
                   <button
                     type="button"
                     onClick={() => approveMutation.mutate()}

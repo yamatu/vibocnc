@@ -47,6 +47,12 @@ var EbayReviewSkipReasons = []string{"missing_identifier", "missing_title", "alr
 // information rather than a failure.
 const EbayReviewRecoveredReason = "recovered_from_title"
 
+// EbayReviewTitleCandidateReason counts drafts whose title yielded a model that
+// no family table vouches for. It is reported the same way as a recovery - the
+// draft is reviewable - but the model is a guess, so it stays off the draft and
+// the review is allowed to overrule it (see modelDisagreement).
+const EbayReviewTitleCandidateReason = "title_candidate"
+
 // EbayReviewSkipReasonText turns a preflight reason code into the reason an
 // administrator can act on.
 func EbayReviewSkipReasonText(reason string) string {
@@ -59,6 +65,8 @@ func EbayReviewSkipReasonText(reason string) string {
 		return "already imported or skipped"
 	case EbayReviewRecoveredReason:
 		return "model recovered from title"
+	case EbayReviewTitleCandidateReason:
+		return "model candidate from title"
 	default:
 		return reason
 	}
@@ -91,7 +99,7 @@ func (c EbayReviewSkipCounts) Summary() string {
 		if _, ok := known[reason]; ok {
 			continue
 		}
-		if reason == EbayReviewRecoveredReason {
+		if reason == EbayReviewRecoveredReason || reason == EbayReviewTitleCandidateReason {
 			continue
 		}
 		extra = append(extra, fmt.Sprintf("%s: %d", EbayReviewSkipReasonText(reason), count))
@@ -100,13 +108,16 @@ func (c EbayReviewSkipCounts) Summary() string {
 	return strings.Join(append(parts, extra...), ", ")
 }
 
-// RecoveredSummary reports how many drafts were rescued by the title parser, or
-// an empty string when none were.
+// RecoveredSummary reports how many drafts the title parser rescued, split into
+// confirmed models and unconfirmed candidates, or an empty string when none were.
 func (c EbayReviewSkipCounts) RecoveredSummary() string {
-	if count := c[EbayReviewRecoveredReason]; count > 0 {
-		return fmt.Sprintf("%s: %d", EbayReviewSkipReasonText(EbayReviewRecoveredReason), count)
+	parts := make([]string, 0, 2)
+	for _, reason := range []string{EbayReviewRecoveredReason, EbayReviewTitleCandidateReason} {
+		if count := c[reason]; count > 0 {
+			parts = append(parts, fmt.Sprintf("%s: %d", EbayReviewSkipReasonText(reason), count))
+		}
 	}
-	return ""
+	return strings.Join(parts, ", ")
 }
 
 // EbayNoReviewableDraftsError explains a selection in which every draft failed
@@ -195,6 +206,43 @@ func knownSkipReason(reason string) bool {
 	return false
 }
 
+// EbayReviewIdentifierRescue is what the preflight found *and* what a draft's
+// title yielded on top of it.
+type EbayReviewIdentifierRescue struct {
+	// Model is the identifier the title named, and is empty when it named none -
+	// either because the draft already carries one or because the title is prose.
+	Model string
+	// Confirmed reports whether a family table vouched for the match. Only a
+	// confirmed model may be written to the draft as its identity.
+	Confirmed bool
+	// Reviewable reports whether the draft can be reviewed with this Model.
+	Reviewable bool
+}
+
+// rescueDraftIdentifier classifies a draft the preflight refused.
+//
+// The family tables are whitelists, and a listing from a family nobody has
+// written a pattern for yet looks exactly like a listing that never named a part
+// at all. Both were counted as "no model or part number", and a queue of them
+// refused the whole batch. Parsing the title tells the two apart; what comes back
+// is either a confirmed model to persist or an unconfirmed candidate to carry
+// through to the model's own reading.
+func rescueDraftIdentifier(draft models.EbayImportDraft) EbayReviewIdentifierRescue {
+	reason, ok := EbayDraftPreflight(draft)
+	if ok {
+		return EbayReviewIdentifierRescue{Reviewable: true}
+	}
+	if reason != "missing_identifier" {
+		return EbayReviewIdentifierRescue{}
+	}
+	model, confirmed := utils.ExtractTitleIdentifier(firstNonEmptyString(draft.NormalizedTitle, draft.TitleRaw))
+	model = NormalizeProductModel(model)
+	if model == "" {
+		return EbayReviewIdentifierRescue{}
+	}
+	return EbayReviewIdentifierRescue{Model: model, Confirmed: confirmed, Reviewable: true}
+}
+
 // StartEbayDraftReviewJob creates a job for the given drafts and launches it.
 //
 // Drafts are re-checked here rather than trusted from the request, because the
@@ -213,10 +261,11 @@ type EbayDraftReviewJobOptions struct {
 	// it in the approval queue. It is an explicit opt-in on the request: the
 	// review pass on its own never publishes.
 	AutoPublish bool
-	// Publisher performs the import. When AutoPublish is set and this is nil the
-	// run still reviews but reports each ready draft as an import failure instead
-	// of silently behaving like a normal run.
+	// Publisher performs the import. Auto-publish is disabled by the HTTP entry
+	// point, but the field remains for backwards-compatible job records.
 	Publisher EbayReviewPublisher
+	// CategoryMode selects source taxonomy or the mixed brand/type taxonomy.
+	CategoryMode string
 }
 
 // StartEbayDraftReviewJobWithOptions creates a review job and launches it.
@@ -255,22 +304,29 @@ func StartEbayDraftReviewJobWithOptions(
 	// genuinely without an identifier is no longer indistinguishable from one
 	// that was simply stored before the parser existed.
 	recovered := 0
+	// candidates holds the models recovered from a title that no family table
+	// vouches for. They travel on the job item rather than the draft: a guess must
+	// not be persisted as the listing's recorded identity, and the review is told
+	// it may overrule it.
+	candidates := map[uint]string{}
 	for _, draft := range drafts {
-		reason, ok := EbayDraftPreflight(draft)
-		if ok {
-			reviewable = append(reviewable, draft)
+		rescue := rescueDraftIdentifier(draft)
+		if !rescue.Reviewable {
+			reason, _ := EbayDraftPreflight(draft)
+			skipped[reason]++
+			samples.note(reason, firstNonEmptyString(draft.NormalizedTitle, draft.TitleRaw))
 			continue
 		}
-		if reason == "missing_identifier" {
-			if parsed := utils.ExtractModelFromText(firstNonEmptyString(draft.NormalizedTitle, draft.TitleRaw)); parsed != "" {
-				draft.NormalizedModel = NormalizeProductModel(parsed)
-				recovered++
-				reviewable = append(reviewable, draft)
-				continue
-			}
+		switch {
+		case rescue.Model == "":
+			// The draft's own columns carry the identifier.
+		case rescue.Confirmed:
+			draft.NormalizedModel = rescue.Model
+			recovered++
+		default:
+			candidates[draft.ID] = rescue.Model
 		}
-		skipped[reason]++
-		samples.note(reason, firstNonEmptyString(draft.NormalizedTitle, draft.TitleRaw))
+		reviewable = append(reviewable, draft)
 	}
 	if len(reviewable) == 0 {
 		return nil, nil, &EbayNoReviewableDraftsError{Selected: len(draftIDs), Skipped: skipped, Samples: samples}
@@ -282,20 +338,34 @@ func StartEbayDraftReviewJobWithOptions(
 		Total:       len(reviewable),
 		Stage:       "排队中 / queued",
 		CreatedByID: createdByID,
-		AutoPublish: options.AutoPublish,
+		CategoryMode: func() string {
+			if strings.TrimSpace(options.CategoryMode) == "" {
+				return DraftCategoryModeSource
+			}
+			return NormalizeDraftCategoryMode(options.CategoryMode)
+		}(),
+		AutoPublish: false,
 	}
 	items := make([]models.EbayDraftReviewJobItem, 0, len(reviewable))
 	reviewableIDs := make([]uint, 0, len(reviewable))
 	for _, draft := range reviewable {
 		reviewableIDs = append(reviewableIDs, draft.ID)
+		model := firstNonEmptyString(draft.NormalizedModel, draft.NormalizedPartNumber, draft.NormalizedMPN)
+		message := "等待处理 / waiting"
+		// An unconfirmed candidate is carried on the item so the log shows what the
+		// review was asked about and the worker can hand it to the pass.
+		if candidate := candidates[draft.ID]; candidate != "" {
+			model = candidate
+			message = "型号由标题推断，待 AI 确认 / model read from the title, the AI will confirm it"
+		}
 		items = append(items, models.EbayDraftReviewJobItem{
 			JobID:   job.ID,
 			DraftID: draft.ID,
-			Model:   firstNonEmptyString(draft.NormalizedModel, draft.NormalizedPartNumber, draft.NormalizedMPN),
+			Model:   model,
 			Title:   truncateRunesSafe(firstNonEmptyString(draft.NormalizedTitle, draft.TitleRaw), 200),
 			Status:  "queued",
 			Level:   "info",
-			Message: "等待处理 / waiting",
+			Message: message,
 		})
 	}
 
@@ -332,6 +402,9 @@ func StartEbayDraftReviewJobWithOptions(
 	if recovered > 0 {
 		skipped[EbayReviewRecoveredReason] = recovered
 	}
+	if len(candidates) > 0 {
+		skipped[EbayReviewTitleCandidateReason] = len(candidates)
+	}
 	if options.AutoPublish {
 		setEbayReviewPublisher(job.ID, options.Publisher)
 	}
@@ -356,8 +429,12 @@ func RunEbayDraftReviewJob(jobID string, client IdentificationClient) {
 	// into publishing re-registers it here. Without this a job resumed after a
 	// restart would have auto_publish set but no way to publish, and would
 	// report every ready draft as an import failure.
-	if job.AutoPublish {
-		setEbayReviewPublisher(jobID, PublishReadyDraft)
+	// Publishing is always a separate approval request. Do not resurrect the
+	// legacy auto-publisher when resuming an old job.
+	job.AutoPublish = false
+	categoryMode := NormalizeDraftCategoryMode(job.CategoryMode)
+	if strings.TrimSpace(job.CategoryMode) == "" {
+		categoryMode = DraftCategoryModeSource
 	}
 
 	workerToken := uuid.NewString()
@@ -401,7 +478,7 @@ func RunEbayDraftReviewJob(jobID string, client IdentificationClient) {
 				if !ebayReviewJobRunning(db, jobID, workerToken) {
 					continue
 				}
-				processEbayReviewItem(ctx, jobID, workerToken, item, client)
+				processEbayReviewItem(ctx, jobID, workerToken, item, categoryMode, client)
 			}
 		}()
 	}
@@ -434,7 +511,7 @@ func ebayReviewJobRunning(db *gorm.DB, jobID, workerToken string) bool {
 	return count > 0
 }
 
-func processEbayReviewItem(ctx context.Context, jobID, workerToken string, item models.EbayDraftReviewJobItem, client IdentificationClient) {
+func processEbayReviewItem(ctx context.Context, jobID, workerToken string, item models.EbayDraftReviewJobItem, categoryMode string, client IdentificationClient) {
 	db := config.GetDB()
 	claim := db.Model(&models.EbayDraftReviewJobItem{}).
 		Where("id = ? AND status = ?", item.ID, "queued").
@@ -451,18 +528,23 @@ func processEbayReviewItem(ctx context.Context, jobID, workerToken string, item 
 		return
 	}
 
+	// A draft whose only identifier is a guess recovered from its title carries it
+	// on the job item: nothing recorded it on the draft, and the pass is allowed to
+	// overrule it.
+	titleCandidate := ""
+	if draftIdentifier(draft) == "" {
+		titleCandidate = item.Model
+	}
+
 	// eBay market quotes collected for this model are strong evidence: they carry
 	// item specifics and the marketplace category path. But a freshly scraped
 	// queue usually has no quote yet, and relying on one alone meant the review
 	// saw an empty payload and had to classify the part from its model number.
-	// The draft's own listing is evidence too, so it is always included, with the
-	// market quote taking precedence because it aggregates several listings.
+	// ReviewDraft prepends the draft's own listing and selected source category;
+	// quote listings are supplementary, never allowed to crowd out this item.
 	var evidence []models.EbayMarketEvidenceItem
-	if quote, err := LookupMarketQuote(db, draft.NormalizedBrand, firstNonEmptyString(draft.NormalizedModel, draftIdentifier(draft))); err == nil && quote != nil {
+	if quote, err := LookupMarketQuote(db, draft.NormalizedBrand, firstNonEmptyString(draft.NormalizedModel, draftIdentifier(draft), titleCandidate)); err == nil && quote != nil {
 		evidence = MarketEvidenceItems(*quote)
-	}
-	if draftEvidence := DraftEvidenceFromDraft(draft); !isBlankEvidenceListing(draftEvidence) {
-		evidence = append(evidence, draftEvidence)
 	}
 
 	// A previously confirmed product name gives the title builder a "before"
@@ -478,9 +560,11 @@ func processEbayReviewItem(ctx context.Context, jobID, workerToken string, item 
 	itemCtx, cancel := context.WithTimeout(ctx, EbayReviewItemTimeout)
 	defer cancel()
 	reviewed, result, err := ReviewDraft(itemCtx, EbayDraftReviewInput{
-		Draft:       draft,
-		Evidence:    evidence,
-		ProductName: productName,
+		Draft:          draft,
+		Evidence:       evidence,
+		ProductName:    productName,
+		TitleCandidate: titleCandidate,
+		CategoryMode:   categoryMode,
 	}, client)
 	if err != nil {
 		_ = MarkDraftReviewFailed(db, draft.ID, err.Error())
@@ -495,9 +579,9 @@ func processEbayReviewItem(ctx context.Context, jobID, workerToken string, item 
 			completeEbayReviewItem(jobID, workerToken, item.ID, "failed", "error", "", err.Error())
 			return
 		}
-		message := "已生成待批准方案 / proposal ready"
+		message := "已优化标题：" + result.Title + "；分类：" + result.CategoryName + "；待手动上架 / optimized, awaiting manual publishing"
 		if result.CategoryCreated {
-			message = "已新建分类 " + result.CategoryName + " 并生成方案 / created category " + result.CategoryName
+			message += "；已自动新建分类 / category created"
 		}
 		// Publishing reuses the manual approval path below rather than importing
 		// here, so an auto-published product passes the same validation, duplicate

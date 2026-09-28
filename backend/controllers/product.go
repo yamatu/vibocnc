@@ -1257,6 +1257,30 @@ func (pc *ProductController) DeleteProduct(c *gin.Context) {
 	// Trigger Next.js ISR revalidation
 	services.TriggerNextRevalidate([]string{product.SKU}, []string{productPath}, true)
 
+	// If this product came from the draft queue, make that exact draft usable
+	// again after deletion. The AI proposal and source evidence stay intact; only
+	// the publication linkage/state is cleared. This is relation/SKU based, never
+	// fuzzy title matching.
+	_ = db.Model(&models.EbayImportDraft{}).
+		Where("imported_product_id = ?", product.ID).
+		Updates(map[string]any{
+			"status":              services.EbayDraftStatusPending,
+			"imported_product_id": nil,
+			"imported_at":         nil,
+			"confirmed_at":        nil,
+			"confirmed_by":        nil,
+			"matched_product_id":  nil,
+			"match_status":        services.EbayDraftMatchNewUnique,
+			"match_score":         0,
+			"match_reason":        "Product was deleted; draft reopened for manual import",
+			"failure_reason":      "",
+			"import_action":       "create_new",
+			"ai_review_status":    gorm.Expr("CASE WHEN proposed_category_id IS NOT NULL AND proposed_category_id > 0 THEN ? ELSE '' END", services.EbayAIReviewReady),
+			"taxonomy_status":     gorm.Expr("CASE WHEN proposed_category_id IS NOT NULL AND proposed_category_id > 0 THEN ? ELSE ? END", services.EbayDraftTaxonomyMatched, services.EbayDraftTaxonomyNeedsReview),
+			"ai_review_error":     "",
+			"updated_at":          time.Now().UTC(),
+		})
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "Product deleted successfully",

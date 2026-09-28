@@ -18,6 +18,7 @@ import {
 } from '@heroicons/react/24/outline';
 import AdminLayout from '@/components/admin/AdminLayout';
 import AIReviewPanel from '@/components/admin/AIReviewPanel';
+import { hasReadyDraftReview, draftDisplayTitle, draftDisplayCategory } from '@/lib/ebay-draft-preview';
 import EbayMarketPanel from '@/components/admin/EbayMarketPanel';
 import Pagination from '@/components/common/Pagination';
 import { EbayImportDraftService } from '@/services';
@@ -48,6 +49,30 @@ const clampPageSize = (value: number): number => {
 };
 
 /**
+ * The category this store will publish under.
+ *
+ * It only exists when the draft matched a category (suggested_category_id).
+ * Otherwise suggested_category_name holds the *source* site's wording, which
+ * is what used to make eBay's taxonomy and the BAS collection look like the
+ * same field; that wording is shown in the source category column instead.
+ */
+/**
+ * Whether the row was scraped from eBay.
+ *
+ * A row can be an eBay row before the crawler recorded a breadcrumb for it, and
+ * that is exactly when an admin wants to set one.
+ */
+const isEbaySourceDraft = (draft: EbayImportDraftListItem): boolean =>
+  (draft.source_site || '').trim().toLowerCase() === 'ebay';
+
+/** A row whose category is settled must not be edited: a product already points at it. */
+const isDraftCategoryReadOnly = (draft: EbayImportDraftListItem): boolean =>
+  draft.status === 'imported' || draft.status === 'skipped';
+
+const siteCategoryName = (draft: EbayImportDraftListItem): string =>
+  draftDisplayCategory(draft);
+
+/**
  * Build the status allow-list for a filter-based bulk delete.
  *
  * The backend refuses a delete with no status bound, so that a single click can
@@ -55,11 +80,11 @@ const clampPageSize = (value: number): number => {
  * we scope the delete to "not yet imported" drafts, which is the set the review
  * queue is about: imported drafts are history, not work in progress.
  */
-const deleteStatusScope = (statusFilter: string | undefined, locale: string): string[] => {
+const DELETE_STATUS_VALUES = ['pending', 'imported', 'skipped', 'failed', 'needs_review', 'reviewed', 'confirmed'];
+
+const deleteStatusScope = (statusFilter: string | undefined): string[] => {
   const status = (statusFilter || '').trim();
-  if (status) return [status];
-  void locale;
-  return ['pending', 'failed', 'skipped'];
+  return status ? [status] : DELETE_STATUS_VALUES;
 };
 
 function EbayImportDraftsContent() {
@@ -73,6 +98,7 @@ function EbayImportDraftsContent() {
   const queryClient = useQueryClient();
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [includeImages, setIncludeImages] = useState(false);
   const [bulkConfirmTask, setBulkConfirmTask] = useState<EbayBulkConfirmTaskSnapshot | null>(null);
   const [bulkTaskControlPending, setBulkTaskControlPending] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -95,6 +121,7 @@ function EbayImportDraftsContent() {
   const status = searchParams.get('status') || '';
   const matchStatus = searchParams.get('match_status') || '';
   const brand = searchParams.get('brand') || '';
+  const sourceSite = searchParams.get('source_site') || '';
   const aiReviewStatus = searchParams.get('ai_review_status') || '';
 
   const filters = useMemo(
@@ -105,9 +132,10 @@ function EbayImportDraftsContent() {
       status,
       match_status: matchStatus,
       brand,
+      source_site: sourceSite,
       ai_review_status: aiReviewStatus,
     }),
-    [page, pageSize, search, status, matchStatus, brand, aiReviewStatus]
+    [page, pageSize, search, status, matchStatus, brand, sourceSite, aiReviewStatus]
   );
 
   const { data, isLoading, error } = useQuery({
@@ -120,16 +148,15 @@ function EbayImportDraftsContent() {
   const totalPages = data?.total_pages || 1;
   const visibleIds = list.map((item) => item.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
-  // True whenever the id array addresses the whole filtered set, whether the
-  // server returned every id or had to cap the list. Either way the delete must
-  // be expressed as a filter, not as an id array.
+  // True only when the server had to cap the selected IDs. In that case the
+  // delete uses the active filter; complete selections use exact IDs.
   const [selectionCoversAll, setSelectionCoversAll] = useState(false);
-  const allDraftsSelected = selectionCoversAll || (total > 0 && selectedIds.length >= total);
+  const allDraftsSelected = selectionCoversAll;
 
   useEffect(() => {
     setSelectedIds([]);
     setSelectionCoversAll(false);
-  }, [search, status, matchStatus, brand, aiReviewStatus]);
+  }, [search, status, matchStatus, brand, sourceSite, aiReviewStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -264,7 +291,7 @@ function EbayImportDraftsContent() {
   );
 
   const bulkConfirmMutation = useMutation({
-    mutationFn: (ids: number[]) => EbayImportDraftService.bulkConfirm(ids),
+    mutationFn: (ids: number[]) => EbayImportDraftService.bulkConfirm(ids, undefined, includeImages),
     onSuccess: (snapshot) => {
       setBulkConfirmTask(snapshot);
       startPolling(snapshot.id);
@@ -305,6 +332,15 @@ function EbayImportDraftsContent() {
     onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '批量重检失败' : 'Bulk recheck failed')),
   });
 
+  const reopenOrphanedMutation = useMutation({
+    mutationFn: () => EbayImportDraftService.reopenOrphaned(),
+    onSuccess: async (result) => {
+      await invalidateAll();
+      toast.success(locale === 'zh' ? `已恢复 ${result.reopened} 条孤立草稿` : `Reopened ${result.reopened} orphaned drafts`);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '恢复孤立草稿失败' : 'Failed to reopen orphaned drafts')),
+  });
+
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: number[]) => EbayImportDraftService.bulkDelete(ids),
     onSuccess: async (result) => {
@@ -314,6 +350,29 @@ function EbayImportDraftsContent() {
       toast.success(locale === 'zh' ? `已删除 ${result.deleted} 条草稿` : `Deleted ${result.deleted} drafts`);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err, locale === 'zh' ? '批量删除失败' : 'Bulk delete failed')),
+  });
+
+  // Setting a draft's eBay category is a per-row edit of the *source* site's
+  // taxonomy. It goes through the draft update endpoint, which stores it beside
+  // the scraped breadcrumb and leaves the site category (suggested_category_id)
+  // untouched.
+  const updateEbayCategoryMutation = useMutation({
+    mutationFn: ({ id, value }: { id: number; value: string }) =>
+      EbayImportDraftService.update(id, { ebay_category: value }),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success(locale === 'zh' ? 'eBay 分类已更新，请重新运行 AI 优化' : 'eBay category updated; rerun AI optimization');
+    },
+    onError: (err: unknown) =>
+      toast.error(getErrorMessage(err, locale === 'zh' ? '更新 eBay 分类失败' : 'Failed to update the eBay category')),
+  });
+
+  // The eBay vocabulary the stored drafts carry, so the picker offers paths that
+  // really came off the marketplaces instead of a hand-kept list.
+  const { data: ebayCategoryOptions } = useQuery({
+    queryKey: ['ebayImportDrafts', 'source-categories', 'ebay'],
+    queryFn: () => EbayImportDraftService.getSourceCategories('ebay'),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Deleting everything the filters match goes through a filter-based request.
@@ -345,15 +404,21 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
     params: { status: 'pending', match_status: undefined, ai_review_status: 'unreviewed' },
   },
   {
+    key: 'ready_new_unique',
+    zh: '③ AI 新品可上架',
+    en: '3. AI new products',
+    params: { status: undefined, match_status: 'new_unique', ai_review_status: 'ready' },
+  },
+  {
     key: 'approve',
-    zh: '③ 待批准上架',
+    zh: '④ 待批准上架',
     en: '3. To approve',
     params: { status: undefined, match_status: undefined, ai_review_status: 'ready' },
   },
   {
     key: 'published',
-    zh: '④ 已上架',
-    en: '4. Published',
+    zh: '⑤ 已上架',
+    en: '5. Published',
     params: { status: 'imported', match_status: undefined, ai_review_status: undefined },
   },
 ];
@@ -362,7 +427,7 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
   // what produced the 500 on the select-all path.
   const bulkDeleteAllMutation = useMutation({
     mutationFn: () =>
-      EbayImportDraftService.bulkDeleteByFilter(filters, deleteStatusScope(filters.status, locale)),
+      EbayImportDraftService.bulkDeleteByFilter(filters, deleteStatusScope(filters.status)),
     onSuccess: async (result) => {
       await invalidateAll();
       setSelectedIds([]);
@@ -376,6 +441,9 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
     mutationFn: () => EbayImportDraftService.selectionIds(filters),
     onSuccess: (result) => {
       setSelectedIds(result.ids);
+      // Only a truncated selection uses the filter-delete path. A complete ID
+      // list is deleted exactly, even when no filter is active.
+      setSelectionCoversAll(Boolean(result.truncated));
       if (result.truncated) {
         setSelectionCoversAll(true);
         toast.success(
@@ -414,6 +482,9 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
   };
 
   const toggleSelectAll = (checked: boolean) => {
+    // A manual checkbox action converts the selection into an exact ID set;
+    // never leave a stale "all filtered" delete marker behind.
+    setSelectionCoversAll(false);
     setSelectedIds((prev) => {
       if (checked) return Array.from(new Set([...prev, ...visibleIds]));
       const visible = new Set(visibleIds);
@@ -422,6 +493,7 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
   };
 
   const toggleSelectOne = (id: number, checked: boolean) => {
+    setSelectionCoversAll(false);
     setSelectedIds((prev) => (checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
   };
 
@@ -496,10 +568,20 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
       toast.error(locale === 'zh' ? '请先选择草稿' : 'Select drafts first');
       return;
     }
+    if (allDraftsSelected) {
+      const hasFilter = [search, status, matchStatus, brand, sourceSite, aiReviewStatus]
+        .some((value) => value.trim() !== '');
+      if (!hasFilter) {
+        toast.error(locale === 'zh'
+          ? '为安全起见，请先选择状态、来源或其他筛选条件，再删除全部匹配草稿'
+          : 'Choose a status, source, or another filter before deleting all matching drafts');
+        return;
+      }
+    }
     const confirmMessage = allDraftsSelected
       ? locale === 'zh'
-        ? `确定删除当前筛选条件下的全部 ${total} 条草稿吗？此操作不可撤销。`
-        : `Delete all ${total} drafts matching the current filters? This cannot be undone.`
+        ? `确定删除当前筛选条件下的全部 ${total} 条草稿吗？这只会删除当前筛选结果。`
+        : `Delete all ${total} drafts matching the current filters? Other drafts will not be touched.`
       : locale === 'zh'
         ? `确定删除选中的 ${selectedIds.length} 条草稿吗？`
         : `Delete the ${selectedIds.length} selected drafts?`;
@@ -674,6 +756,32 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
    * on the row is the difference between a queue an operator can work through
    * and one that silently rejects a whole batch.
    */
+  /** The eBay category picker for one row: a value from the scraped vocabulary. */
+  const renderEbayCategoryPicker = (draft: EbayImportDraftListItem) => {
+    const choices = ebayCategoryOptions || [];
+    const current = draft.ebay_category || '';
+    // A row can carry a path no other draft has, so the current value is always
+    // offered even when it is not in the vocabulary.
+    const currentIsMissing = current !== '' && !choices.some((option) => option.value === current);
+    return (
+      <select
+        className="mt-1 w-full max-w-[240px] rounded border border-gray-300 bg-white px-1 py-0.5 text-xs"
+        value={current}
+        disabled={updateEbayCategoryMutation.isPending || ['queued', 'processing'].includes(draft.ai_review_status || '')}
+        onChange={(event) => updateEbayCategoryMutation.mutate({ id: draft.id, value: event.target.value })}
+        aria-label={locale === 'zh' ? `草稿 ${draft.id} 的 eBay 分类` : `eBay category of draft ${draft.id}`}
+      >
+        <option value="">{locale === 'zh' ? '（未选择）' : '(none)'}</option>
+        {currentIsMissing ? <option value={current}>{current}</option> : null}
+        {choices.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.value} ({option.count})
+          </option>
+        ))}
+      </select>
+    );
+  };
+
   const nextStepHint = (draft: EbayImportDraftListItem): { text: string; tone: string } => {
     const zh = locale === 'zh';
     const identifier =
@@ -707,8 +815,13 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
       };
     }
     if (!identifier) {
+      // The review parses the title for a model instead of skipping the row, so
+      // this must not promise a skip: only a row whose title names no part at all
+      // is refused, and that is reported by the batch error.
       return {
-        text: zh ? '缺少型号/料号，AI 会跳过；请先补型号' : 'No model: AI review will skip it',
+        text: zh
+          ? '无型号字段：审核时会从标题识别型号'
+          : 'No model field: read from the title during review',
         tone: 'text-amber-700',
       };
     }
@@ -783,6 +896,15 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
               {jsonUploadPending ? '文件分片上传中...' : '创建后台 JSON 导入任务'}
             </button>
             <button
+              onClick={() => {
+                if (window.confirm('只恢复产品已被删除、但草稿仍标记为已上架的记录，继续吗？')) reopenOrphanedMutation.mutate();
+              }}
+              disabled={reopenOrphanedMutation.isPending}
+              className="inline-flex items-center rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+            >
+              {reopenOrphanedMutation.isPending ? '恢复中...' : '恢复已删除产品草稿'}
+            </button>
+            <button
               onClick={handleBulkRecheck}
               disabled={bulkRecheckMutation.isPending || selectedIds.length === 0}
               className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -790,6 +912,7 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
               <ArrowPathIcon className="mr-2 h-4 w-4" />
               {locale === 'zh' ? '批量重检' : 'Bulk Recheck'}
             </button>
+            <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeImages} onChange={(e) => setIncludeImages(e.target.checked)} disabled={isTaskRunning || bulkConfirmMutation.isPending} />{locale === 'zh' ? '上架时使用来源图片' : 'Use source images'}</label>
             <button
               onClick={handleBulkConfirm}
               disabled={bulkConfirmMutation.isPending || isTaskRunning || selectedIds.length === 0}
@@ -892,7 +1015,7 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-7">
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-medium text-gray-700">{locale === 'zh' ? '搜索' : 'Search'}</label>
               <div className="relative">
@@ -921,6 +1044,9 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
                 <option value="needs_review">{locale === 'zh' ? '待人工确认' : 'Needs Review'}</option>
                 <option value="imported">{locale === 'zh' ? '已导入' : 'Imported'}</option>
                 <option value="failed">{locale === 'zh' ? '失败' : 'Failed'}</option>
+                <option value="skipped">{locale === 'zh' ? '已跳过' : 'Skipped'}</option>
+                <option value="reviewed">{locale === 'zh' ? '已复核' : 'Reviewed'}</option>
+                <option value="confirmed">{locale === 'zh' ? '已确认' : 'Confirmed'}</option>
               </select>
             </div>
             <div>
@@ -951,6 +1077,18 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
                 <option value="rejected">{locale === 'zh' ? '已跳过' : 'Rejected'}</option>
                 <option value="failed">{locale === 'zh' ? '失败' : 'Failed'}</option>
                 <option value="unreviewed">{locale === 'zh' ? '未审核' : 'Not reviewed'}</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">{locale === 'zh' ? '来源站点' : 'Source site'}</label>
+              <select
+                value={sourceSite}
+                onChange={(e) => updateParams({ source_site: e.target.value, page: 1 })}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">{locale === 'zh' ? '全部来源' : 'All sources'}</option>
+                <option value="ebay">eBay</option>
+                <option value="b-automationservice">B-Automation</option>
               </select>
             </div>
             <div>
@@ -1128,10 +1266,12 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
             status,
             match_status: matchStatus,
             brand,
+            source_site: sourceSite,
             ai_review_status: aiReviewStatus,
           }}
           onApproved={() => {
             setSelectedIds([]);
+            setSelectionCoversAll(false);
             queryClient.invalidateQueries({ queryKey: queryKeys.ebayImportDrafts.all() });
           }}
           onReviewFinished={() => {
@@ -1212,7 +1352,7 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
             </button>
             <button
               type="button"
-              onClick={() => setSelectedIds([])}
+              onClick={() => { setSelectedIds([]); setSelectionCoversAll(false); }}
               disabled={selectedIds.length === 0 || bulkDeleteMutation.isPending || bulkConfirmMutation.isPending || bulkRecheckMutation.isPending}
               className="rounded-md border border-blue-200 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1260,7 +1400,9 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '标题' : 'Title'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '品牌 / 型号' : 'Brand / Model'}</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '建议分类' : 'Suggested Category'}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '本站分类' : 'Site Category'}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">eBay {locale === 'zh' ? '分类' : 'Category'}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">B-Automation {locale === 'zh' ? '分类' : 'Category'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '匹配' : 'Match'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '状态' : 'Status'}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{locale === 'zh' ? '下一步' : 'Next Step'}</th>
@@ -1284,23 +1426,55 @@ const WORKFLOW_STEPS: WorkflowStep[] = [
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
                           {draft.source_site || 'ebay'}
                         </div>
-                        <div className="font-medium text-gray-900">{draft.normalized_title || draft.title_raw || '-'}</div>
+                        <div className="font-medium text-gray-900">{draftDisplayTitle(draft) || '-'}</div>
+                        {hasReadyDraftReview(draft) && (
+                          <div className="mt-1 text-xs text-emerald-700">{locale === 'zh' ? 'AI 已优化 · 待手动上架' : 'AI optimized · awaiting publishing'}</div>
+                        )}
+                        {hasReadyDraftReview(draft) && draft.title_raw !== draft.proposed_name && (
+                          <div className="mt-1 max-w-[360px] truncate text-xs text-gray-400" title={draft.title_raw}>{locale === 'zh' ? '原标题：' : 'Original: '}{draft.title_raw}</div>
+                        )}
                         <div className="mt-1 max-w-[320px] truncate text-gray-500">{draft.source_url || '-'}</div>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-700">
-                        <div>{draft.normalized_brand || '-'}</div>
-                        <div className="text-gray-500">{draft.normalized_model || draft.normalized_part_number || draft.normalized_mpn || '-'}</div>
+                        <div>{(hasReadyDraftReview(draft) ? draft.proposed_brand : '') || draft.normalized_brand || '-'}</div>
+                        <div className="text-gray-500">{(hasReadyDraftReview(draft) ? draft.proposed_model : '') || draft.normalized_model || draft.normalized_part_number || draft.normalized_mpn || '-'}</div>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-700">
-                        <div>{draft.suggested_category?.name || draft.suggested_category_name || '-'}</div>
-                        <div className="text-xs text-gray-500">{draft.taxonomy_status}</div>
-                        {/* A proposal is what makes a row approvable, so the
-                            category the AI would publish under is shown here
-                            rather than only inside the detail page. */}
-                        {draft.ai_review_status === 'ready' && draft.proposed_category_name && (
-                          <div className="mt-1 rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-800">
-                            AI 提案：{draft.proposed_category_name}
+                        {/* Only a draft that matched a category has a site category. When it
+                            did not, this cell used to print the *source* site's wording
+                            unlabelled, which is how eBay's taxonomy and the BAS collection got
+                            mixed up; that wording now lives in its own column. */}
+                        <div>{siteCategoryName(draft) || (locale === 'zh' ? '未归类' : 'Unassigned')}</div>
+                        <div className="text-xs text-gray-500">
+                          {hasReadyDraftReview(draft)
+                            ? (draft.proposed_category_created ? (locale === 'zh' ? 'AI 自动新建分类' : 'Created by AI') : (locale === 'zh' ? 'AI 已匹配分类' : 'Matched by AI'))
+                            : draft.taxonomy_status}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        {/* eBay owns this column; BAS rows never receive an eBay picker. */}
+                        {draft.ebay_category || isEbaySourceDraft(draft) ? (
+                          <div className="max-w-[260px] break-words">
+                            <span className="mr-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700">eBay</span>
+                            {isDraftCategoryReadOnly(draft) ? (
+                              <span className="align-middle">{draft.ebay_category || '-'}</span>
+                            ) : (
+                              renderEbayCategoryPicker(draft)
+                            )}
                           </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        {/* B-Automation owns this column; it is never displayed as eBay. */}
+                        {draft.bas_category ? (
+                          <div className="max-w-[260px] break-words">
+                            <span className="mr-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-sky-700">BAS</span>
+                            <span className="align-middle">{draft.bas_category}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
                         )}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-700">

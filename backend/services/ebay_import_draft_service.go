@@ -54,6 +54,9 @@ type EbayImportDraftListItem struct {
 	SuggestedCategoryName string     `json:"suggested_category_name"`
 	SuggestedPartType     string     `json:"suggested_part_type"`
 	TaxonomyStatus        string     `json:"taxonomy_status"`
+	CategoryMode          string     `json:"category_mode"`
+	SourceCategoryEbay    string     `json:"ebay_category"`
+	SourceCategoryBas     string     `json:"bas_category"`
 	MatchStatus           string     `json:"match_status"`
 	MatchedProductID      *uint      `json:"matched_product_id"`
 	MatchScore            float64    `json:"match_score"`
@@ -71,13 +74,16 @@ type EbayImportDraftListItem struct {
 	// Automated review state. The list view shows whether a row has a proposal
 	// waiting, which is how an administrator finds the rows to approve without
 	// opening each one.
-	AIReviewStatus       string `json:"ai_review_status"`
-	AIReviewError        string `json:"ai_review_error"`
-	ProposedName         string `json:"proposed_name"`
-	ProposedCategoryName string `json:"proposed_category_name"`
-	ProposedCategoryID   *uint  `json:"proposed_category_id"`
-	ProposedPartType     string `json:"proposed_part_type"`
-	MatchedProduct       *struct {
+	AIReviewStatus          string `json:"ai_review_status"`
+	AIReviewError           string `json:"ai_review_error"`
+	ProposedName            string `json:"proposed_name"`
+	ProposedCategoryName    string `json:"proposed_category_name"`
+	ProposedCategoryID      *uint  `json:"proposed_category_id"`
+	ProposedPartType        string `json:"proposed_part_type"`
+	ProposedBrand           string `json:"proposed_brand"`
+	ProposedModel           string `json:"proposed_model"`
+	ProposedCategoryCreated bool   `json:"proposed_category_created"`
+	MatchedProduct          *struct {
 		ID         uint   `json:"id"`
 		SKU        string `json:"sku"`
 		Name       string `json:"name"`
@@ -92,6 +98,24 @@ type EbayImportDraftListItem struct {
 }
 
 type EbayImportDraftDetailResponse struct {
+	NormalizedDescription      string `json:"normalized_description"`
+	NormalizedShortDescription string `json:"normalized_short_description"`
+	ExcludeSourceImages        bool   `json:"exclude_source_images"`
+	ProposedMetaKeywords       string `json:"proposed_meta_keywords"`
+	AIReviewStatus             string `json:"ai_review_status"`
+	AIReviewError              string `json:"ai_review_error"`
+	ProposedName               string `json:"proposed_name"`
+	ProposedBrand              string `json:"proposed_brand"`
+	ProposedModel              string `json:"proposed_model"`
+	ProposedPartType           string `json:"proposed_part_type"`
+	ProposedCategoryID         *uint  `json:"proposed_category_id"`
+	ProposedCategoryName       string `json:"proposed_category_name"`
+	ProposedCategoryCreated    bool   `json:"proposed_category_created"`
+	ProposedDescription        string `json:"proposed_description"`
+	ProposedShortDescription   string `json:"proposed_short_description"`
+	ProposedMetaTitle          string `json:"proposed_meta_title"`
+	ProposedMetaDescription    string `json:"proposed_meta_description"`
+
 	ID                    uint                        `json:"id"`
 	SourceType            string                      `json:"source_type"`
 	SourceSite            string                      `json:"source_site"`
@@ -113,6 +137,9 @@ type EbayImportDraftDetailResponse struct {
 	SuggestedCategoryName string                      `json:"suggested_category_name"`
 	SuggestedPartType     string                      `json:"suggested_part_type"`
 	TaxonomyStatus        string                      `json:"taxonomy_status"`
+	CategoryMode          string                      `json:"category_mode"`
+	SourceCategoryEbay    string                      `json:"ebay_category"`
+	SourceCategoryBas     string                      `json:"bas_category"`
 	MatchStatus           string                      `json:"match_status"`
 	MatchedProductID      *uint                       `json:"matched_product_id"`
 	MatchScore            float64                     `json:"match_score"`
@@ -146,6 +173,7 @@ type EbayImportDraftFilters struct {
 	Status      string
 	MatchStatus string
 	Brand       string
+	SourceSite  string
 	// AIReviewStatus filters by the automated review state, which is how the
 	// review queue is listed without paging through everything.
 	AIReviewStatus string
@@ -258,44 +286,49 @@ func BuildEbayImportDraftWithOptions(ctx context.Context, db *gorm.DB, raw map[s
 		brand = CanonicalBrandName(inference.BrandKey)
 	}
 	suggestedCategoryID, suggestedCategoryName, taxonomyStatus := resolveDraftSuggestedCategory(db, inference, raw, classificationModel)
-	matchStatus, matchedProductID, matchScore, matchReason := matchDraftProduct(db, brand, model, partNumber, mpn, normalizedTitle)
+	ebayItemID := firstNonEmptyString(raw["product_id"], raw["ebay_item_id"])
+	matchStatus, matchedProductID, matchScore, matchReason := matchDraftProduct(db, brand, model, partNumber, mpn, ebayItemID, normalizedTitle)
 	metaTitle, metaDescription, metaKeywords := buildDraftSEO(normalizedTitle, description, brand, model, partNumber, mpn, inference.PartType)
 
 	imageURLsJSON, _ := json.Marshal(imageURLs)
 	mediaIDsJSON, _ := json.Marshal(mediaAssetIDs)
 
 	result.Draft = models.EbayImportDraft{
-		SourceType:            defaultTrimmed(firstNonEmptyString(raw["source_type"]), "browser_extension"),
-		SourceSite:            defaultTrimmed(firstNonEmptyString(raw["site"], raw["source_site"]), "ebay"),
-		SourceURL:             firstNonEmptyString(raw["product_url"], raw["source_url"]),
-		EbayItemID:            firstNonEmptyString(raw["product_id"], raw["ebay_item_id"]),
-		ListingID:             firstNonEmptyString(raw["listing_id"]),
-		RawPayload:            string(rawJSON),
-		TitleRaw:              title,
-		DescriptionRaw:        description,
-		PriceRaw:              priceRaw,
-		CurrencyRaw:           currencyRaw,
-		NormalizedTitle:       normalizedTitle,
-		NormalizedBrand:       brand,
-		NormalizedModel:       model,
-		NormalizedPartNumber:  partNumber,
-		NormalizedMPN:         mpn,
-		NormalizedPrice:       priceValue,
-		SuggestedCategoryID:   suggestedCategoryID,
-		SuggestedCategoryName: suggestedCategoryName,
-		SuggestedPartType:     defaultTrimmed(inference.PartType, "Spare Part"),
-		TaxonomyStatus:        taxonomyStatus,
-		MatchStatus:           matchStatus,
-		MatchedProductID:      matchedProductID,
-		MatchScore:            matchScore,
-		MatchReason:           matchReason,
-		MetaTitle:             metaTitle,
-		MetaDescription:       metaDescription,
-		MetaKeywords:          metaKeywords,
-		DisableAutoSEO:        false,
-		MainImageSourceURL:    mainImage,
-		ImageSourceURLs:       string(imageURLsJSON),
-		MediaAssetIDs:         string(mediaIDsJSON),
+		SourceType:                 defaultTrimmed(firstNonEmptyString(raw["source_type"]), "browser_extension"),
+		SourceSite:                 defaultTrimmed(firstNonEmptyString(raw["site"], raw["source_site"]), "ebay"),
+		SourceURL:                  firstNonEmptyString(raw["product_url"], raw["source_url"]),
+		EbayItemID:                 firstNonEmptyString(raw["product_id"], raw["ebay_item_id"]),
+		ListingID:                  firstNonEmptyString(raw["listing_id"]),
+		RawPayload:                 string(rawJSON),
+		TitleRaw:                   title,
+		DescriptionRaw:             description,
+		NormalizedDescription:      description,
+		NormalizedShortDescription: ShortenListingDescription(description, 320),
+		ExcludeSourceImages:        !options.IncludeImages,
+		PriceRaw:                   priceRaw,
+		CurrencyRaw:                currencyRaw,
+		NormalizedTitle:            normalizedTitle,
+		NormalizedBrand:            brand,
+		NormalizedModel:            model,
+		NormalizedPartNumber:       partNumber,
+		NormalizedMPN:              mpn,
+		NormalizedPrice:            priceValue,
+		SuggestedCategoryID:        suggestedCategoryID,
+		SuggestedCategoryName:      suggestedCategoryName,
+		SuggestedPartType:          defaultTrimmed(inference.PartType, "Spare Part"),
+		CategoryMode:               DraftCategoryModeSource,
+		TaxonomyStatus:             taxonomyStatus,
+		MatchStatus:                matchStatus,
+		MatchedProductID:           matchedProductID,
+		MatchScore:                 matchScore,
+		MatchReason:                matchReason,
+		MetaTitle:                  metaTitle,
+		MetaDescription:            metaDescription,
+		MetaKeywords:               metaKeywords,
+		DisableAutoSEO:             false,
+		MainImageSourceURL:         mainImage,
+		ImageSourceURLs:            string(imageURLsJSON),
+		MediaAssetIDs:              string(mediaIDsJSON),
 		// Declared `type:json`, and MySQL rejects an empty string there with
 		// "Invalid JSON text: The document is empty" (error 3140). Only the AI
 		// review pass ever fills this, but the column still has to start as a
@@ -321,6 +354,9 @@ func VerifyEbayImportDraftCategory(ctx context.Context, db *gorm.DB, draft model
 		return ProductCategoryInference{}, "", errors.New("draft requires a verified model or part number")
 	}
 	inference := InferProductCategory(draft.NormalizedBrand, model)
+	if reading := draftApprovedReadingInference(draft); IsConfirmedProductCategory(reading, model) {
+		inference = reading
+	}
 	if !IsConfirmedProductCategory(inference, model) {
 		searchCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 		inference, _, _ = ResolveProductCategoryWithWebEvidence(searchCtx, draft.NormalizedBrand, model)
@@ -342,6 +378,11 @@ func ValidateEbayImportDraftCategoryWithInference(db *gorm.DB, draft models.Ebay
 }
 
 func verifyEbayImportDraftCategoryWithInference(db *gorm.DB, draft models.EbayImportDraft, inference ProductCategoryInference, model string) (string, error) {
+	if EffectiveDraftCategoryMode(draft) == DraftCategoryModeSource && draft.SuggestedCategoryID != nil && *draft.SuggestedCategoryID > 0 {
+		if path, err := ValidateDraftSourceCategoryForImport(db, draft, *draft.SuggestedCategoryID); err == nil {
+			return path, nil
+		}
+	}
 	if !IsConfirmedProductCategory(inference, model) {
 		return "", fmt.Errorf("draft classification is unresolved for %s", model)
 	}
@@ -385,9 +426,20 @@ func ListEbayImportDrafts(db *gorm.DB, filters EbayImportDraftFilters) (models.E
 		return models.EbayImportDraftListResponse{}, err
 	}
 
+	// The source categories come from one bounded side query: a payload also
+	// carries the whole description, and a page must not parse it for two
+	// labels.
+	draftIDs := make([]uint, 0, len(drafts))
+	for _, draft := range drafts {
+		draftIDs = append(draftIDs, draft.ID)
+	}
+	sourceCategories, err := LoadDraftSourceCategories(db, draftIDs)
+	if err != nil {
+		return models.EbayImportDraftListResponse{}, err
+	}
 	items := make([]interface{}, 0, len(drafts))
 	for _, draft := range drafts {
-		items = append(items, summarizeDraft(draft))
+		items = append(items, summarizeDraft(draft, sourceCategories[draft.ID]))
 	}
 
 	return models.EbayImportDraftListResponse{
@@ -413,6 +465,17 @@ const MaxEbayImportDraftPageSize = 200
 // EbayImportDraftDeleteChunkSize keeps every generated statement well inside the
 // MySQL placeholder limit (65,535) and the driver's packet size.
 const EbayImportDraftDeleteChunkSize = 1000
+
+// HasEbayImportDraftDeleteScope prevents an all-filter delete from being sent
+// without any predicate. An empty filter would mean the entire historical queue.
+func HasEbayImportDraftDeleteScope(filters EbayImportDraftFilters) bool {
+	return strings.TrimSpace(filters.Search) != "" ||
+		strings.TrimSpace(filters.Status) != "" ||
+		strings.TrimSpace(filters.MatchStatus) != "" ||
+		strings.TrimSpace(filters.Brand) != "" ||
+		strings.TrimSpace(filters.SourceSite) != "" ||
+		strings.TrimSpace(filters.AIReviewStatus) != ""
+}
 
 // DeleteEbayImportDraftsByFilter removes every draft matching the filters plus
 // an explicit status allow-list, in one statement, and reports how many rows
@@ -443,6 +506,47 @@ func DeleteEbayImportDraftsByFilter(db *gorm.DB, filters EbayImportDraftFilters,
 		return matched, 0, result.Error
 	}
 	return matched, result.RowsAffected, nil
+}
+
+// ReopenOrphanedImportedEbayDrafts repairs historical rows whose product was
+// deleted outside the draft flow. It only clears the publication linkage; the
+// AI proposal, source payload, title and category are preserved. Future product
+// deletion calls the same state transition directly.
+func ReopenOrphanedImportedEbayDrafts(db *gorm.DB) (int64, error) {
+	if db == nil {
+		return 0, errors.New("database connection failed")
+	}
+	var ids []uint
+	if err := db.Model(&models.EbayImportDraft{}).
+		Where("imported_product_id IS NOT NULL").
+		Where("NOT EXISTS (SELECT 1 FROM products p WHERE p.id = ebay_import_drafts.imported_product_id)").
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := db.Model(&models.EbayImportDraft{}).Where("id IN ?", ids).Updates(map[string]any{
+		"status":              EbayDraftStatusPending,
+		"imported_product_id": nil,
+		"imported_at":         nil,
+		"confirmed_at":        nil,
+		"confirmed_by":        nil,
+		"matched_product_id":  nil,
+		"match_status":        EbayDraftMatchNewUnique,
+		"match_score":         0,
+		"match_reason":        "Product no longer exists; draft reopened for manual import",
+		"failure_reason":      "",
+		"import_action":       "create_new",
+		"ai_review_status":    gorm.Expr("CASE WHEN proposed_category_id IS NOT NULL AND proposed_category_id > 0 THEN ? ELSE '' END", EbayAIReviewReady),
+		"taxonomy_status":     gorm.Expr("CASE WHEN proposed_category_id IS NOT NULL AND proposed_category_id > 0 THEN ? ELSE ? END", EbayDraftTaxonomyMatched, EbayDraftTaxonomyNeedsReview),
+		"ai_review_error":     "",
+		"updated_at":          time.Now().UTC(),
+	}).Error
+	if result != nil {
+		return 0, result
+	}
+	return int64(len(ids)), nil
 }
 
 // DeleteEbayImportDraftsByID removes drafts in bounded chunks. A single
@@ -492,11 +596,34 @@ func GetEbayImportDraftDetail(db *gorm.DB, id uint) (*EbayImportDraftDetailRespo
 		return nil, err
 	}
 
+	draft = draftWithEditableReview(draft)
 	rawPayload := decodeRawPayload(draft.RawPayload)
+	// Each source site's own category is resolved from the payload here and
+	// reported in its own field, so eBay's breadcrumb and the BAS store's
+	// collection can never be read as the same value.
+	sourceCategories := ResolveDraftSourceCategories(draft.SourceSite, rawPayload)
 	mediaIDs := decodeUintSlice(draft.MediaAssetIDs)
 	mediaAssets, _ := LoadMediaAssetResponses(db, mediaIDs)
 
 	return &EbayImportDraftDetailResponse{
+		NormalizedDescription:      SanitizeListingDescription(firstNonEmptyString(draft.NormalizedDescription, draft.DescriptionRaw)),
+		NormalizedShortDescription: SanitizeListingDescription(draft.NormalizedShortDescription),
+		ExcludeSourceImages:        draft.ExcludeSourceImages,
+		ProposedMetaKeywords:       draft.ProposedMetaKeywords,
+		AIReviewStatus:             draft.AIReviewStatus,
+		AIReviewError:              draft.AIReviewError,
+		ProposedName:               draft.ProposedName,
+		ProposedBrand:              draft.ProposedBrand,
+		ProposedModel:              draft.ProposedModel,
+		ProposedPartType:           draft.ProposedPartType,
+		ProposedCategoryID:         draft.ProposedCategoryID,
+		ProposedCategoryName:       draft.ProposedCategoryName,
+		ProposedCategoryCreated:    draft.ProposedCategoryCreated,
+		ProposedDescription:        draft.ProposedDescription,
+		ProposedShortDescription:   draft.ProposedShortDescription,
+		ProposedMetaTitle:          draft.ProposedMetaTitle,
+		ProposedMetaDescription:    draft.ProposedMetaDescription,
+
 		ID:                    draft.ID,
 		SourceType:            draft.SourceType,
 		SourceSite:            draft.SourceSite,
@@ -518,12 +645,15 @@ func GetEbayImportDraftDetail(db *gorm.DB, id uint) (*EbayImportDraftDetailRespo
 		SuggestedCategoryName: draft.SuggestedCategoryName,
 		SuggestedPartType:     draft.SuggestedPartType,
 		TaxonomyStatus:        draft.TaxonomyStatus,
+		CategoryMode:          draft.CategoryMode,
+		SourceCategoryEbay:    sourceCategories.EbayCategory,
+		SourceCategoryBas:     sourceCategories.BasCategory,
 		MatchStatus:           draft.MatchStatus,
 		MatchedProductID:      draft.MatchedProductID,
 		MatchScore:            draft.MatchScore,
 		MatchReason:           draft.MatchReason,
 		MetaTitle:             draft.MetaTitle,
-		MetaDescription:       draft.MetaDescription,
+		MetaDescription:       SanitizeListingTitle(draft.MetaDescription),
 		MetaKeywords:          draft.MetaKeywords,
 		DisableAutoSEO:        draft.DisableAutoSEO,
 		MainImageSourceURL:    draft.MainImageSourceURL,
@@ -564,8 +694,11 @@ func RecheckEbayImportDraftAndClassifyWithContext(ctx context.Context, db *gorm.
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if draft.AIReviewStatus == EbayAIReviewReady {
+		return inferReviewCategory(ProductProfile{Brand: draft.ProposedBrand, Model: draft.ProposedModel, PartType: draft.ProposedPartType}, *draft, draft.ProposedModel), nil
+	}
 	raw := decodeRawPayload(draft.RawPayload)
-	result := BuildEbayImportDraftWithContext(ctx, db, raw)
+	result := BuildEbayImportDraftWithOptions(ctx, db, raw, EbayImportDraftBuildOptions{IncludeImages: false})
 	normalizedTitle := fallbackTrimmed(draft.NormalizedTitle, result.Draft.NormalizedTitle)
 	normalizedBrand := fallbackTrimmed(draft.NormalizedBrand, result.Draft.NormalizedBrand)
 	if NormalizeBrandKey(normalizedBrand) == "" && strings.TrimSpace(result.Draft.NormalizedBrand) != "" {
@@ -580,6 +713,13 @@ func RecheckEbayImportDraftAndClassifyWithContext(ctx context.Context, db *gorm.
 	inference := result.Inference
 	if classificationModel != result.ClassificationModel || NormalizeBrandKey(normalizedBrand) != NormalizeBrandKey(result.Draft.NormalizedBrand) {
 		inference = InferProductCategory(normalizedBrand, classificationModel)
+	}
+	// A draft whose classification came from the AI review carries that reading,
+	// and it is the evidence an administrator approved. It wins over re-deriving
+	// the type from the model number, which for a family the deterministic table
+	// does not cover would leave an approved row unimportable.
+	if reading := draftApprovedReadingInference(*draft); IsConfirmedProductCategory(reading, classificationModel) {
+		inference = reading
 	}
 	// Recheck is an explicit admin action, so it may perform web verification
 	// even for a Shopify draft that was ingested with local-only classification.
@@ -650,18 +790,24 @@ func RecheckEbayImportDraftAndClassifyWithContext(ctx context.Context, db *gorm.
 }
 
 func BuildProductRequestFromDraft(db *gorm.DB, draft models.EbayImportDraft) models.ProductCreateRequest {
-	mediaIDs := decodeUintSlice(draft.MediaAssetIDs)
-	mediaAssets, _ := LoadMediaAssetResponses(db, mediaIDs)
-	images := make([]models.ImageReq, 0, len(mediaAssets))
-	for index, asset := range mediaAssets {
-		images = append(images, models.ImageReq{URL: asset.URL, IsPrimary: index == 0, SortOrder: index})
-	}
-	if len(images) == 0 {
-		for index, imageURL := range decodeStringSlice(draft.ImageSourceURLs) {
-			if strings.TrimSpace(imageURL) == "" {
-				continue
+	// A ready/approved AI proposal is the effective import record. Project it
+	// here as a final safety net so no publish entry point can fall back to the
+	// seller title, HTML description or old SEO fields.
+	draft = draftWithEditableReview(draft)
+	images := []models.ImageReq{}
+	if !draft.ExcludeSourceImages {
+		mediaIDs := decodeUintSlice(draft.MediaAssetIDs)
+		mediaAssets, _ := LoadMediaAssetResponses(db, mediaIDs)
+		for index, asset := range mediaAssets {
+			images = append(images, models.ImageReq{URL: asset.URL, IsPrimary: index == 0, SortOrder: index})
+		}
+		if len(images) == 0 {
+			for index, imageURL := range decodeStringSlice(draft.ImageSourceURLs) {
+				if strings.TrimSpace(imageURL) == "" {
+					continue
+				}
+				images = append(images, models.ImageReq{URL: imageURL, IsPrimary: index == 0, SortOrder: index})
 			}
-			images = append(images, models.ImageReq{URL: imageURL, IsPrimary: index == 0, SortOrder: index})
 		}
 	}
 	attributes := buildDraftAttributes(draft)
@@ -674,11 +820,17 @@ func BuildProductRequestFromDraft(db *gorm.DB, draft models.EbayImportDraft) mod
 	if parsedComparePrice := parsePriceFloat(firstNonEmptyString(raw["compare_price"], raw["compare_at_price"])); parsedComparePrice > 0 {
 		comparePrice = &parsedComparePrice
 	}
+	description := SanitizeListingDescription(firstNonEmptyString(draft.NormalizedDescription, draft.DescriptionRaw))
+	shortDescription := SanitizeListingDescription(firstNonEmptyString(draft.NormalizedShortDescription, truncateText(description, 320)))
+	if draft.AIReviewStatus == EbayAIReviewApproved {
+		description = SanitizeListingDescription(firstNonEmptyString(draft.ProposedDescription, description))
+		shortDescription = SanitizeListingDescription(firstNonEmptyString(draft.ProposedShortDescription, shortDescription))
+	}
 	return models.ProductCreateRequest{
-		SKU:              firstNonEmptyString(draft.NormalizedPartNumber, draft.NormalizedMPN, draft.NormalizedModel, draft.EbayItemID),
+		SKU:              DraftSKU(draft),
 		Name:             defaultTrimmed(draft.NormalizedTitle, draft.TitleRaw),
-		ShortDescription: truncateText(cleanDraftDescription(draft.DescriptionRaw), 320),
-		Description:      cleanDraftDescription(draft.DescriptionRaw),
+		ShortDescription: shortDescription,
+		Description:      description,
 		Price:            draft.NormalizedPrice,
 		ComparePrice:     comparePrice,
 		StockQuantity:    stockQuantity,
@@ -721,41 +873,47 @@ func LoadMediaAssetResponses(db *gorm.DB, ids []uint) ([]models.MediaAssetRespon
 	return out, nil
 }
 
-func summarizeDraft(draft models.EbayImportDraft) EbayImportDraftListItem {
+func summarizeDraft(draft models.EbayImportDraft, sourceCategories DraftSourceCategories) EbayImportDraftListItem {
 	item := EbayImportDraftListItem{
-		ID:                    draft.ID,
-		SourceSite:            draft.SourceSite,
-		SourceURL:             draft.SourceURL,
-		TitleRaw:              draft.TitleRaw,
-		NormalizedTitle:       draft.NormalizedTitle,
-		NormalizedBrand:       draft.NormalizedBrand,
-		NormalizedModel:       draft.NormalizedModel,
-		NormalizedPartNumber:  draft.NormalizedPartNumber,
-		NormalizedMPN:         draft.NormalizedMPN,
-		NormalizedPrice:       draft.NormalizedPrice,
-		SuggestedCategoryID:   draft.SuggestedCategoryID,
-		SuggestedCategoryName: draft.SuggestedCategoryName,
-		SuggestedPartType:     draft.SuggestedPartType,
-		TaxonomyStatus:        draft.TaxonomyStatus,
-		MatchStatus:           draft.MatchStatus,
-		MatchedProductID:      draft.MatchedProductID,
-		MatchScore:            draft.MatchScore,
-		MatchReason:           draft.MatchReason,
-		DisableAutoSEO:        draft.DisableAutoSEO,
-		ImportAction:          draft.ImportAction,
-		Status:                draft.Status,
-		FailureReason:         draft.FailureReason,
-		ImportedProductID:     draft.ImportedProductID,
-		ConfirmedAt:           draft.ConfirmedAt,
-		ImportedAt:            draft.ImportedAt,
-		CreatedAt:             draft.CreatedAt,
-		UpdatedAt:             draft.UpdatedAt,
-		AIReviewStatus:        draft.AIReviewStatus,
-		AIReviewError:         draft.AIReviewError,
-		ProposedName:          draft.ProposedName,
-		ProposedCategoryName:  draft.ProposedCategoryName,
-		ProposedCategoryID:    draft.ProposedCategoryID,
-		ProposedPartType:      draft.ProposedPartType,
+		SourceCategoryEbay:      sourceCategories.EbayCategory,
+		SourceCategoryBas:       sourceCategories.BasCategory,
+		ID:                      draft.ID,
+		SourceSite:              draft.SourceSite,
+		SourceURL:               draft.SourceURL,
+		TitleRaw:                draft.TitleRaw,
+		NormalizedTitle:         draft.NormalizedTitle,
+		NormalizedBrand:         draft.NormalizedBrand,
+		NormalizedModel:         draft.NormalizedModel,
+		NormalizedPartNumber:    draft.NormalizedPartNumber,
+		NormalizedMPN:           draft.NormalizedMPN,
+		NormalizedPrice:         draft.NormalizedPrice,
+		SuggestedCategoryID:     draft.SuggestedCategoryID,
+		SuggestedCategoryName:   draft.SuggestedCategoryName,
+		SuggestedPartType:       draft.SuggestedPartType,
+		TaxonomyStatus:          draft.TaxonomyStatus,
+		CategoryMode:            draft.CategoryMode,
+		MatchStatus:             draft.MatchStatus,
+		MatchedProductID:        draft.MatchedProductID,
+		MatchScore:              draft.MatchScore,
+		MatchReason:             draft.MatchReason,
+		DisableAutoSEO:          draft.DisableAutoSEO,
+		ImportAction:            draft.ImportAction,
+		Status:                  draft.Status,
+		FailureReason:           draft.FailureReason,
+		ImportedProductID:       draft.ImportedProductID,
+		ConfirmedAt:             draft.ConfirmedAt,
+		ImportedAt:              draft.ImportedAt,
+		CreatedAt:               draft.CreatedAt,
+		UpdatedAt:               draft.UpdatedAt,
+		AIReviewStatus:          draft.AIReviewStatus,
+		AIReviewError:           draft.AIReviewError,
+		ProposedName:            draft.ProposedName,
+		ProposedCategoryName:    draft.ProposedCategoryName,
+		ProposedCategoryID:      draft.ProposedCategoryID,
+		ProposedPartType:        draft.ProposedPartType,
+		ProposedBrand:           draft.ProposedBrand,
+		ProposedModel:           draft.ProposedModel,
+		ProposedCategoryCreated: draft.ProposedCategoryCreated,
 	}
 	if draft.MatchedProduct != nil {
 		item.MatchedProduct = &struct {
@@ -822,52 +980,28 @@ func resolveDraftSuggestedCategory(db *gorm.DB, inference ProductCategoryInferen
 	return nil, firstNonEmptyString(hint, inference.CategorySlug), EbayDraftTaxonomyNeedsReview
 }
 
-func matchDraftProduct(db *gorm.DB, brand string, model string, partNumber string, mpn string, title string) (string, *uint, float64, string) {
+// DraftSKU is the exact identity used when an eBay/BAS draft becomes a product.
+// Duplicate detection deliberately uses this value only; title/model/part-number
+// similarity is not enough to decide that two different catalogue records are the
+// same SKU.
+func DraftSKU(draft models.EbayImportDraft) string {
+	return firstNonEmptyString(draft.NormalizedPartNumber, draft.NormalizedMPN, draft.NormalizedModel, draft.EbayItemID)
+}
+
+func matchDraftProduct(db *gorm.DB, brand string, model string, partNumber string, mpn string, ebayItemID string, title string) (string, *uint, float64, string) {
+	_ = brand
+	_ = model
+	_ = title
 	if db == nil {
 		return EbayDraftMatchNewUnique, nil, 0, ""
 	}
-	candidates := uniqueNonEmptyStrings(partNumber, mpn, model)
-	for _, candidate := range candidates {
-		var product models.Product
-		if err := db.Select("id", "sku", "part_number", "model", "name", "brand").Where(
-			"UPPER(sku) = ? OR UPPER(part_number) = ? OR UPPER(model) = ?", candidate, candidate, candidate,
-		).First(&product).Error; err == nil {
-			return EbayDraftMatchExact, &product.ID, 100, fmt.Sprintf("Exact SKU/part/model match for %s", candidate)
-		}
+	sku := strings.TrimSpace(firstNonEmptyString(partNumber, mpn, model, ebayItemID))
+	if sku == "" {
+		return EbayDraftMatchNewUnique, nil, 0, ""
 	}
-	if strings.TrimSpace(brand) != "" {
-		for _, candidate := range candidates {
-			var product models.Product
-			if err := db.Select("id", "sku", "part_number", "model", "name", "brand").Where(
-				"LOWER(brand) = LOWER(?) AND (UPPER(model) = ? OR UPPER(part_number) = ?)", brand, candidate, candidate,
-			).First(&product).Error; err == nil {
-				return EbayDraftMatchExact, &product.ID, 98, fmt.Sprintf("Brand + model/part match for %s", candidate)
-			}
-		}
-	}
-	if strings.TrimSpace(title) != "" {
-		words := strings.Fields(strings.ToLower(title))
-		if len(words) > 0 {
-			likeTerms := make([]string, 0, minDraftInt(3, len(words)))
-			for _, word := range words {
-				if len(word) >= 4 {
-					likeTerms = append(likeTerms, "%"+word+"%")
-				}
-				if len(likeTerms) == 3 {
-					break
-				}
-			}
-			if len(likeTerms) > 0 {
-				query := db.Select("id", "sku", "name")
-				for _, term := range likeTerms {
-					query = query.Where("LOWER(name) LIKE ?", term)
-				}
-				var product models.Product
-				if err := query.First(&product).Error; err == nil {
-					return EbayDraftMatchPossibleDup, &product.ID, 65, fmt.Sprintf("Title similarity match: %s", product.Name)
-				}
-			}
-		}
+	var product models.Product
+	if err := db.Select("id", "sku", "name").Where("UPPER(sku) = UPPER(?)", sku).First(&product).Error; err == nil {
+		return EbayDraftMatchExact, &product.ID, 100, fmt.Sprintf("Exact SKU match for %s", sku)
 	}
 	return EbayDraftMatchNewUnique, nil, 0, ""
 }
@@ -974,6 +1108,9 @@ func applyEbayImportDraftFilters(query **gorm.DB, filters EbayImportDraftFilters
 	if strings.TrimSpace(filters.Brand) != "" {
 		*query = (*query).Where("LOWER(normalized_brand) = LOWER(?)", strings.TrimSpace(filters.Brand))
 	}
+	if strings.TrimSpace(filters.SourceSite) != "" {
+		*query = (*query).Where("LOWER(source_site) = LOWER(?)", strings.TrimSpace(filters.SourceSite))
+	}
 	if clause, args, ok := EbayDraftReviewStatusClause(filters.AIReviewStatus); ok {
 		*query = (*query).Where(clause, args...)
 	}
@@ -1026,8 +1163,13 @@ func NormalizeEbayImportDraftPayload(raw map[string]any) map[string]any {
 	for key, value := range raw {
 		normalized[key] = value
 	}
-	if isShopifyImportPayload(raw) {
+	sourceSite := normalizeDraftSourceSite(firstLegacyString(raw["site"], raw["source_site"]))
+	shopifyPayload := isShopifyImportPayload(raw) || sourceSite == DraftSourceSiteBas
+	if shopifyPayload {
 		normalizeShopifyImportPayload(normalized, raw)
+		delete(normalized, rawKeyEbayCategory)
+	} else if sourceSite == DraftSourceSiteEbay {
+		delete(normalized, rawKeyBasCategory)
 	}
 
 	productData := legacyMap(raw["_product_data"])
@@ -1065,6 +1207,14 @@ func NormalizeEbayImportDraftPayload(raw map[string]any) map[string]any {
 	setCanonicalString(normalized, "category_breadcrumb", firstLegacyText(
 		raw["category_breadcrumb"], raw["category_leaf"], productData["_shangjia_category"],
 	))
+	// Only eBay payloads receive the eBay-owned key. The shared key remains for
+	// legacy readers, but a BAS payload must never advertise its product_type as
+	// an eBay breadcrumb.
+	if !shopifyPayload {
+		setCanonicalString(normalized, rawKeyEbayCategory, firstLegacyText(
+			raw["category_breadcrumb"], raw["category_leaf"], productData["_shangjia_category"],
+		))
+	}
 	setCanonicalString(normalized, "condition", firstLegacyString(
 		raw["condition"], raw["condition_full"], productData["_shangjia_condition"],
 	))

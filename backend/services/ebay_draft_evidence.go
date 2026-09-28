@@ -23,11 +23,11 @@ func DraftEvidenceFromDraft(draft models.EbayImportDraft) models.EbayMarketEvide
 	raw := decodeRawPayload(draft.RawPayload)
 
 	evidence := models.EbayMarketEvidenceItem{
-		Title:         firstNonEmptyString(draft.NormalizedTitle, draft.TitleRaw),
+		Title:         SanitizeListingTitle(firstNonEmptyString(draft.TitleRaw, draft.NormalizedTitle)),
 		URL:           strings.TrimSpace(draft.SourceURL),
 		PriceValue:    draft.NormalizedPrice,
 		PriceRaw:      strings.TrimSpace(draft.PriceRaw),
-		CategoryPath:  FirstNonEmptyTrimmedStrings(rawStringValue(raw["category_breadcrumb"]), rawStringValue(raw["category_leaf"])),
+		CategoryPath:  draftReviewSourceCategory(draft.SourceSite, raw),
 		Description:   SanitizeListingDescription(draft.DescriptionRaw),
 		Model:         firstNonEmptyString(draft.NormalizedModel, draft.NormalizedMPN, draft.NormalizedPartNumber),
 		Brand:         strings.TrimSpace(draft.NormalizedBrand),
@@ -184,4 +184,47 @@ func isBlankEvidenceListing(item models.EbayMarketEvidenceItem) bool {
 		strings.TrimSpace(item.CategoryPath) == "" &&
 		strings.TrimSpace(item.Description) == "" &&
 		len(item.ItemSpecifics) == 0
+}
+
+// Read the same per-site decision the category picker displays, including an
+// explicit empty value. A BAS collection must never override an eBay choice.
+func draftReviewSourceCategory(site string, raw map[string]any) string {
+	categories := ResolveDraftSourceCategories(site, raw)
+	switch normalizeDraftSourceSite(site) {
+	case DraftSourceSiteEbay:
+		return categories.EbayCategory
+	case DraftSourceSiteBas:
+		return categories.BasCategory
+	default:
+		// Legacy callers without a source site still have scraped evidence; this
+		// is evidence only, not attribution to either source site's UI column.
+		return FirstNonEmptyTrimmedStrings(categories.EbayCategory, categories.BasCategory,
+			rawStringValue(raw["category_breadcrumb"]), rawStringValue(raw["category_leaf"]))
+	}
+}
+
+func buildDraftReviewEvidence(input EbayDraftReviewInput, identifier string) ProductIdentificationEvidence {
+	draft := input.Draft
+	own := DraftEvidenceFromDraft(draft)
+	listings := make([]models.EbayMarketEvidenceItem, 0, len(input.Evidence)+1)
+	if !isBlankEvidenceListing(own) {
+		listings = append(listings, own)
+	}
+	for _, item := range input.Evidence {
+		if own.URL != "" && own.URL == item.URL {
+			continue
+		}
+		listings = append(listings, item)
+	}
+	return ProductIdentificationEvidence{
+		BrandHint:          draft.NormalizedBrand,
+		Model:              firstNonEmptyString(draft.NormalizedModel, identifier),
+		ProductName:        firstNonEmptyString(own.Title, input.ProductName),
+		SKU:                firstNonEmptyString(draft.NormalizedPartNumber, draft.NormalizedMPN),
+		PartNumber:         firstNonEmptyString(draft.NormalizedPartNumber, draft.NormalizedMPN),
+		Listings:           listings,
+		EbayCategoryPath:   own.CategoryPath,
+		SourceSite:         draft.SourceSite,
+		SourceCategoryPath: own.CategoryPath,
+	}
 }

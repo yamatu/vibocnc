@@ -184,6 +184,46 @@ func IsGenericProductType(value string) bool {
 	return genericProductTypes[normalized]
 }
 
+// IsPublishableProductType reports whether a component type read out of a
+// listing is specific enough to become a public category node.
+//
+// It is the counterpart of IsGenericProductType for wording no dictionary entry
+// covers. "EtherNet/IP Coupler Unit" is a real component type; the placeholder
+// vocabulary ("Spare Part"), a part number the model simply repeated
+// ("CJ1W-PA205R") and a sentence are not, and none of those may name a node an
+// administrator then has to clean up.
+func IsPublishableProductType(value string) bool {
+	trimmed := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if trimmed == "" || IsGenericProductType(trimmed) {
+		return false
+	}
+	runes := []rune(trimmed)
+	if len(runes) < 3 || len(runes) > 48 {
+		return false
+	}
+	// A real type name contains at least one word made of letters only. The
+	// placeholder text a misread produces ("CJ1W-PA205R", "24V/5A") does not.
+	for _, word := range strings.Fields(trimmed) {
+		if isLetterOnlyWord(word) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLetterOnlyWord(word string) bool {
+	letters := 0
+	for _, r := range word {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+			letters++
+		default:
+			return false
+		}
+	}
+	return letters >= 3
+}
+
 var genericProductTypes = map[string]bool{
 	"spare part": true, "spare parts": true, "part": true, "parts": true,
 	"component": true, "components": true, "equipment": true,

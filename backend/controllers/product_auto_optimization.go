@@ -26,6 +26,11 @@ type automaticProductOptimizationOptions struct {
 	// the operator just enabled in the admin form: the model number alone may be
 	// unresolved while the operator confirmed the category and identity by hand.
 	PreserveActivation bool
+	// PreserveCategory keeps a category selected by an upstream verified
+	// workflow (for example the eBay AI review). Re-running the deterministic
+	// model classifier must not replace that verified choice with a broader or
+	// unrelated family match.
+	PreserveCategory bool
 }
 
 func optimizeProductAfterSave(db *gorm.DB, productID uint) (automaticProductOptimizationResult, error) {
@@ -92,25 +97,28 @@ func optimizeProductAfterSaveWithCategoryMap(db *gorm.DB, productID uint, catByS
 	// Automatic optimization shares the same publication gate as imports and
 	// AI SEO jobs. A slug-only lookup could silently route an unknown model into
 	// a generic node, so resolve the active leaf from the complete brand/type
-	// path instead.
-	if !services.IsConfirmedProductCategory(inference, model) {
-		_, categoryChanged := updateData["category_id"]
-		if autoClassificationForcesInactive(product.IsActive, categoryChanged, preserveActivation) {
-			updateData["is_active"] = false
-			product.IsActive = false
-		}
-	} else {
-		categoryID, categoryErr := services.ResolveExistingCategoryForInference(db, inference, product.Category.Name)
-		if categoryErr != nil || categoryID == 0 {
-			// A recognized model is still not publishable unless the active
-			// taxonomy contains a compatible leaf. Keep the record for review.
-			if autoClassificationForcesInactive(product.IsActive, false, preserveActivation) {
+	// path instead. An upstream verified workflow can explicitly preserve its
+	// category; this is what keeps an eBay AI classification authoritative.
+	if !opts.PreserveCategory {
+		if !services.IsConfirmedProductCategory(inference, model) {
+			_, categoryChanged := updateData["category_id"]
+			if autoClassificationForcesInactive(product.IsActive, categoryChanged, preserveActivation) {
 				updateData["is_active"] = false
 				product.IsActive = false
 			}
-		} else if product.CategoryID == 0 || product.CategoryID != categoryID {
-			updateData["category_id"] = categoryID
-			product.CategoryID = categoryID
+		} else {
+			categoryID, categoryErr := services.ResolveExistingCategoryForInference(db, inference, product.Category.Name)
+			if categoryErr != nil || categoryID == 0 {
+				// A recognized model is still not publishable unless the active
+				// taxonomy contains a compatible leaf. Keep the record for review.
+				if autoClassificationForcesInactive(product.IsActive, false, preserveActivation) {
+					updateData["is_active"] = false
+					product.IsActive = false
+				}
+			} else if product.CategoryID == 0 || product.CategoryID != categoryID {
+				updateData["category_id"] = categoryID
+				product.CategoryID = categoryID
+			}
 		}
 	}
 

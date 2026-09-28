@@ -65,7 +65,8 @@ func SetupRoutes(r *gin.Engine) {
 	integrationTokenController := &controllers.IntegrationTokenController{}
 	productProfileDraftController := &controllers.ProductProfileDraftController{}
 	aiAgentController := &controllers.AIAgentController{}
-	services.StartEbayAutoImportDaemon(ebayImportDraftController.ConfirmDraftFn())
+	// eBay drafts are never auto-imported. AI optimization queues a proposal;
+	// the administrator explicitly approves the final product import.
 	services.StartProductCatalogImportDaemon(db)
 
 	// Health check endpoint
@@ -343,6 +344,10 @@ func SetupRoutes(r *gin.Engine) {
 				ebayImportDrafts.POST("/bulk-confirm/tasks/:taskId/pause", ebayImportDraftController.PauseBulkConfirmTask)
 				ebayImportDrafts.POST("/bulk-confirm/tasks/:taskId/resume", ebayImportDraftController.ResumeBulkConfirmTask)
 				ebayImportDrafts.POST("/bulk-recheck", ebayImportDraftController.BulkRecheck)
+				ebayImportDrafts.POST("/reopen-orphaned", ebayImportDraftController.ReopenOrphaned)
+				// Registered before "/:id" for the same reason as the ai-review routes
+				// below: gin matches in registration order.
+				ebayImportDrafts.GET("/source-categories", ebayImportDraftController.SourceCategories)
 
 				// Automated AI review. These are registered before "/:id" because gin
 				// matches in registration order and "/:id" would otherwise capture

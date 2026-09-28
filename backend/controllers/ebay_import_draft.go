@@ -423,6 +423,7 @@ func (ec *EbayImportDraftController) List(c *gin.Context) {
 		Status:         c.Query("status"),
 		MatchStatus:    c.Query("match_status"),
 		Brand:          c.Query("brand"),
+		SourceSite:     c.Query("source_site"),
 		AIReviewStatus: c.Query("ai_review_status"),
 	})
 	if err != nil {
@@ -439,10 +440,12 @@ func (ec *EbayImportDraftController) SelectionIDs(c *gin.Context) {
 		return
 	}
 	ids, err := services.ListEbayImportDraftIDs(config.GetDB(), services.EbayImportDraftFilters{
-		Search:      req.Search,
-		Status:      req.Status,
-		MatchStatus: req.MatchStatus,
-		Brand:       req.Brand,
+		Search:         req.Search,
+		Status:         req.Status,
+		MatchStatus:    req.MatchStatus,
+		Brand:          req.Brand,
+		SourceSite:     req.SourceSite,
+		AIReviewStatus: req.AIReviewStatus,
 	}, req.EligibleOnly)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to fetch draft selection", Error: err.Error()})
@@ -516,72 +519,80 @@ func (ec *EbayImportDraftController) Update(c *gin.Context) {
 		return
 	}
 
-	updates := map[string]any{}
-	if req.NormalizedTitle != nil {
-		updates["normalized_title"] = strings.TrimSpace(*req.NormalizedTitle)
+	if draft.AIReviewStatus == services.EbayAIReviewQueued || draft.AIReviewStatus == services.EbayAIReviewProcessing {
+		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "AI optimization is running; wait before editing the draft", Error: "review_running"})
+		return
 	}
-	if req.NormalizedBrand != nil {
-		updates["normalized_brand"] = services.CanonicalBrandName(*req.NormalizedBrand)
+	updates, editErr := services.DraftEditableUpdates(db, draft, req)
+	if editErr != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: editErr.Error(), Error: "invalid_draft_edit"})
+		return
 	}
-	if req.NormalizedModel != nil {
-		updates["normalized_model"] = services.NormalizeProductModel(*req.NormalizedModel)
-	}
-	if req.NormalizedPartNumber != nil {
-		updates["normalized_part_number"] = services.NormalizeProductModel(*req.NormalizedPartNumber)
-	}
-	if req.NormalizedMPN != nil {
-		updates["normalized_mpn"] = services.NormalizeProductModel(*req.NormalizedMPN)
-	}
-	if req.NormalizedPrice != nil {
-		updates["normalized_price"] = *req.NormalizedPrice
-	}
-	if req.SuggestedCategoryID != nil {
-		updates["suggested_category_id"] = req.SuggestedCategoryID
-		var category models.Category
-		if err := db.Select("id", "name", "is_active").First(&category, *req.SuggestedCategoryID).Error; err == nil && category.IsActive {
-			updates["suggested_category_name"] = category.Name
-		} else {
-			updates["taxonomy_status"] = services.EbayDraftTaxonomyNeedsReview
-		}
-	}
-	if req.ImportAction != nil {
-		updates["import_action"] = strings.TrimSpace(*req.ImportAction)
-	}
-	if req.MetaTitle != nil {
-		updates["meta_title"] = strings.TrimSpace(*req.MetaTitle)
-	}
-	if req.MetaDescription != nil {
-		updates["meta_description"] = strings.TrimSpace(*req.MetaDescription)
-	}
-	if req.MetaKeywords != nil {
-		updates["meta_keywords"] = strings.TrimSpace(*req.MetaKeywords)
-	}
-	if req.DisableAutoSEO != nil {
-		updates["disable_auto_seo"] = *req.DisableAutoSEO
-	}
-	if req.ReviewNote != nil {
-		updates["review_note"] = strings.TrimSpace(*req.ReviewNote)
-	}
-	if req.Status != nil {
-		updates["status"] = strings.TrimSpace(*req.Status)
-	}
-	if len(updates) == 0 {
+	// The per-site categories live in the raw payload, not in a column, so they
+	// are written through the same helper the importers use and are attributed
+	// to the site they belong to. A request that only carries them is not an
+	// empty request.
+	if len(updates) == 0 && req.EbayCategory == nil && req.BasCategory == nil {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "No fields to update", Error: "no_updates"})
 		return
 	}
 
-	if err := db.Model(&models.EbayImportDraft{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update draft", Error: err.Error()})
-		return
+	if len(updates) > 0 {
+		if err := db.Model(&models.EbayImportDraft{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update draft", Error: err.Error()})
+			return
+		}
+	}
+	for _, sourceCategory := range []struct {
+		site  string
+		value *string
+		label string
+	}{
+		{site: services.DraftSourceSiteEbay, value: req.EbayCategory, label: "eBay"},
+		{site: services.DraftSourceSiteBas, value: req.BasCategory, label: "BAS"},
+	} {
+		if sourceCategory.value == nil {
+			continue
+		}
+		if err := services.SetDraftSourceCategory(db, &draft, sourceCategory.site, *sourceCategory.value); err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{
+				Success: false,
+				Message: "Failed to record the " + sourceCategory.label + " category",
+				Error:   err.Error(),
+			})
+			return
+		}
 	}
 	_ = db.First(&draft, id).Error
-	_ = services.RecheckEbayImportDraftWithContext(c.Request.Context(), db, &draft)
+	// Saving copy or image preferences must not replace the AI classification.
 	res, err := services.GetEbayImportDraftDetail(db, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Draft updated but failed to reload", Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Draft updated successfully", Data: res})
+}
+
+// SourceCategories handles GET /admin/ebay-import-drafts/source-categories.
+//
+// It returns the category vocabulary the stored drafts of one source site carry,
+// so the drafts page can offer a picker built from real listings: an eBay
+// taxonomy path is not something the storefront's own category tree can supply.
+func (ec *EbayImportDraftController) SourceCategories(c *gin.Context) {
+	site := strings.TrimSpace(c.Query("site"))
+	if site == "" {
+		site = services.DraftSourceSiteEbay
+	}
+	options, err := services.ListDraftSourceCategories(config.GetDB(), site)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to load source categories", Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: "Source categories retrieved successfully",
+		Data:    gin.H{"site": site, "options": options},
+	})
 }
 
 func (ec *EbayImportDraftController) Recheck(c *gin.Context) {
@@ -629,7 +640,7 @@ func (ec *EbayImportDraftController) Confirm(c *gin.Context) {
 		}
 	}
 
-	result, statusCode, err := ec.confirmDraftImport(c.Request.Context(), id, req.Action, currentAdminUserID(c))
+	result, statusCode, err := ec.confirmDraftImportWithImages(c.Request.Context(), id, req.Action, currentAdminUserID(c), req.IncludeImages)
 	if err != nil {
 		c.JSON(statusCode, models.APIResponse{Success: false, Message: err.Error(), Error: draftErrorCode(statusCode, err)})
 		return
@@ -647,7 +658,7 @@ func (ec *EbayImportDraftController) BulkConfirm(c *gin.Context) {
 	userID := currentAdminUserID(c)
 
 	confirmFn := func(id uint, action string, uid *uint) (int, string, error) {
-		return ec.confirmDraftForBackground(context.Background(), id, action, uid)
+		return ec.confirmDraftForBackgroundWithImages(context.Background(), id, action, uid, req.IncludeImages)
 	}
 
 	ids := normalizeBulkDraftIDs(req.IDs)
@@ -709,9 +720,16 @@ func (ec *EbayImportDraftController) ConfirmDraftFn() services.EbayDraftConfirmF
 }
 
 func (ec *EbayImportDraftController) confirmDraftForBackground(ctx context.Context, id uint, action string, userID *uint) (int, string, error) {
+	return ec.confirmDraftForBackgroundWithImages(ctx, id, action, userID, nil)
+}
+
+func (ec *EbayImportDraftController) confirmDraftForBackgroundWithImages(ctx context.Context, id uint, action string, userID *uint, includeImages *bool) (int, string, error) {
+	if err := services.SetEbayDraftImagePreference(config.GetDB(), id, includeImages); err != nil {
+		return http.StatusInternalServerError, "", err
+	}
 	var draft models.EbayImportDraft
 	if err := config.GetDB().Select(
-		"id", "status", "taxonomy_status", "suggested_category_id", "match_status", "normalized_model", "normalized_part_number", "normalized_mpn",
+		"id", "status", "ai_review_status", "taxonomy_status", "suggested_category_id", "match_status", "normalized_model", "normalized_part_number", "normalized_mpn",
 	).First(&draft, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return http.StatusNotFound, "", errors.New("Draft not found")
@@ -720,6 +738,10 @@ func (ec *EbayImportDraftController) confirmDraftForBackground(ctx context.Conte
 	}
 	if draft.Status == services.EbayDraftStatusImported || draft.Status == services.EbayDraftStatusSkipped {
 		return http.StatusOK, "already_processed", nil
+	}
+	if draft.AIReviewStatus == services.EbayAIReviewReady || draft.AIReviewStatus == services.EbayAIReviewApproved || draft.AIReviewStatus == services.EbayAIReviewQueued || draft.AIReviewStatus == services.EbayAIReviewProcessing {
+		result, statusCode, err := ec.confirmDraftImport(ctx, id, action, userID)
+		return statusCode, draftConfirmSkipReason(result), err
 	}
 	if strings.TrimSpace(draft.NormalizedModel) == "" && strings.TrimSpace(draft.NormalizedPartNumber) == "" && strings.TrimSpace(draft.NormalizedMPN) == "" {
 		return http.StatusOK, "missing_identifier", nil
@@ -737,6 +759,17 @@ func (ec *EbayImportDraftController) confirmDraftForBackground(ctx context.Conte
 	}
 	result, statusCode, err := ec.confirmDraftImport(ctx, id, action, userID)
 	return statusCode, draftConfirmSkipReason(result), err
+}
+
+// ReopenOrphaned repairs historical imported/skipped rows whose product was
+// deleted outside this draft flow. It does not delete or rewrite source data.
+func (ec *EbayImportDraftController) ReopenOrphaned(c *gin.Context) {
+	reopened, err := services.ReopenOrphanedImportedEbayDrafts(config.GetDB())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to reopen orphaned drafts", Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Orphaned drafts reopened", Data: gin.H{"reopened": reopened}})
 }
 
 func (ec *EbayImportDraftController) BulkRecheck(c *gin.Context) {
@@ -806,24 +839,34 @@ func (ec *EbayImportDraftController) BulkDelete(c *gin.Context) {
 // not a fixed set, so this is the only representation that stays correct (and
 // affordable) for a review queue with tens of thousands of rows.
 func (ec *EbayImportDraftController) bulkDeleteByFilter(c *gin.Context, req models.EbayImportDraftBulkDeleteRequest) {
-	statuses := normalizeDraftStatusFilter(req.Statuses, req.Status)
-	if len(statuses) == 0 {
-		// Without a status bound this would empty the entire review queue from a
-		// single click, so require the caller to be explicit.
+	filters := services.EbayImportDraftFilters{
+		Search:         req.Search,
+		Status:         req.Status,
+		MatchStatus:    req.MatchStatus,
+		Brand:          req.Brand,
+		SourceSite:     req.SourceSite,
+		AIReviewStatus: req.AIReviewStatus,
+	}
+	if !services.HasEbayImportDraftDeleteScope(filters) {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
-			Message: "Deleting all selected drafts requires at least one status filter",
+			Message: "为安全起见，按筛选条件批量删除前必须先选择状态、来源、匹配、品牌、AI 状态或搜索条件",
+			Error:   "delete_filter_required",
+		})
+		return
+	}
+
+	statuses := normalizeDraftStatusFilter(req.Statuses, req.Status)
+	if len(statuses) == 0 {
+		c.JSON(http.StatusBadRequest, models.APIResponse{
+			Success: false,
+			Message: "Deleting all selected drafts requires at least one valid status",
 			Error:   "status_filter_required",
 		})
 		return
 	}
 
-	matched, deleted, err := services.DeleteEbayImportDraftsByFilter(config.GetDB(), services.EbayImportDraftFilters{
-		Search:      req.Search,
-		Status:      req.Status,
-		MatchStatus: req.MatchStatus,
-		Brand:       req.Brand,
-	}, statuses)
+	matched, deleted, err := services.DeleteEbayImportDraftsByFilter(config.GetDB(), filters, statuses)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to delete drafts", Error: err.Error()})
 		return
@@ -841,10 +884,13 @@ func (ec *EbayImportDraftController) bulkDeleteByFilter(c *gin.Context, req mode
 // Unknown values are dropped so a typo cannot silently widen the delete.
 func normalizeDraftStatusFilter(statuses []string, single string) []string {
 	valid := map[string]bool{
-		services.EbayDraftStatusPending:  true,
-		services.EbayDraftStatusImported: true,
-		services.EbayDraftStatusSkipped:  true,
-		services.EbayDraftStatusFailed:   true,
+		services.EbayDraftStatusPending:     true,
+		services.EbayDraftStatusImported:    true,
+		services.EbayDraftStatusSkipped:     true,
+		services.EbayDraftStatusFailed:      true,
+		services.EbayDraftStatusNeedsReview: true,
+		services.EbayDraftStatusReviewed:    true,
+		services.EbayDraftStatusConfirmed:   true,
 	}
 	out := make([]string, 0, len(statuses)+1)
 	seen := map[string]bool{}
@@ -946,6 +992,13 @@ func markEbayDraftAsDuplicate(db *gorm.DB, draft models.EbayImportDraft, existin
 }
 
 func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id uint, requestedAction string, userID *uint) (gin.H, int, error) {
+	return ec.confirmDraftImportWithImages(ctx, id, requestedAction, userID, nil)
+}
+
+func (ec *EbayImportDraftController) confirmDraftImportWithImages(ctx context.Context, id uint, requestedAction string, userID *uint, includeImages *bool) (gin.H, int, error) {
+	if err := services.SetEbayDraftImagePreference(config.GetDB(), id, includeImages); err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
 	db := config.GetDB()
 
 	var draft models.EbayImportDraft
@@ -956,6 +1009,9 @@ func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id 
 		return nil, http.StatusInternalServerError, err
 	}
 
+	if err := services.PrepareEbayDraftForManualImport(db, &draft); err != nil {
+		return nil, http.StatusConflict, err
+	}
 	classification, err := services.RecheckEbayImportDraftAndClassifyWithContext(ctx, db, &draft)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -1010,6 +1066,9 @@ func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id 
 			// existing inactive/publication decision.
 			productReq.IsActive = false
 		}
+		if draft.ExcludeSourceImages && draft.MatchedProduct != nil {
+			services.PreserveExistingProductImages(&productReq, *draft.MatchedProduct)
+		}
 		upsertResult, upsertErr = services.UpdateProductFromRequest(db, *draft.MatchedProductID, productReq)
 	} else {
 		upsertResult, upsertErr = services.CreateProductFromRequest(db, productReq)
@@ -1046,7 +1105,7 @@ func (ec *EbayImportDraftController) confirmDraftImport(ctx context.Context, id 
 	}
 	confirmTime := time.Now().UTC()
 
-	if _, err := optimizeProductAfterSave(db, upsertResult.Product.ID); err != nil {
+	if _, err := optimizeProductAfterSaveWithCategoryMap(db, upsertResult.Product.ID, nil, automaticProductOptimizationOptions{PreserveActivation: true, PreserveCategory: true}); err != nil {
 		_ = db.Model(&models.EbayImportDraft{}).Where("id = ?", draft.ID).Updates(map[string]any{
 			"status":         services.EbayDraftStatusFailed,
 			"failure_reason": err.Error(),

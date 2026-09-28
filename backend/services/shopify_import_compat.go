@@ -65,6 +65,9 @@ func normalizeShopifyImportPayload(normalized map[string]any, raw map[string]any
 	setCanonicalString(normalized, "part_number", firstLegacyString(raw["part_number"], shopifyTagValue(tags, "part"), shopifyTagValue(tags, "part_number"), sku))
 	setCanonicalString(normalized, "condition", firstLegacyString(raw["condition"], shopifyCondition(product, variant), shopifyTagValue(tags, "condition")))
 	setCanonicalString(normalized, "category_breadcrumb", firstLegacyString(raw["category_breadcrumb"], raw["collection_name"], product["product_type"]))
+	// The BAS store's collection also gets its own key, so it can never be read
+	// out of the same field as an eBay category breadcrumb.
+	setCanonicalString(normalized, rawKeyBasCategory, firstLegacyString(raw["collection_name"], product["product_type"], raw["category_breadcrumb"]))
 	setCanonicalString(normalized, "collection_handle", firstLegacyString(raw["collection_handle"]))
 	setCanonicalString(normalized, "published_at", firstLegacyString(raw["published_at"], product["published_at"]))
 	setCanonicalString(normalized, "created_at", firstLegacyString(raw["created_at"], product["created_at"]))

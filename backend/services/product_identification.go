@@ -45,6 +45,10 @@ type ProductIdentificationEvidence struct {
 	WebEvidence []ProductWebEvidence
 	// EbayCategoryPath is the most common category path across listings.
 	EbayCategoryPath string
+	// SourceSite/SourceCategoryPath preserve whether the evidence came from eBay
+	// or B-Automation; the model must not confuse the two taxonomies.
+	SourceSite         string
+	SourceCategoryPath string
 }
 
 // ProductProfileSpec is one parameter with the evidence it came from.
@@ -157,13 +161,15 @@ func BuildIdentificationPayload(evidence ProductIdentificationEvidence) string {
 	}
 
 	payload := map[string]any{
-		"model":              strings.TrimSpace(evidence.Model),
-		"brand_hint":         strings.TrimSpace(evidence.BrandHint),
-		"product_name":       strings.TrimSpace(evidence.ProductName),
-		"sku":                strings.TrimSpace(evidence.SKU),
-		"part_number":        strings.TrimSpace(evidence.PartNumber),
-		"ebay_category_path": strings.TrimSpace(evidence.EbayCategoryPath),
-		"listings":           listings,
+		"model":                strings.TrimSpace(evidence.Model),
+		"brand_hint":           strings.TrimSpace(evidence.BrandHint),
+		"product_name":         strings.TrimSpace(evidence.ProductName),
+		"sku":                  strings.TrimSpace(evidence.SKU),
+		"part_number":          strings.TrimSpace(evidence.PartNumber),
+		"ebay_category_path":   strings.TrimSpace(evidence.EbayCategoryPath),
+		"source_site":          strings.TrimSpace(evidence.SourceSite),
+		"source_category_path": strings.TrimSpace(evidence.SourceCategoryPath),
+		"listings":             listings,
 	}
 	if len(webEvidence) > 0 {
 		payload["manufacturer_evidence"] = webEvidence
@@ -202,7 +208,10 @@ func IdentifyProduct(ctx context.Context, evidence ProductIdentificationEvidence
 		return profile, nil
 	}
 
-	parsed.Model = model
+	// Keep an explicit model read by the provider so a speculative title
+	// candidate can be corrected. If the provider omitted it, fall back to the
+	// identifier supplied to the prompt (legacy clients commonly omit this key).
+	parsed.Model = NormalizeProductModel(firstNonEmptyString(parsed.Model, model))
 	parsed.EvidenceCount = len(evidence.Listings)
 	parsed.SourceURLs = collectedEvidenceURLs(evidence)
 	validateProductProfile(&parsed, evidence)

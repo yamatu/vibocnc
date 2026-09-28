@@ -220,6 +220,18 @@ export interface EbayImportDraftListItem {
   suggested_category_name: string;
   suggested_part_type: string;
   taxonomy_status: string;
+  category_mode?: 'source' | 'mixed' | string;
+  /**
+   * eBay's own category breadcrumb for this listing. Empty for a row imported
+   * from another site. It is a separate field from bas_category so the two
+   * source sites' categories can never be rendered as one value.
+   */
+  ebay_category?: string;
+  /**
+   * The b-automationservice (BAS) store's collection / product type. Empty for
+   * an eBay row.
+   */
+  bas_category?: string;
   match_status: string;
   match_score: number;
   match_reason: string;
@@ -245,6 +257,9 @@ export interface EbayImportDraftListItem {
   proposed_category_name?: string;
   proposed_category_id?: number;
   proposed_part_type?: string;
+  proposed_brand?: string;
+  proposed_model?: string;
+  proposed_category_created?: boolean;
   matched_product?: {
     id: number;
     sku: string;
@@ -285,6 +300,24 @@ export interface MediaAssetSummary {
 }
 
 export interface EbayImportDraftDetail {
+  normalized_description?: string;
+  normalized_short_description?: string;
+  exclude_source_images?: boolean;
+  proposed_meta_keywords?: string;
+  ai_review_status?: string;
+  ai_review_error?: string;
+  proposed_name?: string;
+  proposed_brand?: string;
+  proposed_model?: string;
+  proposed_part_type?: string;
+  proposed_category_id?: number;
+  proposed_category_name?: string;
+  proposed_category_created?: boolean;
+  proposed_description?: string;
+  proposed_short_description?: string;
+  proposed_meta_title?: string;
+  proposed_meta_description?: string;
+
   id: number;
   source_type: string;
   source_site: string;
@@ -306,6 +339,18 @@ export interface EbayImportDraftDetail {
   suggested_category_name: string;
   suggested_part_type: string;
   taxonomy_status: string;
+  category_mode?: 'source' | 'mixed' | string;
+  /**
+   * eBay's own category breadcrumb for this listing. Empty for a row imported
+   * from another site. It is a separate field from bas_category so the two
+   * source sites' categories can never be rendered as one value.
+   */
+  ebay_category?: string;
+  /**
+   * The b-automationservice (BAS) store's collection / product type. Empty for
+   * an eBay row.
+   */
+  bas_category?: string;
   match_status: string;
   matched_product_id?: number;
   match_score: number;
@@ -333,6 +378,9 @@ export interface EbayImportDraftDetail {
 }
 
 export interface EbayImportDraftUpdateRequest {
+  normalized_description?: string;
+  normalized_short_description?: string;
+  include_images?: boolean;
   normalized_title?: string;
   normalized_brand?: string;
   normalized_model?: string;
@@ -347,6 +395,27 @@ export interface EbayImportDraftUpdateRequest {
   disable_auto_seo?: boolean;
   review_note?: string;
   status?: string;
+  /**
+   * The category the *source* site assigned to the listing, set on its own.
+   *
+   * It is not `suggested_category_id`, which is the category this store
+   * publishes under: eBay's taxonomy and the BAS store's collections are not
+   * comparable, so each is written through its own field and one can never
+   * overwrite the other. An empty string clears the value.
+   */
+  ebay_category?: string;
+  bas_category?: string;
+}
+
+/**
+ * One selectable category for a source site, with how many drafts carry it.
+ *
+ * The picker is built from the stored drafts because an eBay taxonomy path
+ * cannot be derived from the storefront's own category tree.
+ */
+export interface EbaySourceCategoryOption {
+  value: string;
+  count: number;
 }
 
 export interface EbayBulkConfirmItemResult {

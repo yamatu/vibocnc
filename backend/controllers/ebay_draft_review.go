@@ -83,8 +83,8 @@ func (rc *EbayDraftReviewController) StartReview(c *gin.Context) {
 		createdBy = *userID
 	}
 	job, skipped, err := services.StartEbayDraftReviewJobWithOptions(ids, createdBy, client, services.EbayDraftReviewJobOptions{
-		AutoPublish: req.AutoPublish,
-		Publisher:   services.PublishReadyDraft,
+		AutoPublish:  false,
+		CategoryMode: req.CategoryMode,
 	})
 	if err != nil {
 		// The failure reason is the whole point of this response: the UI can only
@@ -139,6 +139,9 @@ func resolveReviewDraftIDs(req models.EbayImportDraftAIReviewRequest) ([]uint, e
 	}
 	if brand := strings.TrimSpace(req.Brand); brand != "" {
 		query = query.Where("normalized_brand = ?", brand)
+	}
+	if sourceSite := strings.TrimSpace(req.SourceSite); sourceSite != "" {
+		query = query.Where("LOWER(source_site) = LOWER(?)", sourceSite)
 	}
 	if search := strings.TrimSpace(req.Search); search != "" {
 		like := "%" + search + "%"
@@ -298,14 +301,30 @@ func (ec *EbayImportDraftController) ApproveReview(c *gin.Context) {
 		return
 	}
 	ids := normalizeBulkDraftIDs(req.IDs)
+	if len(ids) == 0 && req.AllReadyNewUnique {
+		query := config.GetDB().Model(&models.EbayImportDraft{}).
+			Where("ai_review_status = ? AND match_status = ?", services.EbayAIReviewReady, services.EbayDraftMatchNewUnique).
+			Where("proposed_category_id IS NOT NULL AND proposed_category_id > 0").
+			Where("status NOT IN ?", []string{services.EbayDraftStatusImported, services.EbayDraftStatusSkipped})
+		if sourceSite := strings.TrimSpace(req.SourceSite); sourceSite != "" {
+			query = query.Where("LOWER(source_site) = LOWER(?)", sourceSite)
+		}
+		if categoryMode := strings.TrimSpace(req.CategoryMode); categoryMode != "" {
+			query = query.Where("category_mode = ?", services.NormalizeDraftCategoryMode(categoryMode))
+		}
+		if err := query.Order("id ASC").Limit(services.EbayReviewMaxItems).Pluck("id", &ids).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to select AI-optimized new drafts", Error: err.Error()})
+			return
+		}
+	}
 	if len(ids) == 0 {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "No drafts selected", Error: "no_drafts"})
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "No AI-optimized new drafts are ready to publish", Error: "no_ready_new_unique"})
 		return
 	}
 
 	userID := currentAdminUserID(c)
 	confirmFn := func(id uint, action string, uid *uint) (int, string, error) {
-		return ec.confirmReviewedDraft(context.Background(), id, action, uid)
+		return ec.confirmReviewedDraftWithImages(context.Background(), id, action, uid, req.IncludeImages)
 	}
 	snapshot, err := services.StartEbayBulkConfirmTask(ids, req.Action, userID, confirmFn)
 	if err != nil {
@@ -334,6 +353,10 @@ func (ec *EbayImportDraftController) RegisterAutoPublishImport() {
 // the same validation, duplicate handling and product upsert as a manually
 // confirmed one.
 func (ec *EbayImportDraftController) confirmReviewedDraft(ctx context.Context, id uint, action string, userID *uint) (int, string, error) {
+	return ec.confirmReviewedDraftWithImages(ctx, id, action, userID, nil)
+}
+
+func (ec *EbayImportDraftController) confirmReviewedDraftWithImages(ctx context.Context, id uint, action string, userID *uint, includeImages *bool) (int, string, error) {
 	db := config.GetDB()
 	var draft models.EbayImportDraft
 	if err := db.First(&draft, id).Error; err != nil {
@@ -342,15 +365,12 @@ func (ec *EbayImportDraftController) confirmReviewedDraft(ctx context.Context, i
 	if draft.Status == services.EbayDraftStatusImported || draft.Status == services.EbayDraftStatusSkipped {
 		return http.StatusOK, "already_processed", nil
 	}
-	if draft.AIReviewStatus != services.EbayAIReviewReady {
+	if draft.AIReviewStatus != services.EbayAIReviewReady && draft.AIReviewStatus != services.EbayAIReviewApproved {
 		// Without a proposal there is nothing approved to publish. Such a draft
 		// stays for a human, matching the review pass's own refusal to publish.
 		return http.StatusOK, "not_ready", nil
 	}
-	if err := services.ApplyDraftReviewToDraft(db, &draft); err != nil {
-		return http.StatusInternalServerError, "", err
-	}
-	result, statusCode, err := ec.confirmDraftImport(ctx, id, action, userID)
+	result, statusCode, err := ec.confirmDraftImportWithImages(ctx, id, action, userID, includeImages)
 	return statusCode, draftConfirmSkipReason(result), err
 }
 

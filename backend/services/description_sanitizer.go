@@ -45,7 +45,8 @@ var (
 	// malformed rather than well-formed markup.
 	descriptionCSSLeak = regexp.MustCompile(`(?i)\b(?:mso-[a-z-]+|font-family|font-size|line-height|text-align|background-color|margin|padding|border|color|display|width|height)\s*:\s*[^;{}\n]+;?`)
 
-	descriptionBlankLines = regexp.MustCompile(`\n{3,}`)
+	descriptionMarkdownHeading = regexp.MustCompile(`(?m)^#{1,6}[ \t]+`)
+	descriptionBlankLines      = regexp.MustCompile(`\n{3,}`)
 	// RE2 spells unicode escapes as \x{...}, not \u....
 	descriptionSpaces = regexp.MustCompile(`[ \t\f\v\x{00a0}\x{2000}-\x{200b}\x{2028}\x{2029}\x{3000}]{2,}`)
 )
@@ -132,6 +133,7 @@ func SanitizeListingDescription(raw string) string {
 	})
 
 	text = descriptionCSSLeak.ReplaceAllString(text, " ")
+	text = descriptionMarkdownHeading.ReplaceAllString(text, "")
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 
