@@ -372,21 +372,22 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             )}
                           </span>
 
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-stretch gap-2">
                             <Link
                               href={href(`/products/${toProductPathId(product.sku)}`)}
-                              className="site-secondary-action h-9 w-9"
+                              className="site-secondary-action w-9 flex-shrink-0"
                               title={`View ${product.name} details`}
+                              aria-label={`View details for ${product.name}`}
                             >
                               <EyeIcon className="h-5 w-5" />
                             </Link>
                             {hasProductPrice(product) && (
                               <button
                                 onClick={() => handleAddToCart(product)}
-                                className="site-primary-action px-3 py-2 text-sm"
+                                className="site-primary-action flex-1 px-3 py-2 text-sm"
                                 title={`Add ${product.name} to cart`}
                               >
-                                <ShoppingCartIcon className="h-4 w-4 mr-1" />
+                                <ShoppingCartIcon className="h-4 w-4 mr-1 flex-shrink-0" />
                                 {t('common.addToCart')}
                               </button>
                             )}

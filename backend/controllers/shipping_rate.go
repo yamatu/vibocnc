@@ -79,7 +79,41 @@ func (sc *ShippingRateController) PublicCountries(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to fetch countries", Error: err.Error()})
 		return
 	}
+	list = mergeCountries(list, freeShippingPublicCountries(db))
+	for i := range list {
+		list[i].CountryName = services.EnglishCountryName(list[i].CountryCode, list[i].CountryName)
+	}
+	sort.SliceStable(list, func(i, j int) bool {
+		return strings.ToLower(list[i].CountryName) < strings.ToLower(list[j].CountryName)
+	})
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: list})
+}
+
+// freeShippingPublicCountries makes free-shipping countries selectable even without a rate
+// template, still honouring the selling-country whitelist when one is configured.
+func freeShippingPublicCountries(db *gorm.DB) []services.ShippingCountryPublic {
+	var free []models.ShippingFreeSetting
+	if err := db.Where("free_shipping_enabled = ?", true).Find(&free).Error; err != nil || len(free) == 0 {
+		return nil
+	}
+	var allowed []models.ShippingAllowedCountry
+	db.Find(&allowed)
+	whitelist := map[string]bool{}
+	for _, a := range allowed {
+		whitelist[a.CountryCode] = true
+	}
+	out := make([]services.ShippingCountryPublic, 0, len(free))
+	for _, f := range free {
+		if len(whitelist) > 0 && !whitelist[f.CountryCode] {
+			continue
+		}
+		out = append(out, services.ShippingCountryPublic{
+			CountryCode: f.CountryCode,
+			CountryName: services.EnglishCountryName(f.CountryCode, f.CountryName),
+			Currency:    "USD",
+		})
+	}
+	return out
 }
 
 // Public: GET /api/v1/public/shipping/quote?country=US&weight_kg=12.3
@@ -108,6 +142,16 @@ func (sc *ShippingRateController) PublicQuote(c *gin.Context) {
 		weight = v
 	}
 	db := config.GetDB()
+	if services.IsFreeShippingCountry(db, cc) {
+		c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: services.ShippingQuoteResult{
+			CountryCode:   services.NormalizeCountryCode(cc),
+			Currency:      "USD",
+			WeightKg:      weight,
+			BillingWeight: weight,
+			Source:        "free_shipping",
+		}})
+		return
+	}
 	var (
 		q   services.ShippingQuoteResult
 		err error
@@ -155,13 +199,6 @@ func (sc *ShippingRateController) PublicQuote(c *gin.Context) {
 		}
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Failed to calculate shipping", Error: err.Error()})
 		return
-	}
-	// Check if country has free shipping enabled; if so, override shipping fee to $0
-	if services.IsFreeShippingCountry(db, cc) {
-		q.ShippingFee = 0
-		q.BaseQuote = 0
-		q.AdditionalFee = 0
-		q.Source = "free_shipping"
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: q})
 }
@@ -224,31 +261,62 @@ func (sc *ShippingRateController) AdminList(c *gin.Context) {
 	}
 
 	var tpls []models.ShippingTemplate
-	if err := query.Order("country_name ASC").Find(&tpls).Error; err != nil {
+	if err := query.Preload("WeightBrackets").Preload("QuoteSurcharges").Find(&tpls).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to list templates", Error: err.Error()})
 		return
 	}
 
 	out := make([]gin.H, 0, len(tpls))
 	for _, t := range tpls {
-		var wc int64
-		var qc int64
-		db.Model(&models.ShippingWeightBracket{}).Where("template_id = ?", t.ID).Count(&wc)
-		db.Model(&models.ShippingQuoteSurcharge{}).Where("template_id = ?", t.ID).Count(&qc)
-		out = append(out, gin.H{
+		item := gin.H{
 			"id":               t.ID,
 			"country_code":     t.CountryCode,
-			"country_name":     t.CountryName,
+			"country_name":     services.EnglishCountryName(t.CountryCode, t.CountryName),
 			"currency":         t.Currency,
 			"is_active":        t.IsActive,
-			"weight_brackets":  wc,
-			"quote_surcharges": qc,
+			"weight_brackets":  len(t.WeightBrackets),
+			"quote_surcharges": len(t.QuoteSurcharges),
+			"pricing_mode":     "brackets",
 			"created_at":       t.CreatedAt,
 			"updated_at":       t.UpdatedAt,
-		})
+		}
+		if rate, ok := services.PerKgRateFor(t.WeightBrackets); ok && len(t.QuoteSurcharges) == 0 {
+			item["pricing_mode"] = "per_kg"
+			item["rate_per_kg"] = rate
+		}
+		out = append(out, item)
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return strings.ToLower(out[i]["country_name"].(string)) < strings.ToLower(out[j]["country_name"].(string))
+	})
 
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: out})
+}
+
+// Admin: GET /api/v1/admin/shipping-rates/world-countries
+func (sc *ShippingRateController) WorldCountries(c *gin.Context) {
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: services.WorldCountryList()})
+}
+
+type upsertCountryRateReq struct {
+	RatePerKg float64 `json:"rate_per_kg"`
+	Currency  string  `json:"currency"`
+}
+
+// Admin: PUT /api/v1/admin/shipping-rates/country/:code
+func (sc *ShippingRateController) UpsertCountryRate(c *gin.Context) {
+	var req upsertCountryRateReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+	tpl, err := services.UpsertCountryPerKgRate(config.GetDB(), c.Param("code"), req.RatePerKg, req.Currency)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: err.Error(), Error: err.Error()})
+		return
+	}
+	_ = services.ClearRedisByPrefixes(c.Request.Context(), "cache:public:shipping_countries:")
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Saved", Data: tpl})
 }
 
 // Admin: GET /api/v1/admin/shipping-rates/import/template
@@ -261,16 +329,20 @@ func (sc *ShippingRateController) DownloadTemplate(c *gin.Context) {
 		b   []byte
 		err error
 	)
-	if typeParam == "carrier-zone" {
+	filename := "shipping-rate-per-kg.xlsx"
+	switch typeParam {
+	case "carrier-zone":
 		b, err = services.GenerateCarrierZoneTemplateXLSX(services.CarrierZoneImportOptions{Carrier: carrier, ServiceCode: serviceCode, Currency: currency})
-	} else {
+	case "country-advanced":
 		b, err = services.GenerateShippingTemplateXLSX_USSample()
+		filename = "shipping-template-advanced.xlsx"
+	default:
+		b, err = services.GenerateShippingPerKgTemplateXLSX(config.GetDB())
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to generate template", Error: err.Error()})
 		return
 	}
-	filename := "shipping-template.xlsx"
 	if typeParam == "carrier-zone" {
 		cc := services.NormalizeCarrier(carrier)
 		ss := services.NormalizeServiceCode(serviceCode)
@@ -561,10 +633,7 @@ func (sc *ShippingRateController) BulkSetAllowedCountries(c *gin.Context) {
 			if cc == "" {
 				continue
 			}
-			name := strings.TrimSpace(r.CountryName)
-			if name == "" {
-				name = cc
-			}
+			name := services.EnglishCountryName(cc, r.CountryName)
 			entry := models.ShippingAllowedCountry{
 				CountryCode: cc,
 				CountryName: name,
@@ -626,10 +695,7 @@ func (sc *ShippingRateController) SetFreeShippingCountries(c *gin.Context) {
 			if cc == "" {
 				continue
 			}
-			name := strings.TrimSpace(r.CountryName)
-			if name == "" {
-				name = cc
-			}
+			name := services.EnglishCountryName(cc, r.CountryName)
 			entry := models.ShippingFreeSetting{
 				CountryCode:         cc,
 				CountryName:         name,
@@ -645,6 +711,7 @@ func (sc *ShippingRateController) SetFreeShippingCountries(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update free shipping settings", Error: err.Error()})
 		return
 	}
+	_ = services.ClearRedisByPrefixes(c.Request.Context(), "cache:public:shipping_countries:")
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Free shipping settings updated", Data: gin.H{"count": len(req.Countries)}})
 }
 
@@ -663,7 +730,7 @@ func (sc *ShippingRateController) PublicFreeShippingCountries(c *gin.Context) {
 	}
 	out := make([]publicEntry, 0, len(list))
 	for _, s := range list {
-		out = append(out, publicEntry{CountryCode: s.CountryCode, CountryName: s.CountryName})
+		out = append(out, publicEntry{CountryCode: s.CountryCode, CountryName: services.EnglishCountryName(s.CountryCode, s.CountryName)})
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: out})
 }

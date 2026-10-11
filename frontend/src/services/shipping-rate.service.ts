@@ -11,8 +11,16 @@ export interface ShippingRate {
   is_active: boolean;
   weight_brackets?: number;
   quote_surcharges?: number;
+  pricing_mode?: 'per_kg' | 'brackets';
+  rate_per_kg?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WorldCountry {
+  code: string;
+  name: string;
+  name_zh: string;
 }
 
 export interface ShippingRatePublic {
@@ -127,7 +135,22 @@ export class ShippingRateService {
     throw new Error(res.data.message || 'Failed to delete shipping templates');
   }
 
-  static async downloadTemplate(opts?: { type?: 'country' | 'carrier-zone'; carrier?: string; service?: string; currency?: string }): Promise<Blob> {
+  static async worldCountries(): Promise<WorldCountry[]> {
+    const res = await apiClient.get<APIResponse<WorldCountry[]>>('/admin/shipping-rates/world-countries');
+    if (res.data.success && res.data.data) return res.data.data;
+    throw new Error(res.data.message || 'Failed to fetch countries');
+  }
+
+  static async upsertCountryRate(code: string, ratePerKg: number, currency = 'USD'): Promise<void> {
+    const res = await apiClient.put<APIResponse<unknown>>(`/admin/shipping-rates/country/${encodeURIComponent(code)}`, {
+      rate_per_kg: ratePerKg,
+      currency,
+    });
+    if (res.data.success) return;
+    throw new Error(res.data.message || 'Failed to save shipping rate');
+  }
+
+  static async downloadTemplate(opts?: { type?: 'country' | 'country-advanced' | 'carrier-zone'; carrier?: string; service?: string; currency?: string }): Promise<Blob> {
     const qs = new URLSearchParams();
     if (opts?.type) qs.set('type', opts.type);
     if (opts?.carrier) qs.set('carrier', opts.carrier);

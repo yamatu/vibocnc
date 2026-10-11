@@ -38,7 +38,13 @@ type ShippingQuoteResult struct {
 }
 
 func NormalizeCountryCode(code string) string {
+	if resolved := ResolveCountryCode(code); resolved != "" {
+		return resolved
+	}
 	c := strings.ToUpper(strings.TrimSpace(code))
+	if !isASCII(c) {
+		return ""
+	}
 	if len(c) > 2 {
 		c = c[:2]
 	}
@@ -448,8 +454,21 @@ func ImportShippingTemplatesFromXLSX(ctx context.Context, db *gorm.DB, r io.Read
 		wErrs = append(wErrs, errs...)
 	}
 
-	// Backward compatibility: old WeightKg sheet
+	perKgFound := false
 	if len(weights) == 0 && len(wErrs) == 0 {
+		w, errs, found := parsePerKgSheets(f)
+		if found {
+			perKgFound = true
+			weights = append(weights, w...)
+			wErrs = append(wErrs, errs...)
+			if len(w) == 0 && len(errs) == 0 {
+				wErrs = append(wErrs, "未找到任何已填写的每公斤运费（Rate per kg 列为空）")
+			}
+		}
+	}
+
+	// Backward compatibility: old WeightKg sheet
+	if !perKgFound && len(weights) == 0 && len(wErrs) == 0 {
 		w, errs := parseWeightSheet(f)
 		if len(errs) == 1 && strings.Contains(strings.ToLower(errs[0]), "missing sheet: weightkg") {
 			// Backward compatibility: single-sheet legacy
@@ -487,6 +506,7 @@ func ImportShippingTemplatesFromXLSX(ctx context.Context, db *gorm.DB, r io.Read
 			if n, ok := pickCountryName(cc, quotes, weights); ok {
 				name = n
 			}
+			name = EnglishCountryName(cc, name)
 			if c, ok := pickCurrency(cc, quotes, weights); ok {
 				cur = c
 			}
@@ -762,6 +782,9 @@ func hasSheet(f *excelize.File, name string) bool {
 
 func extractCountryCode(s string) string {
 	s = strings.TrimSpace(s)
+	if resolved := ResolveCountryCode(s); resolved != "" {
+		return resolved
+	}
 	if len(s) == 2 && s == strings.ToUpper(s) {
 		return NormalizeCountryCode(s)
 	}

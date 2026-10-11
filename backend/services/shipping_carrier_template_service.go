@@ -530,10 +530,7 @@ func ImportCarrierZoneTemplatesFromXLSX(ctx context.Context, db *gorm.DB, r io.R
 			continue
 		}
 
-		name := strings.TrimSpace(row.CountryName)
-		if name == "" {
-			name = cc
-		}
+		name := EnglishCountryName(cc, row.CountryName)
 
 		err := db.Transaction(func(tx *gorm.DB) error {
 			var tpl models.ShippingCarrierTemplate

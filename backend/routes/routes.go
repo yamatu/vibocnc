@@ -413,6 +413,8 @@ func SetupRoutes(r *gin.Engine) {
 			shippingRates.Use(middleware.EditorOrAdmin())
 			{
 				shippingRates.GET("", shippingRateController.AdminList)
+				shippingRates.GET("/world-countries", shippingRateController.WorldCountries)
+				shippingRates.PUT("/country/:code", shippingRateController.UpsertCountryRate)
 				shippingRates.GET("/import/template", shippingRateController.DownloadTemplate)
 				shippingRates.POST("/import/xlsx", shippingRateController.ImportXLSX)
 				shippingRates.POST("/bulk-delete", middleware.AdminOnly(), shippingRateController.BulkDelete)

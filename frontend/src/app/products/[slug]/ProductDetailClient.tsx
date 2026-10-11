@@ -724,18 +724,19 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
                       ) : shippingError ? (
                         <p className="text-sm text-red-600">{shippingError}</p>
                       ) : freeShippingCodes.has(shippingCountry) ? (
-                        <div className="flex items-center text-sm font-medium text-green-700">
+                        <div className="inline-flex items-center rounded-md bg-green-50 px-2.5 py-1 text-sm font-semibold text-green-700">
                           <CheckIcon className="h-4 w-4 mr-1" />
-                          Free Shipping
+                          <TruckIcon className="h-4 w-4 mr-1" />
+                          {t('product.free')}
                         </div>
                       ) : shippingQuote ? (
-                        <div className="text-sm text-slate-900">
-                          <span className="font-medium">
+                        <div className="flex items-baseline gap-2 text-sm text-slate-900">
+                          <span className="text-base font-semibold">
                             {shippingQuote.currency === 'USD' ? '$' : shippingQuote.currency + ' '}
                             {shippingQuote.shipping_fee.toFixed(2)}
                           </span>
-                          <span className="text-slate-500 ml-1">
-                            (weight: {shippingQuote.weight_kg}kg)
+                          <span className="text-slate-500">
+                            · {shippingQuote.billing_weight_kg ?? shippingQuote.weight_kg} kg
                           </span>
                         </div>
                       ) : null}
