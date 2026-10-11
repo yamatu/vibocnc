@@ -195,6 +195,7 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.POST("/apply", aiAgentController.Apply)
 				aiAgent.POST("/seo/jobs", aiAgentController.StartSelectedSEO)
 				aiAgent.POST("/seo/candidates", aiAgentController.StartCandidateSEO)
+				aiAgent.POST("/seo/category-jobs/preview", middleware.AdminOnly(), aiAgentController.PreviewCategoryOptimizationJob)
 				aiAgent.POST("/seo/category-jobs", middleware.AdminOnly(), aiAgentController.StartCategoryOptimizationJob)
 				aiAgent.POST("/seo/spec-jobs", aiAgentController.StartSpecResearchJob)
 				aiAgent.POST("/seo/audit", aiAgentController.SEOAudit)
@@ -207,11 +208,19 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.POST("/seo/jobs/:id/resume", aiAgentController.ResumeSEOJob)
 				aiAgent.POST("/seo/jobs/:id/end", aiAgentController.EndPausedSEOJob)
 				aiAgent.GET("/seo/stats", aiAgentController.GetSEOStats)
+				// Optimised-but-hidden products: the queue an administrator publishes
+				// in batches once the AI has finished writing their content.
+				aiAgent.GET("/seo/optimized-inactive", aiAgentController.ListOptimizedInactive)
+				aiAgent.POST("/seo/publish-optimized", middleware.AdminOnly(), aiAgentController.PublishOptimizedProducts)
 				// Classification review queue: candidates that could not be published
 				// automatically are decided by an administrator here, which is the
 				// only place an unverified type can become a public category.
 				aiAgent.GET("/classification/review", middleware.AdminOnly(), aiAgentController.ListClassificationReview)
 				aiAgent.POST("/classification/review/:id/approve", middleware.AdminOnly(), aiAgentController.ApproveClassificationReview)
+				// Bulk decision for the same queue: an administrator who has checked a
+				// batch of verified products approves them in one call instead of
+				// one request per product.
+				aiAgent.POST("/classification/review/approve-batch", middleware.AdminOnly(), aiAgentController.ApproveClassificationReviewBatch)
 				aiAgent.POST("/classification/review/:id/dismiss", middleware.AdminOnly(), aiAgentController.DismissClassificationReview)
 				aiAgent.GET("/prompts", aiAgentController.ListPromptPresets)
 				aiAgent.POST("/prompts", aiAgentController.CreatePromptPreset)

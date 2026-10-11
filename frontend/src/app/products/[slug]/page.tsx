@@ -1,5 +1,4 @@
 import { Metadata } from 'next';
-import { ProductService } from '@/services';
 import { getProductBySkuCached } from '@/services/product.server';
 import { getCommercePolicyCached } from '@/services/commerce-policy.server';
 import { getSiteUrl } from '@/lib/url';
@@ -19,7 +18,9 @@ import { buildProductSeoDescription, buildProductSeoKeywords, inferProductTypeLa
 
 const DEFAULT_SITE_NAME = 'Vibocnc';
 
-export const revalidate = 3600; // ISR: revalidate every hour
+// Publication status is checked on every request, not an hour-old ISR page.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function slugToSku(slug: string): string {
   if (!slug) return '';
@@ -111,14 +112,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       if (sku) product = await getProductBySkuCached(sku);
     } catch {}
 
-    if (!product) {
-      try {
-        const res = await ProductService.getProducts({ search: slug, is_active: 'true', page: 1, page_size: 1 });
-        product = (res.data || [])[0] || null;
-      } catch {}
-    }
-
-    if (!product) {
+    if (!product || !product.is_active) {
       return {
         title: 'Product Not Found',
         description: 'The requested product could not be found.',
@@ -232,16 +226,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     console.error('Error fetching product by SKU from slug:', error);
   }
 
-  if (!initialProduct) {
-    try {
-      const res = await ProductService.getProducts({ search: slug, is_active: 'true', page: 1, page_size: 1 });
-      initialProduct = (res.data || [])[0] || null;
-    } catch (error) {
-      console.error('Error in fallback search by slug:', error);
-    }
-  }
-
-  if (!initialProduct) {
+  if (!initialProduct || !initialProduct.is_active) {
     notFound();
   }
 

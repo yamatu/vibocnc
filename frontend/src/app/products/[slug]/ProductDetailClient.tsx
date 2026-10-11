@@ -341,7 +341,7 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
   }
 
   // Show Not Found when we have no product
-  if (!product) {
+  if (!product || !product.is_active) {
     if (error || !isLoading) {
       return (
         <Layout>

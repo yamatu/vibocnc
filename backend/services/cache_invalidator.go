@@ -145,6 +145,16 @@ func ClearRedisByPrefixes(ctx context.Context, prefixes ...string) error {
 // InvalidatePublicCaches purges Redis (origin cache) and optionally purges Cloudflare (edge cache).
 // It is safe to call even when Redis or Cloudflare are not configured.
 func InvalidatePublicCaches(ctx context.Context, reason string, extraURLs []string) {
+	// Visibility correctness is mandatory even when optional cache purging is
+	// disabled. Versioning also fences old in-flight requests from re-poisoning
+	// the current cache after an administrator disables a product.
+	if rdb := config.GetRedis(); rdb != nil {
+		generationCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := rdb.Incr(generationCtx, "cache:public:catalog-generation").Err(); err != nil {
+			log.Printf("cache invalidation: catalog generation failed (%s)", reason)
+		}
+		cancel()
+	}
 	// Load settings once (controls Redis + Cloudflare behavior)
 	db := config.GetDB()
 	if db == nil {

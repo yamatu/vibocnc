@@ -153,7 +153,9 @@ Action rules:
 - create_category data: brand (required), product_type (required), allow_new_types (optional). Creates a 'Brand > Product type' node. Only propose it when the write tool accepted the brand; set allow_new_types only when the administrator explicitly asked for a new product type.
 - import_pasted_models (tool): the bulk entry point. When the administrator pastes, or asks to add, a list of model numbers, call import_pasted_models ONCE with no model list in the arguments (the models are read from the administrator's own message), and never ask the administrator to split a long list or to paste the models one at a time. It creates the category and the products, publishes them according to the saved policy and queues the AI copy job; report created_count, skipped_count and the queued job. Do not also emit create_product or create_products proposals for those models. One paste may hold up to 1000 unique models; when the tool reports over_limit_count, ask the administrator to paste the remaining models in one more message instead of re-pasting the whole list.
 - create_products (tool): use it only for a SHORT curated list when the administrator wants to review every entry before it exists. When the administrator pastes SEVERAL model numbers in one message, call create_products once with one item per model instead of emitting many create_product suggestions, and never ask the administrator to paste them one at a time. Every item needs model, brand and product_type; also write name, short_description, description, meta_title, meta_description and meta_keywords for that specific model, because those become the stored product content. Never put price, warranty, lead time, stock or images in an item. Report which models were proposed and which were skipped, and why.
-- start_category_optimization data: scope (uncategorized|brand|rework|products), plus brand for scope=brand or product_ids for scope=products; limit optional (0 = all matching). Starts the background category task that verifies products, assigns categories and creates missing ones. Prefer this for any bulk unclassified or category-repair request.
+- start_category_optimization MUST come from the start_category_optimization tool; never hand-author this action or its product_count/fingerprint. For a named source category (e.g. Unbranded), resolve its ID with list_categories, inspect/count with category_id, and call scope=category with the SAME category_id. A category name is not a brand filter. Do not replace it with rework/uncategorized. For an explicit rewrite request set repair_content=true and rewrite_content=true: one scoped job classifies then rewrites name, short description, description and SEO. A proposal has not started; never promise an unrelated SEO pipeline will run. Publication status stays unchanged. If a scope cannot be resolved, ask one focused question rather than queueing the catalog.
+- rework means an explicitly requested catalog-wide classification/content AUDIT, not a synonym for a specific category repair. It requires confirm_catalog_wide=true. Never use it merely because the user said reclassify or rewrite.
+- Counts and samples are different: search results are only a sample, count_products gives the matching count, and the proposal tool gives the actual selectable count. Never label all products as corrupt/invalid from a few unusual SKUs. Suspicious identifiers require evidence and unresolved items retain original data for human review.
 
 Capability boundary: you may propose changes to product name, category assignment, default-language SEO metadata, product descriptions, and product/category translations. You may propose creating a category only through the create_category write tool (verified brands only) or the start_category_optimization task, and a sale-price update only when the administrator supplies an exact model-to-price mapping in the current request. You must never change stock, inventory status, images, SKU, model, part number, warranty, lead time, compatibility, certifications, credentials, provider settings, or user permissions through catalog actions.
 
@@ -1356,11 +1358,14 @@ func applyAIAction(tx *gorm.DB, action aiAction, created map[string]uint, settin
 		if err != nil {
 			return nil, err
 		}
+		if err := requireCategoryProposalPreview(taskRequest); err != nil {
+			return nil, err
+		}
 		job, err := startCategoryOptimizationJobCore(tx, taskRequest, userID)
 		if err != nil {
 			return nil, err
 		}
-		return gin.H{"type": action.Type, "status": "started", "job_id": job.ID, "job_total": job.Total}, nil
+		return gin.H{"type": action.Type, "status": "started", "job_id": job.ID, "job_total": job.Total, "category_id": taskRequest.CategoryID, "repair_content": optionalBool(taskRequest.RepairContent, taskRequest.ReworkOnly) || taskRequest.RewriteContent, "rewrite_content": taskRequest.RewriteContent, "job_url": "/admin/ai-seo?job=" + job.ID}, nil
 	default:
 		return nil, errors.New("unsupported suggestion type")
 	}
@@ -1398,45 +1403,6 @@ func applyAICategoryCreation(tx *gorm.DB, data map[string]any) (gin.H, error) {
 		"type": "create_category", "status": status, "created": created,
 		"category_id": categoryID, "category_path": path,
 	}, nil
-}
-
-// buildAICategoryOptimizationJobRequest rebuilds the task request from an
-// approved start_category_optimization proposal. Only the fields the proposal
-// schema defines are accepted; the rest use the same defaults as the admin
-// task form (web verification on, missing categories on, activate resolved on).
-func buildAICategoryOptimizationJobRequest(data map[string]any) (aiSEOCategoryJobRequest, error) {
-	req := aiSEOCategoryJobRequest{
-		Status:          "all",
-		IncludeInactive: true,
-	}
-	scope := strings.ToLower(trimField(data["scope"], 40))
-	switch scope {
-	case "uncategorized":
-		req.UncategorizedOnly = true
-	case "brand":
-		brand := trimField(data["brand"], 100)
-		if brand == "" {
-			return req, errors.New("scope=brand requires a brand")
-		}
-		req.Brand = brand
-	case "rework":
-		req.ReworkOnly = true
-	case "products":
-		ids := uintListField(data["product_ids"])
-		if len(ids) == 0 {
-			return req, errors.New("scope=products requires product_ids")
-		}
-		if len(ids) > aiAgentMaxJobProductIDs {
-			return req, fmt.Errorf("at most %d product_ids can be queued from one message", aiAgentMaxJobProductIDs)
-		}
-		req.ProductIDs = ids
-	default:
-		return req, fmt.Errorf("unknown category task scope %q", scope)
-	}
-	if limit := numberField(data["limit"]); limit > 0 {
-		req.Limit = limit
-	}
-	return req, nil
 }
 
 // uintListField converts a JSON-decoded list (float64 items) or a native uint

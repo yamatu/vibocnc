@@ -59,13 +59,40 @@ func buildBulkProductSelector(db *gorm.DB, req bulkProductScopeReq) *gorm.DB {
 	if brand := services.CanonicalBrandName(req.Brand); strings.TrimSpace(req.Brand) != "" {
 		selector = selector.Where("LOWER(brand) = LOWER(?)", brand)
 	}
-	switch strings.ToLower(strings.TrimSpace(req.AISEOStatus)) {
-	case "optimized", "failed", "running":
-		selector = selector.Where("ai_seo_status = ?", strings.ToLower(strings.TrimSpace(req.AISEOStatus)))
-	case "not_optimized":
-		selector = selector.Where("ai_seo_status IS NULL OR ai_seo_status = ''")
-	}
+	selector = applyAISEOStatusScope(selector, req.AISEOStatus)
 	return selector
+}
+
+// applyAISEOStatusScope applies the shared AI SEO status filter used by both the
+// admin product list and every bulk scope. An unknown value deliberately applies
+// a filter that matches nothing instead of being ignored: silently dropping an
+// unrecognised status would widen a bulk action to the whole catalogue, which is
+// how a "reclassify this category" request once queued every product.
+func applyAISEOStatusScope(selector *gorm.DB, aiSEOStatus string) *gorm.DB {
+	switch strings.ToLower(strings.TrimSpace(aiSEOStatus)) {
+	case "":
+		return selector
+	case "optimized", "failed", "running":
+		return selector.Where("products.ai_seo_status = ?", strings.ToLower(strings.TrimSpace(aiSEOStatus)))
+	case "not_optimized":
+		return selector.Where("products.ai_seo_status IS NULL OR products.ai_seo_status = ''")
+	case "optimized_inactive":
+		// Optimised content that is still hidden: the exact set an operator
+		// publishes in bulk. Kept as one scope so the list, the bulk selector
+		// and select-all can never disagree about what "ready to publish" means.
+		return selector.Where("products.ai_seo_status = ? AND products.is_active = ?", "optimized", false)
+	case "pending_review":
+		// Not a products.ai_seo_status value: the newest AI job item for the
+		// product ended "unresolved", so the identity still needs a human.
+		return selector.Where("products.id IN (?)",
+			config.GetDB().Model(&models.AIAgentSEOJobItem{}).
+				Select("i.product_id").
+				Table("ai_agent_seo_job_items AS i").
+				Joins("JOIN (SELECT product_id, MAX(id) AS mid FROM ai_agent_seo_job_items GROUP BY product_id) m ON m.product_id = i.product_id AND m.mid = i.id").
+				Where("i.status = ?", "unresolved"))
+	default:
+		return selector.Where("1 = 0")
+	}
 }
 
 func ensureProductFAQ(db *gorm.DB, productID uint, question string, answer string, sortOrder int) error {

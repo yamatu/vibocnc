@@ -7,6 +7,9 @@ import {
 } from '@/types';
 import type { AxiosProgressEvent } from 'axios';
 
+/** AI optimisation states a product can be filtered by. */
+export type ProductAISEOStatus = 'optimized' | 'not_optimized' | 'running' | 'failed' | 'pending_review' | 'optimized_inactive';
+
 export interface ProductFilters {
   page?: number;
   page_size?: number;
@@ -16,7 +19,7 @@ export interface ProductFilters {
   search?: string;
   is_active?: string;
   is_featured?: string;
-  ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed';
+  ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed' | 'pending_review' | 'optimized_inactive';
   sort_by?: 'created_at' | 'updated_at' | 'price' | 'name';
   sort_dir?: 'asc' | 'desc';
 }
@@ -518,50 +521,13 @@ export class ProductService {
     throw new Error(response.data.message || 'Product not found');
   }
 
-  // Get product by SKU (public)
-  // Simplified to a single request; backend already implements robust fallbacks.
+  // Exact public identity only. Inactive/not-found must never fall through
+  // to a free-text search that could display an unrelated active product.
   static async getProductBySku(sku: string): Promise<Product> {
-    const trimmed = (sku || '').trim();
-    try {
-      // Use query param endpoint to support SKUs containing '/'
-      const response = await apiClient.get<APIResponse<Product>>(
-        `/public/products/sku`, { params: { sku: trimmed } }
-      );
-
-      if (response.data.success && response.data.data) {
-        return response.data.data;
-      }
-    } catch (error: unknown) {
-      // Network/timeout/5xx fallback to search
-      if (isNetworkishError(error) && (
-        error?.code === 'ECONNREFUSED' ||
-        error?.code === 'ECONNABORTED' ||
-        error?.message?.includes('Network Error') ||
-        error?.message?.includes('ECONNREFUSED') ||
-        error?.message?.includes('timeout') ||
-        error?.message?.includes('aborted') ||
-        (error?.code === '23' && error?.constructor?.name === 'TimeoutError') ||
-        error?.response?.status === 404 ||
-        (error?.response?.status && error.response.status >= 500)
-      )) {
-        try {
-          const searchRes = await this.getProducts({ search: trimmed, is_active: 'true', page: 1, page_size: 1 });
-          const first = (searchRes.data || [])[0];
-          if (first) return first as unknown as Product;
-        } catch {}
-      }
-      // If it's some other error, rethrow
-      if (isNetworkishError(error) && error?.response?.data?.message) throw new Error(error.response.data.message);
-      throw error;
-    }
-
-    // As a minimal fallback, try searching by the exact term even when API returned success=false
-    try {
-      const searchRes = await this.getProducts({ search: trimmed, is_active: 'true', page: 1, page_size: 1 });
-      const first = (searchRes.data || [])[0];
-      if (first) return first as unknown as Product;
-    } catch {}
-
+    const response = await apiClient.get<APIResponse<Product>>('/public/products/sku', {
+      params: { sku: (sku || '').trim() },
+    });
+    if (response.data.success && response.data.data?.is_active) return response.data.data;
     throw new Error('Product not found');
   }
 
@@ -691,6 +657,8 @@ export class ProductService {
     include_descendants?: boolean;
     status?: 'active' | 'inactive' | 'all';
     featured?: 'true' | 'false' | '';
+    /** Narrows a select-all scope to an AI optimisation state. */
+    ai_seo_status?: ProductAISEOStatus;
     batch_size?: number;
   }): Promise<void> {
     const response = await apiClient.put<APIResponse<void>>(
@@ -908,7 +876,7 @@ export class ProductService {
     status?: 'active' | 'inactive' | 'all' | '';
     featured?: 'true' | 'false' | '';
     brand?: string;
-    ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed';
+    ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed' | 'pending_review' | 'optimized_inactive';
     batch_size?: number;
   }): Promise<BulkSelectionIdsResult> {
     const response = await apiClient.post<APIResponse<BulkSelectionIdsResult>>('/admin/products/selection-ids', payload);

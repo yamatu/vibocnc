@@ -9,6 +9,7 @@ import {
   ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   NoSymbolIcon,
+  RocketLaunchIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import {
@@ -73,6 +74,10 @@ export default function AIClassificationReviewPanel() {
   const [collapsed, setCollapsed] = useState(false);
   const [allowNewTypes, setAllowNewTypes] = useState(false);
   const [activateProduct, setActivateProduct] = useState(true);
+  // Bulk approval: the queue is worked a page at a time, so selection is keyed
+  // by item id and survives a reload.
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(
     async (offset: number) => {
@@ -136,6 +141,54 @@ export default function AIClassificationReviewPanel() {
       toast.error(err instanceof Error ? err.message : zh ? '丢弃失败' : 'Dismiss failed');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const toggleSelected = (itemId: number) => {
+    setSelectedIds((current) =>
+      current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId]
+    );
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(items.map((item) => item.item_id));
+  };
+
+  /**
+   * Approve every selected candidate. The backend reports each row, so a
+   * candidate the taxonomy rejects is named in the toast and stays queued
+   * instead of disappearing from the list.
+   */
+  const approveSelected = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const result = await AIAgentService.approveClassificationReviewBatch(selectedIds, {
+        allow_new_product_types: allowNewTypes,
+        activate_product: activateProduct,
+      });
+      const done = new Set(result.results.filter((entry) => entry.approved).map((entry) => entry.item_id));
+      setItems((current) => current.filter((entry) => !done.has(entry.item_id)));
+      setTotal((current) => Math.max(0, current - done.size));
+      setSelectedIds([]);
+      setExpandedId(null);
+      if (result.failed > 0) {
+        toast.error(
+          zh
+            ? `已采纳 ${result.approved} 条，${result.failed} 条无法应用（仍留在队列）`
+            : `Approved ${result.approved}, ${result.failed} could not be applied and stayed queued`
+        );
+      } else {
+        toast.success(
+          zh
+            ? `已采纳 ${result.approved} 条分类，${result.activated} 个产品已上架`
+            : `Approved ${result.approved} classifications, ${result.activated} products published`
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : zh ? '批量采纳失败' : 'Bulk approval failed');
+    } finally {
+      setBulkBusy(false);
     }
   };
 
@@ -247,6 +300,45 @@ export default function AIClassificationReviewPanel() {
             </div>
           </div>
 
+          {items.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-violet-50/60 px-5 py-3">
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={items.length > 0 && selectedIds.length === items.length}
+                  onChange={(event) => {
+                    if (event.target.checked) selectAllVisible();
+                    else setSelectedIds([]);
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                />
+                {zh ? `选中本页全部 ${items.length} 条` : `Select all ${items.length} on this page`}
+              </label>
+              <span className="text-xs text-gray-500">
+                {zh ? `已选 ${selectedIds.length} 条` : `${selectedIds.length} selected`}
+              </span>
+              <button
+                type="button"
+                disabled={bulkBusy || selectedIds.length === 0}
+                onClick={() => void approveSelected()}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {bulkBusy ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <RocketLaunchIcon className="h-3.5 w-3.5" />}
+                {zh ? `批量采纳并上架（${selectedIds.length}）` : `Approve & publish (${selectedIds.length})`}
+              </button>
+              {selectedIds.length > 0 && (
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => setSelectedIds([])}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {zh ? '清除选择' : 'Clear'}
+                </button>
+              )}
+            </div>
+          )}
+
           {error && (
             <div className="flex items-start gap-2 border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700">
               <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
@@ -276,6 +368,13 @@ export default function AIClassificationReviewPanel() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(item.item_id)}
+                            onChange={() => toggleSelected(item.item_id)}
+                            aria-label={zh ? '选择该条待核实分类' : 'Select this review item'}
+                            className="h-4 w-4 shrink-0 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                          />
                           <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${STATUS_STYLES[item.classification_status] || 'bg-gray-100 text-gray-600'}`}>
                             {item.classification_status}
                           </span>

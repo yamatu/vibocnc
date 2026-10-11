@@ -6,9 +6,12 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import AdminLayout from '@/components/admin/AdminLayout';
+import AIClassificationReviewPanel from '@/components/admin/AIClassificationReviewPanel';
+import AIOptimizedPendingPanel from '@/components/admin/AIOptimizedPendingPanel';
 import { AIAgentService, type AIAgentSEOJob, type AIAgentSEOJobItemsPage } from '@/services/ai-agent.service';
 import { useAdminI18n } from '@/lib/admin-i18n';
 import { useAuth } from '@/hooks/useAuth';
+import { categoryJobDescription } from '@/lib/category-job';
 
 function statusStyle(status: AIAgentSEOJob['status']) {
   if (status === 'completed') return 'bg-emerald-100 text-emerald-800';
@@ -36,22 +39,13 @@ function statusLabel(status: AIAgentSEOJob['status'], zh: boolean) {
 const JOB_ITEM_PAGE_SIZE = 200;
 
 function visibleJobPrompt(job: AIAgentSEOJob, zh: boolean) {
-  if (job.selection_mode === 'category_optimization') {
-    try {
-      const encoded = job.prompt.split('[[VIBOCNC_CATEGORY_JOB_OPTIONS=')[1]?.split(']]')[0];
-      const opts = encoded ? JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/'))) : {};
-      return opts.repair_content
-        ? (zh ? '全量 AI 返工：资料读取 → 证据核验 → AI 分类判断 → 名称/简介/描述/SEO 审核 → 校验保存。无法确认时保留原数据待审核。' : 'AI rework: read data → verify evidence → classify → audit name/content/SEO → validate and save; uncertain results require review.')
-        : (zh ? 'AI 分类：读取产品 → 核验证据 → 调用 AI 判断 → 匹配分类 → 保存；不确定则待审核。' : 'AI classification: read → evidence → AI review → match category → save; uncertain results require review.');
-    } catch { return zh ? '分类任务（旧版本）' : 'Legacy category task'; }
-  }
-  return job.prompt;
+  return job.selection_mode === 'category_optimization' ? categoryJobDescription(job.prompt, job.total, zh) : job.prompt;
 }
 
 function itemStatusLabel(status: AIAgentSEOJobItemsPage['items'][number]['status'], categoryJob: boolean, zh: boolean) {
   if (categoryJob) {
     const labels = {
-      optimized: ['已分类', 'Classified'],
+      optimized: ['已完成', 'Completed'],
       unresolved: ['待核实', 'Unresolved'],
       failed: ['待确认 / 失败', 'Needs review / failed'],
       queued: ['排队中', 'Queued'],
@@ -82,6 +76,11 @@ export default function AISEORecordsPage() {
   const [itemsPage, setItemsPage] = useState<AIAgentSEOJobItemsPage | null>(null);
   const [loadingItems, setLoadingItems] = useState(false);
   const [itemFilter, setItemFilter] = useState('');
+  // Publishing acts on a concrete product selection: the operator checks rows
+  // in the details table (or takes the whole page) and the ids go straight to
+  // the optimised-publish endpoint, which re-verifies every id server-side.
+  const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
+  const [publishingItems, setPublishingItems] = useState(false);
   const requestedJobIDRef = useRef<string | null>(null);
   const expandedJobID = expandedJob?.id;
   const expandedJobStatus = expandedJob?.status;
@@ -157,6 +156,7 @@ export default function AISEORecordsPage() {
     setLoadingJobID(job.id);
     setLoadingItems(true);
     setItemsPage(null);
+    setSelectedItemIds([]);
     try {
       const [details, page] = await Promise.all([
         AIAgentService.getSEOJob(job.id),
@@ -177,6 +177,7 @@ export default function AISEORecordsPage() {
     setLoadingItems(true);
     try {
       setItemsPage(await AIAgentService.listSEOJobItems(expandedJob.id, JOB_ITEM_PAGE_SIZE, offset, filter));
+      setSelectedItemIds([]);
     } catch (error: unknown) {
       toast.error(error instanceof Error && error.message ? error.message : (zh ? '无法加载 SKU 明细' : 'Unable to load SKU details'));
     } finally {
@@ -223,6 +224,38 @@ export default function AISEORecordsPage() {
     }
   };
 
+  /**
+   * Publish the checked rows. Only rows the AI finished *and* that are still
+   * hidden are offered, and the backend enforces the same rule, so a stale page
+   * cannot publish a product the AI has not completed.
+   */
+  const publishSelectedItems = async () => {
+    const targets = publishableItems.filter((item) => selectedItemIds.includes(item.id));
+    if (targets.length === 0) return;
+    const confirmed = typeof window === 'undefined'
+      ? true
+      : window.confirm(zh
+        ? `将上架选中的 ${targets.length} 个产品，前台立即可见。继续？`
+        : `Publish ${targets.length} selected products? They become visible on the storefront immediately.`);
+    if (!confirmed) return;
+    setPublishingItems(true);
+    try {
+      const result = await AIAgentService.publishOptimizedProducts({ product_ids: targets.map((item) => item.product_id) });
+      toast.success(zh
+        ? `已上架 ${result.published.toLocaleString()} 个产品${result.published < targets.length ? '（其余已上架或未通过校验）' : ''}`
+        : `Published ${result.published.toLocaleString()} products${result.published < targets.length ? ' (the rest were already live or failed validation)' : ''}`);
+      setSelectedItemIds([]);
+      if (expandedJob) {
+        setItemsPage(await AIAgentService.listSEOJobItems(expandedJob.id, JOB_ITEM_PAGE_SIZE, expandedItemsOffset, itemFilter));
+      }
+      void refetchStats();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error && error.message ? error.message : (zh ? '上架失败' : 'Publishing failed'));
+    } finally {
+      setPublishingItems(false);
+    }
+  };
+
   const cards = [
     { label: zh ? '全部产品' : 'All products', value: stats?.total, style: 'border-slate-200 bg-slate-50 text-slate-950', href: '/admin/products' },
     { label: zh ? 'AI 已优化' : 'AI optimized', value: stats?.optimized, style: 'border-emerald-200 bg-emerald-50 text-emerald-950', href: '/admin/products?aiSeoStatus=optimized' },
@@ -230,6 +263,14 @@ export default function AISEORecordsPage() {
     { label: zh ? 'AI 处理中' : 'AI processing', value: stats?.running, style: 'border-violet-200 bg-violet-50 text-violet-950', href: '/admin/products?aiSeoStatus=running' },
     { label: zh ? 'AI 优化失败' : 'AI failed', value: stats?.failed, style: 'border-rose-200 bg-rose-50 text-rose-950', href: '/admin/products?aiSeoStatus=failed' },
   ];
+
+  // Only an optimised row that is still inactive is worth offering: a row the
+  // AI failed, or one already live, must not be selectable for publishing.
+  const publishableItems = (itemsPage?.items || []).filter((item) => item.status === 'optimized' && item.is_active === false);
+  const allPublishableSelected = publishableItems.length > 0 && publishableItems.every((item) => selectedItemIds.includes(item.id));
+  const togglePublishableRow = (id: number) => {
+    setSelectedItemIds((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]));
+  };
 
   return (
     <AdminLayout>
@@ -282,7 +323,7 @@ export default function AISEORecordsPage() {
                       <td className="px-4 py-3"><div className="whitespace-nowrap text-gray-900">{new Date(job.created_at).toLocaleString()}</div><div className="mt-1 flex items-center gap-2"><span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${job.selection_mode === 'category_optimization' ? 'bg-cyan-100 text-cyan-900' : job.selection_mode === 'auto_failed' ? 'bg-rose-100 text-rose-800' : job.selection_mode === 'auto_candidates' ? 'bg-fuchsia-100 text-fuchsia-800' : 'bg-slate-100 text-slate-700'}`}>{job.selection_mode === 'category_optimization' ? (zh ? '自动分类' : 'Auto category') : job.selection_mode === 'auto_failed' ? (zh ? '失败重试' : 'Failed retry') : job.selection_mode === 'auto_candidates' ? (zh ? '自动候选' : 'Auto candidates') : (zh ? '手动选择' : 'Selected')}</span><span className="font-mono text-xs text-gray-400">{job.id}</span></div></td>
                       <td className="max-w-md px-4 py-3 text-gray-700"><p className="line-clamp-2">{visibleJobPrompt(job, zh)}</p>{job.error && <p className="mt-1 line-clamp-1 text-xs text-rose-700">{job.error}</p>}</td>
                       <td className="px-4 py-3"><div className="whitespace-nowrap font-medium text-gray-900">{job.processed}/{job.total}</div><div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-gray-100"><div className="h-full bg-violet-600" style={{ width: `${job.total ? Math.min(100, Math.round((job.processed / job.total) * 100)) : 0}%` }} /></div></td>
-                      <td className="whitespace-nowrap px-4 py-3">{job.selection_mode === 'category_optimization' && <div className="mb-1 text-[10px] text-gray-500">{zh ? '已分类 / 待确认' : 'Classified / review'}</div>}<span className="font-medium text-emerald-700">{job.succeeded}</span><span className="text-gray-400"> / </span><span className={job.failed ? 'font-medium text-rose-700' : 'text-gray-600'}>{job.failed}</span></td>
+                      <td className="whitespace-nowrap px-4 py-3">{job.selection_mode === 'category_optimization' && <div className="mb-1 text-[10px] text-gray-500">{zh ? '完成 / 失败' : 'Completed / failed'}</div>}<span className="font-medium text-emerald-700">{job.succeeded}</span><span className="text-gray-400"> / </span><span className={job.failed ? 'font-medium text-rose-700' : 'text-gray-600'}>{job.failed}</span>{!!job.unresolved && <div className="mt-1 text-xs text-amber-700">{zh ? '待核实：' : 'Unresolved: '}{job.unresolved}</div>}</td>
                       <td className="whitespace-nowrap px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle(job.status)}`}>{statusLabel(job.status, zh)}</span></td>
                       <td className="whitespace-nowrap px-4 py-3">{(job.selection_mode !== 'category_optimization' || isAdmin) && <>{(job.status === 'queued' || job.status === 'running') && <button type="button" onClick={() => void changeJobState(job)} disabled={changingJobID !== null} className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-800 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50">{changingJobID === job.id ? (zh ? '处理中…' : 'Working…') : (zh ? '暂停' : 'Pause')}</button>}{job.status === 'paused' && <div className="flex items-center gap-2"><button type="button" onClick={() => void changeJobState(job)} disabled={changingJobID !== null} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">{changingJobID === job.id ? (zh ? '处理中…' : 'Working…') : (zh ? '继续' : 'Resume')}</button><button type="button" onClick={() => void endPausedJob(job)} disabled={changingJobID !== null} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50">{changingJobID === job.id ? (zh ? '处理中…' : 'Working…') : (zh ? '结束' : 'End')}</button></div>}</>}</td>
                     </tr>
@@ -305,17 +346,56 @@ export default function AISEORecordsPage() {
                               <option value="">{zh ? '全部' : 'All'}</option><option value="running">{zh ? '正在处理' : 'Running'}</option><option value="queued">{zh ? '待处理' : 'Queued'}</option><option value="optimized">{zh ? '完成及修改明细' : 'Completed / changes'}</option><option value="failed">{zh ? '待审核 / 失败' : 'Review / failed'}</option>
                             </select>
                             <span>{job.ai_profile_name || 'Default'} · {job.ai_model || 'Legacy model'}</span>
+                            {publishableItems.length > 0 && (
+                              <div className="ml-auto flex flex-wrap items-center gap-2">
+                                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={allPublishableSelected}
+                                    onChange={(event) => setSelectedItemIds(event.target.checked ? publishableItems.map((item) => item.id) : [])}
+                                    className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                                  />
+                                  {zh ? `选择本页可上架（${publishableItems.length}）` : `Select publishable (${publishableItems.length})`}
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={publishingItems || selectedItemIds.length === 0}
+                                  onClick={() => void publishSelectedItems()}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {publishingItems ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <SparklesIcon className="h-3.5 w-3.5" />}
+                                  {zh ? `启用选中（${selectedItemIds.length}）` : `Enable selected (${selectedItemIds.length})`}
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <div className="max-h-80 overflow-auto">
                             <table className="min-w-full text-sm">
-                              <thead className="sticky top-0 bg-violet-50 text-left text-xs text-violet-800"><tr><th className="px-4 py-2">SKU</th><th className="px-4 py-2">{zh ? '产品 ID' : 'Product ID'}</th><th className="px-4 py-2">{zh ? '结果' : 'Result'}</th><th className="px-4 py-2">{zh ? '处理说明 / 失败原因' : 'Processing note / failure reason'}</th></tr></thead>
+                              <thead className="sticky top-0 bg-violet-50 text-left text-xs text-violet-800"><tr><th className="w-10 px-4 py-2" /><th className="px-4 py-2">SKU</th><th className="px-4 py-2">{zh ? '产品 ID' : 'Product ID'}</th><th className="px-4 py-2">{zh ? '结果' : 'Result'}</th><th className="px-4 py-2">{zh ? '前台' : 'Storefront'}</th><th className="px-4 py-2">{zh ? '处理说明 / 失败原因' : 'Processing note / failure reason'}</th></tr></thead>
                               <tbody className="divide-y divide-gray-100">
-                                {loadingItems && !itemsPage ? <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500">{zh ? '正在加载明细…' : 'Loading items…'}</td></tr> : (itemsPage?.items || []).map((item) => <tr key={item.id}>
+                                {loadingItems && !itemsPage ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">{zh ? '正在加载明细…' : 'Loading items…'}</td></tr> : (itemsPage?.items || []).map((item) => {
+                                  const publishable = item.status === 'optimized' && item.is_active === false;
+                                  return <tr key={item.id}>
+                                  <td className="px-4 py-2">
+                                    {publishable ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedItemIds.includes(item.id)}
+                                        onChange={() => togglePublishableRow(item.id)}
+                                        aria-label={zh ? '选择该产品上架' : 'Select this product for publishing'}
+                                        className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                                      />
+                                    ) : null}
+                                  </td>
                                   <td className="px-4 py-2 font-mono text-gray-900">{item.sku}</td>
                                   <td className="px-4 py-2"><Link href={`/admin/products/${item.product_id}/edit`} className="text-violet-700 hover:underline">#{item.product_id}</Link></td>
                                   <td className="px-4 py-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'optimized' ? 'bg-emerald-100 text-emerald-800' : item.status === 'failed' ? 'bg-rose-100 text-rose-800' : item.status === 'cancelled' ? 'bg-slate-200 text-slate-800' : item.status === 'running' ? 'bg-violet-100 text-violet-800' : 'bg-gray-100 text-gray-700'}`}>{itemStatusLabel(item.status, job.selection_mode === 'category_optimization', zh)}</span></td>
+                                  <td className="whitespace-nowrap px-4 py-2 text-xs">{item.is_active
+                                    ? <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">{zh ? '已启用' : 'Live'}</span>
+                                    : <span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">{zh ? '未启用' : 'Hidden'}</span>}</td>
                                   <td className={`max-w-xl px-4 py-2 text-xs ${item.status === 'failed' ? 'text-rose-700' : item.status === 'optimized' ? 'text-emerald-700' : 'text-gray-600'}`}>{item.error || '—'}</td>
-                                </tr>)}
+                                </tr>;
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -332,6 +412,15 @@ export default function AISEORecordsPage() {
             </div>
           )}
         </section>
+
+        {/* After an optimisation run: products whose content is finished but
+            that are still hidden, publishable in one action. */}
+        <AIOptimizedPendingPanel onPublished={() => { void refetchStats(); void refetchJobs(); }} />
+
+        {/* Review queue: the AI leaves a candidate here whenever it cannot
+            verify a brand/type, and this is where an administrator decides.
+            Approving can publish the product in the same action. */}
+        <AIClassificationReviewPanel />
       </div>
     </AdminLayout>
   );

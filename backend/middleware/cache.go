@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type cachedResponse struct {
@@ -77,15 +78,19 @@ func CachePublicGET(ttl time.Duration, keyPrefix string) gin.HandlerFunc {
 		}
 
 		full := normalizeURLForCache(c.Request)
-		key := cacheKey(keyPrefix, full)
-
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 200*time.Millisecond)
 		defer cancel()
+		generation, generationErr := rdb.Get(ctx, "cache:public:catalog-generation").Result()
+		if generationErr != nil && generationErr != redis.Nil {
+			c.Next() // unavailable version => fresh DB read, never an old cache
+			return
+		}
+		key := cacheKey(keyPrefix, "visibility-v2:"+generation+":"+full)
 
 		if raw, err := rdb.Get(ctx, key).Bytes(); err == nil && len(raw) > 0 {
 			// Serve cached JSON
-			c.Data(http.StatusOK, "application/json; charset=utf-8", raw)
 			c.Header("X-Cache", "HIT")
+			c.Data(http.StatusOK, "application/json; charset=utf-8", raw)
 			c.Abort()
 			return
 		}

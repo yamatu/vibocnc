@@ -75,77 +75,50 @@ func withPublicProductPreloads(db *gorm.DB) *gorm.DB {
 	return q
 }
 
-// Shared finder for SKU-based retrieval with tolerant matching
+// Public SKU lookups preserve exact identity. A disabled exact match is a
+// terminal 404, never a reason to serve another product with a similar prefix.
 func findProductBySKUInternal(sku string) (models.Product, error) {
+	return findPublicProductBySKU(config.GetDB(), sku)
+}
+
+func findPublicProductBySKU(db *gorm.DB, sku string) (models.Product, error) {
 	var product models.Product
-	db := config.GetDB()
-
 	normalized := strings.TrimSpace(sku)
-	upper := strings.ToUpper(normalized)
-	candMap := map[string]bool{}
-	candidates := []string{}
-	add := func(s string) {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			return
-		}
-		if !candMap[s] {
-			candMap[s] = true
-			candidates = append(candidates, s)
-		}
+	if normalized == "" {
+		return product, gorm.ErrRecordNotFound
 	}
-	add(normalized)
-	// A legacy catalogue stores some SKUs with the brand name in the SKU. Accept
-	// both the stripped and the prefixed form for every known brand instead of
-	// special-casing FANUC.
+	var exact models.Product
+	err := db.Select("id", "is_active").Where("sku = ?", normalized).First(&exact).Error
+	if err == nil {
+		if !exact.IsActive {
+			return product, gorm.ErrRecordNotFound
+		}
+		err = withPublicProductPreloads(db).Where("products.is_active = ?", true).First(&product, exact.ID).Error
+		return product, err
+	}
+	if err != gorm.ErrRecordNotFound {
+		return product, err
+	}
+	candidates := []string{normalized, strings.ToUpper(normalized)}
 	if stripped, ok := services.StripKnownBrandPrefix(normalized); ok {
-		add(stripped)
+		candidates = append(candidates, stripped)
 	}
-	add(upper)
 	for _, brand := range services.KnownBrandDisplayNames() {
-		add(brand + "-" + normalized)
-		add(brand + " " + normalized)
+		candidates = append(candidates, brand+"-"+normalized, brand+" "+normalized)
 	}
-
-	// Step 1: exact SKU match
-	if err := withPublicProductPreloads(db).
-		Where("sku IN ?", candidates).
-		Order(gorm.Expr("FIELD(sku, ?) DESC, updated_at DESC", candidates)).
-		First(&product).Error; err != nil {
-		if err != gorm.ErrRecordNotFound {
-			return product, err
-		}
-		// Step 2: exact model/part_number
-		if err2 := withPublicProductPreloads(db).
-			Where("model = ? OR part_number = ?", normalized, normalized).
-			Order("updated_at DESC").
-			First(&product).Error; err2 != nil {
-			if err2 != gorm.ErrRecordNotFound {
-				return product, err2
-			}
-			// Step 3: prefix fallback
-			likePrefix := normalized + "%"
-			if err3 := withPublicProductPreloads(db).
-				Where("sku LIKE ? OR model LIKE ? OR part_number LIKE ?", likePrefix, likePrefix, likePrefix).
-				Order("updated_at DESC").
-				First(&product).Error; err3 != nil {
-				if err3 != gorm.ErrRecordNotFound {
-					return product, err3
-				}
-				// Step 3.5: sanitized compare - strips '-', '/', and whitespace
-				// (incl. NBSP), so slug-derived candidates like "FP0-E16RS-A-(B)"
-				// resolve stored SKUs like "FP0-E16RS-A -(B)" (sanitizeSKUForCompare).
-				sanitized := sanitizeSKUForCompare(normalized)
-				if err4 := withPublicProductPreloads(db).
-					Where("REGEXP_REPLACE(sku, '[-/[:space:]]+', '') = ?", sanitized).
-					Order("updated_at DESC").
-					First(&product).Error; err4 != nil {
-					return product, err4
-				}
-			}
-		}
+	query := func() *gorm.DB { return withPublicProductPreloads(db).Where("products.is_active = ?", true) }
+	err = query().Where("sku IN ?", candidates).Order("updated_at DESC, id ASC").First(&product).Error
+	if err == nil || err != gorm.ErrRecordNotFound {
+		return product, err
 	}
-	return product, nil
+	err = query().Where("model = ? OR part_number = ?", normalized, normalized).Order("updated_at DESC, id ASC").First(&product).Error
+	if err == nil || err != gorm.ErrRecordNotFound {
+		return product, err
+	}
+	// Legacy URL normalization maps slashes/spaces to hyphens. Compare the
+	// complete identifier, never a prefix or a free-text search result.
+	err = query().Where("REGEXP_REPLACE(sku, '[-/[:space:]]+', '') = ?", sanitizeSKUForCompare(normalized)).Order("updated_at DESC, id ASC").First(&product).Error
+	return product, err
 }
 
 // sanitizeSKUForCompare strips separator characters ('-', '/', and any
@@ -276,7 +249,9 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 		query = applyProductSearchFilter(query, search)
 	}
 
-	if isActive != "" {
+	if isPublic {
+		query = query.Where("products.is_active = ?", true)
+	} else if isActive != "" {
 		query = query.Where("is_active = ?", isActive == "true")
 	}
 
@@ -284,12 +259,10 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 		query = query.Where("is_featured = ?", isFeatured == "true")
 	}
 
-	switch aiSEOStatus {
-	case "optimized", "failed", "running":
-		query = query.Where("ai_seo_status = ?", aiSEOStatus)
-	case "not_optimized":
-		query = query.Where("ai_seo_status IS NULL OR ai_seo_status = ''")
-	}
+	// Shared with the bulk scope selector so the admin list and bulk actions can
+	// never disagree about what a status filter means. An unrecognised value
+	// yields an empty scope instead of being ignored.
+	query = applyAISEOStatusScope(query, aiSEOStatus)
 
 	orderColumn := "id"
 	switch sortBy {
@@ -320,7 +293,7 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	}
 
 	// Convert products to response format with deserialized image URLs
-	var productResponses []ProductResponse
+	productResponses := make([]ProductResponse, 0, len(products))
 	for _, product := range products {
 		productResponses = append(productResponses, convertToProductResponse(product))
 	}
@@ -661,12 +634,18 @@ func buildCandidates(source string, sku string) ([]string, []string) {
 
 // GetProduct returns a single product by ID
 func (pc *ProductController) GetProduct(c *gin.Context) {
-	id := c.Param("id")
-
+	id, parseErr := strconv.ParseUint(c.Param("id"), 10, 32)
+	if parseErr != nil || id == 0 {
+		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Product not found", Error: "product_not_found"})
+		return
+	}
 	var product models.Product
 	db := config.GetDB()
-
-	if err := withProductPreloads(db).First(&product, id).Error; err != nil {
+	query := withProductPreloads(db)
+	if strings.Contains(c.FullPath(), "/public/") {
+		query = withPublicProductPreloads(db).Where("products.is_active = ?", true)
+	}
+	if err := query.First(&product, uint(id)).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, models.APIResponse{
 				Success: false,
@@ -752,7 +731,11 @@ type BulkUpdateReq struct {
 	IncludeDescendants bool   `json:"include_descendants"`
 	Status             string `json:"status"`     // "active" | "inactive" | "all" | ""
 	Featured           string `json:"featured"`   // "true" | "false" | ""
-	BatchSize          int    `json:"batch_size"` // optional, default 500
+	// AISEOStatus narrows a select-all scope by AI optimisation state. The admin
+	// list sends it already; without this field a bulk "enable" would ignore the
+	// choice and fall back to the whole catalogue.
+	AISEOStatus string `json:"ai_seo_status"`
+	BatchSize   int    `json:"batch_size"` // optional, default 500
 
 	// Optional commerce / commercial-promise columns. Nil means "leave as is".
 	WarrantyPeriod       *string `json:"warranty_period"`
@@ -955,7 +938,9 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 		} else if req.Featured == "false" {
 			query = query.Where("is_featured = ?", false)
 		}
-		return query
+		// Same helper as the admin list and the other bulk scopes, so a filtered
+		// select-all can never widen to the whole table when the value is unknown.
+		return applyAISEOStatusScope(query, req.AISEOStatus)
 	}
 
 	// If explicit IDs/SKUs provided, run a single update
@@ -986,7 +971,8 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 			updated += count
 		}
 		// Keep the user-facing request fast; cache invalidation is best-effort.
-		go services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
+		services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
+		services.TriggerNextRevalidate(nil, []string{"/products"}, true)
 
 		c.JSON(http.StatusOK, models.APIResponse{
 			Success: true,
@@ -1039,7 +1025,8 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	}
 
 	// Keep the user-facing request fast; cache invalidation is best-effort.
-	go services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
+	services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
+	services.TriggerNextRevalidate(nil, []string{"/products"}, true)
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,

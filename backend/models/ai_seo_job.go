@@ -57,4 +57,12 @@ type AIAgentSEOStats struct {
 	Failed       int64 `json:"failed"`
 	Unresolved   int64 `json:"unresolved"`
 	Running      int64 `json:"running"`
+	// OptimizedInactive counts products the pipeline already rewrote but that
+	// are still hidden from the storefront, which is the batch an operator can
+	// publish in one action.
+	OptimizedInactive int64 `json:"optimized_inactive"`
+
+	// PendingReview counts products whose newest AI job item ended unresolved:
+	// the identity needs a human decision before anything can be published.
+	PendingReview int64 `json:"pending_review"`
 }

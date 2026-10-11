@@ -318,7 +318,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
               {viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-4">
                   {sortedProducts.map((product) => (
-                    <div key={product.id} className="site-product-card">
+                    <div key={product.id} className="site-product-card flex h-full flex-col">
                       <div className="relative">
                         <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-media block aspect-[4/3] w-full">
                           <Image
@@ -348,7 +348,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                         </button>
                       </div>
 
-                      <div className="p-4">
+                      <div className="flex flex-1 flex-col p-4">
                         <h3 className="text-base font-semibold text-slate-950 mb-2 line-clamp-2 min-h-[3rem]">
                           <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-title">
 
@@ -363,16 +363,18 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                           </p>
                         )}
 
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <span className="text-xl font-bold text-[#0b3e75]">
-                            {hasProductPrice(product) ? formatCurrency(product.price) : (
-                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                        <div className="site-product-card-actions mt-auto">
+                          <div className="site-product-card-price">
+                            {hasProductPrice(product) ? (
+                              <span className="text-xl font-bold text-[#0b3e75]">{formatCurrency(product.price)}</span>
+                            ) : (
+                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex h-9 w-full max-w-full items-center justify-center px-3 text-center text-sm font-semibold">
                                 {t('products.contactForQuote')}
                               </Link>
                             )}
-                          </span>
+                          </div>
 
-                          <div className="flex items-center space-x-2">
+                          <div className="site-product-card-buttons">
                             <Link
                               href={href(`/products/${toProductPathId(product.sku)}`)}
                               className="site-secondary-action h-9 w-9"
@@ -383,7 +385,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             {hasProductPrice(product) && (
                               <button
                                 onClick={() => handleAddToCart(product)}
-                                className="site-primary-action px-3 py-2 text-sm"
+                                className="site-primary-action h-9 px-3 text-sm"
                                 title={`Add ${product.name} to cart`}
                               >
                                 <ShoppingCartIcon className="h-4 w-4 mr-1" />
@@ -434,7 +436,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                         <div className="flex-shrink-0 text-left sm:text-right">
                           <div className="text-xl font-bold text-[#0b3e75] mb-2">
                             {hasProductPrice(product) ? formatCurrency(product.price) : (
-                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex h-9 max-w-full items-center justify-center px-3 text-center text-sm font-semibold">
                                 {t('products.contactForQuote')}
                               </Link>
                             )}
@@ -460,7 +462,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             {hasProductPrice(product) && (
                               <button
                                 onClick={() => handleAddToCart(product)}
-                                className="site-primary-action px-4 py-2 text-sm"
+                                className="site-primary-action h-9 px-4 text-sm"
                                 title={`Add ${product.name} to cart`}
                               >
                                 <ShoppingCartIcon className="h-4 w-4 mr-2" />

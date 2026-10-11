@@ -171,7 +171,13 @@ func AuditProductRework(db *gorm.DB, maxProducts int) (*ProductClassificationAud
 	return auditProductClassifications(db, maxProducts, true)
 }
 
-func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bool) (*ProductClassificationAuditResult, error) {
+// AuditProductReworkInScope intersects the audit with the caller's selector.
+// A category repair must never scan/queue unrelated products.
+func AuditProductReworkInScope(db *gorm.DB, maxProducts int, includeContent bool, scope func(*gorm.DB) *gorm.DB) (*ProductClassificationAuditResult, error) {
+	return auditProductClassifications(db, maxProducts, includeContent, scope)
+}
+
+func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bool, scopes ...func(*gorm.DB) *gorm.DB) (*ProductClassificationAuditResult, error) {
 	if db == nil {
 		return nil, errors.New("database is nil")
 	}
@@ -199,7 +205,8 @@ func auditProductClassifications(db *gorm.DB, maxProducts int, includeContent bo
 		var products []models.Product
 		if err := db.Model(&models.Product{}).
 			Select("id", "sku", "name", "brand", "model", "part_number", "category_id", "is_active", "ai_seo_status", "disable_auto_seo", "short_description", "description").
-			Where("id > ?", afterID).
+			Where("products.id > ? AND products.disable_auto_seo = ?", afterID, false).
+			Scopes(scopes...).
 			Order("id ASC").
 			Limit(1000).
 			Find(&products).Error; err != nil {

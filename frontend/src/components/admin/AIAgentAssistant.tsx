@@ -212,15 +212,16 @@ function actionSummary(action: AIAgentAction, zh: boolean) {
     case 'start_category_optimization': {
       const count = displayValue(d.product_count);
       const scopeLabels: Record<string, { zh: string; en: string }> = {
+        category: { zh: `仅分类「${displayValue(d.category_name)}」(#${displayValue(d.category_id)})${d.include_descendants ? '及子分类' : ''}，${count} 件`, en: `only category “${displayValue(d.category_name)}” (#${displayValue(d.category_id)})${d.include_descendants ? ' + descendants' : ''}, ${count} products` },
         uncategorized: { zh: `全部未分类商品（${count} 个）`, en: `all uncategorized products (${count})` },
         brand: { zh: `品牌「${displayValue(d.brand)}」的商品`, en: `products of brand “${displayValue(d.brand)}”` },
-        rework: { zh: '按分类审计处理的待返修商品', en: 'products from the classification audit' },
+        rework: { zh: `全站审计筛出的 ${count} 件待返工商品`, en: `${count} products flagged by catalog audit` },
         products: { zh: `指定的 ${count} 个商品`, en: `${count} selected products` },
       };
       const scopeLabel = scopeLabels[String(d.scope)] || { zh: '商品', en: 'products' };
       return zh
-        ? `启动后台分类任务：${scopeLabel.zh}；系统联网核验品牌/型号后归类，缺失分类会自动创建`
-        : `Start the background category task for ${scopeLabel.en}; brands/types are web-verified and missing categories are created automatically`;
+        ? `审批后处理：${scopeLabel.zh}；${d.rewrite_content ? '分类核验 + 标题、简介、描述、SEO 重写' : d.repair_content ? '分类核验 + 标题、描述、SEO 审核修复' : '仅分类核验，不重写内容'}。保留启停状态；无法核实则待审核，不扩大全站。`
+        : `After approval: ${scopeLabel.en}; ${d.rewrite_content ? 'classify + rewrite title, descriptions and SEO' : d.repair_content ? 'classify + audit/repair title, content and SEO' : 'category verification only'}. Publication status is preserved; uncertain products require review. No catalog-wide expansion.`;
     }
     case 'create_product':
       return zh
@@ -247,12 +248,13 @@ function actionSummary(action: AIAgentAction, zh: boolean) {
   }
 }
 
-function ProposalCard({ action, onApply, applying, applied, requiresBatch }: {
+function ProposalCard({ action, onApply, applying, applied, requiresBatch, jobID }: {
   action: AIAgentAction;
   onApply: () => void;
   applying: boolean;
   applied: boolean;
   requiresBatch: boolean;
+  jobID?: string;
 }) {
   const { locale } = useAdminI18n();
   const [expanded, setExpanded] = useState(false);
@@ -296,6 +298,7 @@ function ProposalCard({ action, onApply, applying, applied, requiresBatch }: {
         )}
       </div>
       <p className="mt-2 text-xs text-gray-700">{actionSummary(action, zh)}</p>
+      {jobID && <a href={`/admin/ai-seo?job=${encodeURIComponent(jobID)}`} className="mt-2 inline-block text-xs font-semibold text-violet-700 underline">{zh ? '查看这批商品的处理进度 →' : 'Track this exact product batch →'}</a>}
       {entries.length > 0 && (
         <>
           <button
@@ -344,6 +347,7 @@ export default function AIAgentAssistant() {
   const [sending, setSending] = useState(false);
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
   const [appliedKeys, setAppliedKeys] = useState<string[]>([]);
+  const [appliedJobs, setAppliedJobs] = useState<Record<string, string>>({});
   const [live, setLive] = useState<LiveAssistantState | null>(null);
   const liveRef = useRef<LiveAssistantState | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -710,7 +714,10 @@ export default function AIAgentAssistant() {
   const apply = async (action: AIAgentAction, key: string) => {
     setApplyingKey(key);
     try {
-      await AIAgentService.apply([action]);
+      if (action.type === 'start_category_optimization' && !window.confirm(actionSummary(action, zh))) return;
+      const results = await AIAgentService.apply([action]);
+      const jobID = results.find((row) => typeof row.job_id === 'string')?.job_id;
+      if (typeof jobID === 'string') setAppliedJobs((previous) => ({ ...previous, [key]: jobID }));
       setAppliedKeys((previous) => [...previous, key]);
       toast.success(action.type === 'start_category_optimization'
         ? (zh ? '分类任务已启动，可到分类页或 AI SEO 页面查看进度。' : 'Category task started — track progress on the categories or AI SEO page.')
@@ -726,7 +733,7 @@ export default function AIAgentAssistant() {
   const applyGroup = async (actions: AIAgentAction[], messageIndex: number) => {
     // Proposals that would create a brand-new public type stay out of a batch
     // apply; each one gets an individual review instead.
-    const applicable = actions.filter((action) => !(action.type === 'create_category' && action.data?.allow_new_product_types === true));
+    const applicable = actions.filter((action) => action.type !== 'start_category_optimization' && !(action.type === 'create_category' && action.data?.allow_new_product_types === true));
     const unapplied = applicable.filter((action) => {
       const actionIndex = actions.indexOf(action);
       return !appliedKeys.includes(`${messageIndex}-${actionIndex}`);
@@ -745,7 +752,7 @@ export default function AIAgentAssistant() {
           .filter((key) => !previous.includes(key)),
       ]);
       const reviewCount = actions.length - applicable.length;
-      const suffix = reviewCount > 0 ? (zh ? `，${reviewCount} 条新类型分类建议需单独审核` : `; ${reviewCount} new-type category proposal(s) require individual review`) : '';
+      const suffix = reviewCount > 0 ? (zh ? `，${reviewCount} 条新类型或后台任务建议需单独审核` : `; ${reviewCount} new-type/task proposal(s) require individual review`) : '';
       toast.success(zh ? `已应用 ${unapplied.length} 条建议${suffix}，网站缓存将自动刷新。` : `${unapplied.length} suggestions applied${suffix}. Public cache will refresh automatically.`);
     } catch (error: unknown) {
       toast.error(errorMessage(error) || (zh ? '应用建议失败' : 'Could not apply suggestions'));
@@ -898,7 +905,7 @@ export default function AIAgentAssistant() {
                   </ul>
                 )}
                 {message.suggestions && message.suggestions.length > 0 && <div className="mt-2 space-y-2">
-                  {message.suggestions.length > 1 && message.suggestions.some((action, actionIndex) => !(action.type === 'create_category' && action.data?.allow_new_product_types === true) && !appliedKeys.includes(`${messageIndex}-${actionIndex}`)) && (
+                  {message.suggestions.length > 1 && message.suggestions.some((action, actionIndex) => action.type !== 'start_category_optimization' && !(action.type === 'create_category' && action.data?.allow_new_product_types === true) && !appliedKeys.includes(`${messageIndex}-${actionIndex}`)) && (
                     <button
                       type="button"
                       onClick={() => applyGroup(message.suggestions || [], messageIndex)}
@@ -911,7 +918,7 @@ export default function AIAgentAssistant() {
                   {message.suggestions.map((action, actionIndex) => {
                     const key = `${messageIndex}-${actionIndex}`;
                     const requiresBatch = Boolean(action.data?.parent_client_key || action.data?.category_client_key);
-                    return <ProposalCard key={key} action={action} applying={applyingKey === key || applyingKey === `all-${messageIndex}`} applied={appliedKeys.includes(key)} requiresBatch={requiresBatch} onApply={() => apply(action, key)} />;
+                    return <ProposalCard key={key} action={action} applying={applyingKey === key || applyingKey === `all-${messageIndex}`} applied={appliedKeys.includes(key)} jobID={appliedJobs[key]} requiresBatch={requiresBatch} onApply={() => apply(action, key)} />;
                   })}
                 </div>}
               </div>

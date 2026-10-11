@@ -25,6 +25,8 @@ type ProductCategoryOptimizationOptions struct {
 	UseWebSearch            bool
 	CreateMissingCategories bool
 	ActivateResolved        bool
+	// Explicit catalog maintenance preserves both active and inactive products.
+	PreservePublicationStatus bool
 	// AllowNewProductTypes permits creating a brand/type leaf that no existing
 	// category vocabulary covers. It is deliberately separate from
 	// CreateMissingCategories: creating a known type under an existing brand is
@@ -103,7 +105,7 @@ func OptimizeProductCategory(ctx context.Context, db *gorm.DB, product models.Pr
 		if reason == "" {
 			reason = ClassificationFailureReason(inference, model)
 		}
-		if err := keepProductInactiveWithGuard(db.WithContext(ctx), product.ID, result.Brand, opts.BeforeWrite); err != nil {
+		if err := preserveOrDeactivateUnresolved(db.WithContext(ctx), product.ID, result.Brand, opts); err != nil {
 			result.Message = fmt.Sprintf("%s; failed to keep product inactive: %v", reason, err)
 			return result
 		}
@@ -180,7 +182,7 @@ func applyConfirmedCategoryInference(ctx context.Context, db *gorm.DB, product m
 		if err != nil {
 			reason = err.Error()
 		}
-		if inactiveErr := keepProductInactiveWithGuard(db.WithContext(ctx), product.ID, result.Brand, opts.BeforeWrite); inactiveErr != nil {
+		if inactiveErr := preserveOrDeactivateUnresolved(db.WithContext(ctx), product.ID, result.Brand, opts); inactiveErr != nil {
 			result.Message = fmt.Sprintf("%s; failed to keep product inactive: %v", reason, inactiveErr)
 			return result
 		}
@@ -210,7 +212,7 @@ func applyConfirmedCategoryInference(ctx context.Context, db *gorm.DB, product m
 		if canonicalBrand := strings.TrimSpace(inference.BrandName); canonicalBrand != "" {
 			updates["brand"] = canonicalBrand
 		}
-		if opts.ActivateResolved {
+		if opts.ActivateResolved && !opts.PreservePublicationStatus {
 			updates["is_active"] = true
 		}
 		return tx.Model(&models.Product{}).Where("id = ?", product.ID).Updates(updates).Error
@@ -218,7 +220,7 @@ func applyConfirmedCategoryInference(ctx context.Context, db *gorm.DB, product m
 	if err != nil {
 		// Do not perform a second product write when a job fence rejected the
 		// transaction: the administrator may already have ended this task.
-		if opts.BeforeWrite == nil {
+		if opts.BeforeWrite == nil && !opts.PreservePublicationStatus {
 			_ = keepProductInactive(db.WithContext(ctx), product.ID, result.Brand)
 		}
 		result.Message = "final category validation failed: " + err.Error()
@@ -411,6 +413,13 @@ func withCategoryCreationLock(fn func() error) error {
 	categoryCreationMu.Lock()
 	defer categoryCreationMu.Unlock()
 	return fn()
+}
+
+func preserveOrDeactivateUnresolved(db *gorm.DB, productID uint, brand string, opts ProductCategoryOptimizationOptions) error {
+	if opts.PreservePublicationStatus {
+		return nil
+	}
+	return keepProductInactiveWithGuard(db, productID, brand, opts.BeforeWrite)
 }
 
 func keepProductInactive(db *gorm.DB, productID uint, verifiedBrand string) error {

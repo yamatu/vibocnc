@@ -318,6 +318,9 @@ export interface AIAgentSEOJobItem {
   evidence_json?: string;
   created_at: string;
   updated_at: string;
+  /** Live product state, attached by the items endpoint for the details table. */
+  is_active?: boolean;
+  ai_seo_status?: string;
 }
 
 export interface AIAgentSEOJob {
@@ -350,6 +353,34 @@ export interface AIAgentSEOStats {
   failed: number;
   unresolved?: number;
   running: number;
+  /** Rewritten by the pipeline but still hidden from the storefront. */
+  optimized_inactive?: number;
+  /** Products whose newest attempt ended unresolved and need a human. */
+  pending_review?: number;
+}
+
+/** One optimised product that is still inactive, ready to be published. */
+export interface AIOptimizedInactiveProduct {
+  id: number;
+  sku: string;
+  name: string;
+  brand: string;
+  model: string;
+  category_id: number;
+  is_active: boolean;
+  updated_at: string;
+}
+
+export interface AIOptimizedInactivePage {
+  items: AIOptimizedInactiveProduct[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AIPublishOptimizedResult {
+  published: number;
+  remaining: number;
 }
 
 export type AIAgentSEOFocus = 'all' | 'category' | 'seo' | 'content';
@@ -365,7 +396,7 @@ export interface AIAgentSEOCandidateOptions {
   failed_only?: boolean;
   /** Include products that already have an AI SEO result in a scoped rewrite. */
   include_optimized?: boolean;
-  ai_seo_status?: 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed';
+  ai_seo_status?: 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed' | 'pending_review' | 'optimized_inactive';
   focus?: AIAgentSEOFocus[];
 }
 
@@ -379,7 +410,7 @@ export interface AIAgentCategoryOptimizationOptions {
   status?: 'active' | 'inactive' | 'all';
   featured?: 'true' | 'false' | 'all';
   include_inactive?: boolean;
-  ai_seo_status?: 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed';
+  ai_seo_status?: 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed' | 'pending_review' | 'optimized_inactive';
   use_web_search?: boolean;
   create_missing_categories?: boolean;
   activate_resolved?: boolean;
@@ -387,7 +418,11 @@ export interface AIAgentCategoryOptimizationOptions {
   use_llm_fallback?: boolean;
   /** Queue only products the classification audit flags for rework. */
   rework_only?: boolean;
-  /** After category repair, audit and rewrite only weak or incorrect descriptions. */
+  confirm_catalog_wide?: boolean;
+  product_count?: number;
+  selection_fingerprint?: string;
+  rewrite_content?: boolean;
+  /** After category repair, audit name, descriptions and SEO in the same job. */
   repair_content?: boolean;
 }
 
@@ -528,6 +563,27 @@ export interface AIClassificationReviewDecision {
   category_id?: number;
   category_path?: string;
   status?: string;
+}
+
+/** Per-row outcome of a bulk approval; failures stay in the review queue. */
+export interface AIClassificationReviewBatchRow {
+  item_id: number;
+  product_id: number;
+  sku?: string;
+  approved: boolean;
+  category_id?: number;
+  category_path?: string;
+  error?: string;
+  detail?: string;
+}
+
+export interface AIClassificationReviewBatchResult {
+  requested: number;
+  approved: number;
+  failed: number;
+  /** How many products ended up live, read back after the write. */
+  activated: number;
+  results: AIClassificationReviewBatchRow[];
 }
 
 interface AIAgentStreamState {
@@ -818,7 +874,13 @@ export class AIAgentService {
   }
 
   static async startCategoryOptimizationJob(options: AIAgentCategoryOptimizationOptions): Promise<AIAgentSEOJob> {
-    const response = await apiClient.post<APIResponse<AIAgentSEOJob>>('/admin/ai-agent/seo/category-jobs', options);
+    const previewResponse = await apiClient.post<APIResponse<{ product_count: number; selection_fingerprint: string; category_name?: string; scope: string }>>('/admin/ai-agent/seo/category-jobs/preview', options);
+    const preview = previewResponse.data.data;
+    if (!previewResponse.data.success || !preview || !preview.product_count) throw new Error(previewResponse.data.message || 'No selectable products in this scope');
+    const scope = options.category_id ? `${preview.category_name || 'Category'} (#${options.category_id})${options.include_descendants ? ' + 子分类 / descendants' : ''}` : options.product_ids?.length ? '勾选商品 / Selected products' : options.brand ? `品牌 / Brand: ${options.brand}` : options.rework_only ? '全站审计筛出的待返工商品 / Catalog audit' : '当前筛选范围 / Current filters';
+    const operations = options.rewrite_content ? '分类 + 标题/描述/SEO 重写' : options.repair_content ? '分类 + 标题/描述/SEO 审核修复' : '仅分类 / Category only';
+    if (typeof window !== 'undefined' && !window.confirm(`确认启动 / Confirm job\n${scope}\n${preview.product_count} 件 / products\n${operations}\n${options.activate_resolved ? '核验后启用 / Activate verified products' : '保留启停状态 / Preserve publication status'}`)) throw new Error('已取消 / Cancelled');
+    const response = await apiClient.post<APIResponse<AIAgentSEOJob>>('/admin/ai-agent/seo/category-jobs', { ...options, product_count: preview.product_count, selection_fingerprint: preview.selection_fingerprint });
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Unable to start category optimization job');
   }
@@ -865,6 +927,30 @@ export class AIAgentService {
     const response = await apiClient.get<APIResponse<AIAgentSEOJob[]>>('/admin/ai-agent/seo/jobs');
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Unable to load AI SEO jobs');
+  }
+
+  /** Optimised products that are still hidden, newest first. */
+  static async listOptimizedInactive(params: { limit?: number; offset?: number; search?: string } = {}): Promise<AIOptimizedInactivePage> {
+    const response = await apiClient.get<APIResponse<AIOptimizedInactivePage>>('/admin/ai-agent/seo/optimized-inactive', {
+      params: { limit: params.limit, offset: params.offset, search: params.search || undefined },
+    });
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to load optimised products');
+  }
+
+  /**
+   * Publish optimised products. Without product_ids the backend publishes one
+   * bounded batch of everything still hidden, so the caller loops until
+   * remaining is 0.
+   */
+  static async publishOptimizedProducts(payload: { product_ids?: number[]; limit?: number } = {}): Promise<AIPublishOptimizedResult> {
+    const response = await apiClient.post<APIResponse<AIPublishOptimizedResult>>(
+      '/admin/ai-agent/seo/publish-optimized',
+      payload,
+      { timeout: 0 }
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to publish the optimised products');
   }
 
   static async getSEOStats(): Promise<AIAgentSEOStats> {
@@ -943,6 +1029,24 @@ export class AIAgentService {
     );
     if (response.data.success && response.data.data) return response.data.data;
     throw new Error(response.data.message || 'Unable to approve the classification candidate');
+  }
+
+  /**
+   * Approve many candidates in one call. Each row is reported separately, so a
+   * candidate the taxonomy rejects stays queued instead of being lost.
+   */
+  static async approveClassificationReviewBatch(
+    itemIds: number[],
+    payload: { allow_new_product_types?: boolean; activate_product?: boolean; note?: string } = {}
+  ): Promise<AIClassificationReviewBatchResult> {
+    const response = await apiClient.post<APIResponse<AIClassificationReviewBatchResult>>(
+      '/admin/ai-agent/classification/review/approve-batch',
+      { item_ids: itemIds, ...payload },
+      // Applying many candidates rewrites many products.
+      { timeout: 0 }
+    );
+    if (response.data.success && response.data.data) return response.data.data;
+    throw new Error(response.data.message || 'Unable to approve the selected candidates');
   }
 
   // --- prompt library -----------------------------------------------------

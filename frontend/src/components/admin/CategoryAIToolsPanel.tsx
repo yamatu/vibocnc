@@ -128,7 +128,8 @@ export default function CategoryAIToolsPanel() {
         include_inactive: true,
         use_web_search: true,
         create_missing_categories: true,
-        activate_resolved: true,
+        activate_resolved: false,
+        confirm_catalog_wide: true,
         use_llm_fallback: true,
       });
       toast.success(zh
@@ -160,8 +161,8 @@ export default function CategoryAIToolsPanel() {
   const startReworkJob = async () => {
     
     const message = zh
-      ? `启动综合返工任务？将对 全部未占用的产品（包括规则检查通过的产品）先重新核验分类，再检测产品描述；缺失、单薄、型号/品牌不一致或重复的描述会由 AI 重写。无法核验时保留原数据并标记待审核。`
-      : `Start the combined rework job? all available products, including those passing rule checks, will be reclassified first, then weak, missing, repetitive, or inconsistent descriptions will be rewritten by AI. Uncertain products retain their original data for review.`;
+      ? `启动综合返工任务？将对 审计发现需要返工且未被任务占用的产品先重新核验分类，再检测产品描述；缺失、单薄、型号/品牌不一致或重复的描述会由 AI 重写。无法核验时保留原数据并标记待审核。`
+      : `Start the combined rework job? only available products flagged by the audit will be reclassified first, then weak, missing, repetitive, or inconsistent descriptions will be rewritten by AI. Uncertain products retain their original data for review.`;
     if (!window.confirm(message)) return;
     setStartingRework(true);
     try {
@@ -172,7 +173,8 @@ export default function CategoryAIToolsPanel() {
         include_inactive: true,
         use_web_search: true,
         create_missing_categories: true,
-        activate_resolved: true,
+        activate_resolved: false,
+        confirm_catalog_wide: true,
         use_llm_fallback: true,
         repair_content: true,
       });

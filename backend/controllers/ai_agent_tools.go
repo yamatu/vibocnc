@@ -221,13 +221,19 @@ func aiAgentToolDefinitions() []aiToolDefinition {
 			Type: "function",
 			Function: aiToolFunctionSchema{
 				Name:        aiToolStartCategoryJob,
-				Description: "Propose starting the background category optimization task. The task verifies products by brand/model plus web evidence, assigns the correct leaf category, creates missing categories after verification, and keeps unverifiable products for review. Scopes: 'uncategorized' (products with no category), 'brand' (all products of one brand), 'rework' (classification audit of misplaced/unresolved products), 'products' (explicit ids). This does not write: it attaches a review proposal (start_category_optimization) that the administrator starts from the UI.",
+				Description: "Preview and propose ONE precisely scoped category/content task. Nothing starts before approval. For a named CATEGORY (including Unbranded) first use list_categories then count_products with its category_id, and use scope=category with that same ID. Never substitute brand, uncategorized or catalog-wide rework. Default includes active and inactive products without changing publication status. repair_content also audits titles, descriptions and SEO; rewrite_content explicitly rewrites all those fields in the SAME job. The tool returns an exact selectable count and locks the product list; excluded/occupied products must not cause scope widening. rework means catalog-wide AUDIT ONLY and requires an explicit administrator request plus confirm_catalog_wide=true. Report only observed facts, not unsupported claims from sample SKUs.",
 				Parameters: objectSchema(map[string]any{
-					"scope":       map[string]any{"type": "string", "enum": []string{"uncategorized", "brand", "rework", "products"}},
-					"product_ids": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Required when scope=products. At most 500 ids."},
-					"brand":       map[string]any{"type": "string", "description": "Required when scope=brand."},
-					"limit":       map[string]any{"type": "integer", "minimum": 0, "description": "Maximum products to process; 0 or omitted = all matching products."},
-				}),
+					"scope":                map[string]any{"type": "string", "enum": []string{"category", "uncategorized", "brand", "rework", "products"}},
+					"category_id":          map[string]any{"type": "integer", "minimum": 1, "description": "Required for scope=category; source category returned by list_categories and counted in this turn."},
+					"include_descendants":  map[string]any{"type": "boolean", "description": "Include child categories ONLY if the administrator requested them; default false."},
+					"product_ids":          map[string]any{"type": "array", "maxItems": 500, "items": map[string]any{"type": "integer", "minimum": 1}},
+					"brand":                map[string]any{"type": "string", "description": "Only for scope=brand, never a substitute for a category name."},
+					"status":               map[string]any{"type": "string", "enum": []string{"all", "active", "inactive"}, "description": "Default all. This filters the selection; it never publishes products."},
+					"limit":                map[string]any{"type": "integer", "minimum": 0, "description": "0 = all products within the specified scope, NOT the entire catalog."},
+					"repair_content":       map[string]any{"type": "boolean", "description": "Audit/fix title, short description, description and SEO after category verification."},
+					"rewrite_content":      map[string]any{"type": "boolean", "description": "True when the administrator explicitly requests rewriting/regenerating existing titles, descriptions and SEO."},
+					"confirm_catalog_wide": map[string]any{"type": "boolean", "description": "Only for an explicitly requested whole-catalog rework audit. Never for a named category."},
+				}, "scope"),
 			},
 		},
 		{
@@ -386,7 +392,12 @@ func executeAIAgentTool(db *gorm.DB, name, rawArguments string) (any, error) {
 	return executeAIAgentToolWithSession(db, name, rawArguments, nil)
 }
 
-func executeAIAgentToolWithSession(db *gorm.DB, name, rawArguments string, session *aiAgentToolSession) (any, error) {
+func executeAIAgentToolWithSession(db *gorm.DB, name, rawArguments string, session *aiAgentToolSession) (result any, retErr error) {
+	defer func() {
+		if retErr == nil {
+			observeAICategoryFilter(session, name, rawArguments)
+		}
+	}()
 	if db == nil {
 		return nil, errors.New("the catalogue database is unavailable")
 	}
@@ -818,9 +829,10 @@ type aiAgentToolSession struct {
 	// effective AI configuration. The bulk import tool reads the pasted model
 	// list from userMessage instead of making the model echo it back, which is
 	// what keeps a thousand-model import affordable and lossless.
-	userMessage string
-	setting     *models.AIAgentSetting
-	userID      uint
+	userMessage     string
+	categoryFilters map[uint]bool
+	setting         *models.AIAgentSetting
+	userID          uint
 }
 
 func (s *aiAgentToolSession) add(action aiAction) error {
@@ -939,32 +951,6 @@ func aiAgentPausedHeldUncategorized(db *gorm.DB) (string, int64) {
 		return "", 0
 	}
 	return result.JobID, result.N
-}
-
-// aiAgentCountCategoryJobCandidates previews how many products a category
-// task request would select. It mirrors findCategoryOptimizationCandidates so
-// the number on the proposal card matches what the task actually processes.
-func aiAgentCountCategoryJobCandidates(db *gorm.DB, req aiSEOCategoryJobRequest) (int64, error) {
-	query := db.Model(&models.Product{}).Where("products.disable_auto_seo = ?", false)
-	query = applyCategoryOptimizationProductStatus(query, req.Status, req.IncludeInactive)
-	if brand := strings.TrimSpace(req.Brand); brand != "" {
-		query = query.Where("LOWER(products.brand) = LOWER(?)", truncateRunes(brand, 100))
-	}
-	if req.UncategorizedOnly {
-		query = query.Where("products.category_id = 0")
-	}
-	if len(req.ProductIDs) > 0 {
-		query = query.Where("products.id IN ?", req.ProductIDs)
-	}
-	pendingIDs := db.Model(&models.AIAgentSEOJobItem{}).
-		Select("product_id").
-		Where("status IN ?", []string{"queued", "running"})
-	query = query.Where("products.id NOT IN (?)", pendingIDs)
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return 0, err
-	}
-	return total, nil
 }
 
 func aiToolRunListUncategorizedProducts(db *gorm.DB, rawArguments string) (any, error) {
@@ -1154,106 +1140,6 @@ func aiToolRunCreateCategory(db *gorm.DB, rawArguments string, session *aiAgentT
 	}, nil
 }
 
-func aiToolRunStartCategoryOptimization(db *gorm.DB, rawArguments string, session *aiAgentToolSession) (any, error) {
-	var args struct {
-		Scope      string `json:"scope"`
-		ProductIDs []uint `json:"product_ids"`
-		Brand      string `json:"brand"`
-		Limit      *int   `json:"limit"`
-	}
-	if err := decodeAIAgentToolArguments(rawArguments, &args); err != nil {
-		return nil, err
-	}
-	scope := strings.ToLower(strings.TrimSpace(args.Scope))
-	if scope == "" {
-		scope = "uncategorized"
-	}
-	brand := truncateRunes(strings.TrimSpace(args.Brand), 100)
-	ids := args.ProductIDs
-	if len(ids) > aiAgentMaxJobProductIDs {
-		return nil, fmt.Errorf("at most %d product_ids can be queued from one message", aiAgentMaxJobProductIDs)
-	}
-	switch scope {
-	case "uncategorized", "rework":
-	case "brand":
-		if brand == "" {
-			return nil, errors.New("scope=brand requires a brand")
-		}
-	case "products":
-		if len(ids) == 0 {
-			return nil, errors.New("scope=products requires product_ids")
-		}
-	default:
-		return nil, fmt.Errorf("unknown scope %q; use uncategorized, brand, rework or products", scope)
-	}
-	limit := 0
-	if args.Limit != nil {
-		limit = *args.Limit
-		if limit < 0 {
-			return nil, errors.New("limit must be zero (all matching products) or a positive count")
-		}
-	}
-	// Preview how many products the task would process, so the administrator
-	// sees a concrete number on the proposal card. The rework scope is
-	// resolved by the classification audit inside the task itself, so it is
-	// not pre-counted here.
-	count := int64(-1)
-	if scope != "rework" {
-		preview := aiSEOCategoryJobRequest{
-			Status:          "all",
-			IncludeInactive: true,
-			Brand:           brand,
-		}
-		if scope == "uncategorized" {
-			preview.UncategorizedOnly = true
-		}
-		if scope == "products" {
-			preview.ProductIDs = ids
-		}
-		total, countErr := aiAgentCountCategoryJobCandidates(db, preview)
-		if countErr != nil {
-			return nil, countErr
-		}
-		count = total
-		if count == 0 {
-			if jobID, held := aiAgentPausedHeldUncategorized(db); scope == "uncategorized" && held > 0 {
-				return nil, fmt.Errorf("no uncategorized products are currently selectable: %d of them are held by paused task %s, which the administrator can resume from the AI SEO jobs page", held, jobID)
-			}
-			return nil, errors.New("no products currently match this scope (they may already belong to a running task)")
-		}
-	}
-	data := map[string]any{
-		"scope":         scope,
-		"limit":         limit,
-		"product_count": count,
-	}
-	if brand != "" {
-		data["brand"] = brand
-	}
-	if len(ids) > 0 {
-		data["product_ids"] = ids
-	}
-	action := aiAction{
-		Type:  aiToolStartCategoryJob,
-		Title: aiAgentCategoryJobProposalTitle(scope, brand, count),
-		Data:  data,
-	}
-	if err := session.add(action); err != nil {
-		return nil, err
-	}
-	note := "A review proposal is attached; the task starts after the administrator confirms it. It verifies brand/type with web evidence, assigns categories and creates missing ones. Do not repeat it in your own suggestions."
-	if jobID, held := aiAgentPausedHeldUncategorized(db); scope == "uncategorized" && held > 0 {
-		note = fmt.Sprintf("%s Note: %d uncategorized products are held by paused task %s; suggest resuming it from the AI SEO jobs page to keep processing that batch.", note, held, jobID)
-	}
-	return map[string]any{
-		"status":        "proposal_created",
-		"proposal_type": action.Type,
-		"scope":         scope,
-		"product_count": count,
-		"note":          note,
-	}, nil
-}
-
 func aiAgentCategoryJobProposalTitle(scope, brand string, count int64) string {
 	switch scope {
 	case "uncategorized":
@@ -1264,7 +1150,7 @@ func aiAgentCategoryJobProposalTitle(scope, brand string, count int64) string {
 	case "brand":
 		return fmt.Sprintf("启动分类优化任务：品牌「%s」（%d 个商品）", brand, count)
 	case "rework":
-		return "启动分类返工任务：按分类审计处理待返修商品"
+		return fmt.Sprintf("启动分类返工任务：全站审计筛出的 %d 件商品", count)
 	case "products":
 		return fmt.Sprintf("启动分类优化任务：指定商品（%d 个）", count)
 	}

@@ -67,7 +67,7 @@ type BulkProgress = {
   message: string;
 };
 
-type AISEOFilter = 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed';
+type AISEOFilter = 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed' | 'pending_review' | 'optimized_inactive';
 
 const AI_SEO_DEFAULT_PROMPT = "逐项审核品牌、完整型号、产品名称、分类、简介、描述和 SEO。保留已经准确的内容；名称采用品牌 + 完整型号 + 经证实的产品类型；简介简洁，描述原创且具体，SEO 标题和描述自然包含型号与类型。严格遵循本次选择的优化范围。分类必须有明确证据，无法确认则待人工审核，绝不强行归类。不编造参数、库存、认证、兼容性或保修承诺。不修改价格、库存、图片或管理员设置。输出网站默认语言英文内容，并说明修改依据。";
 
@@ -112,7 +112,7 @@ function AdminProductsContent() {
   const [categoryOptimizationLimit, setCategoryOptimizationLimit] = useState('');
   const [categoryUseWebSearch, setCategoryUseWebSearch] = useState(true);
   const [categoryCreateMissing, setCategoryCreateMissing] = useState(true);
-  const [categoryActivateResolved, setCategoryActivateResolved] = useState(true);
+  const [categoryActivateResolved, setCategoryActivateResolved] = useState(false);
   const [isStartingCategoryJob, setIsStartingCategoryJob] = useState(false);
   const [aiSEOJobMode, setAISEOJobMode] = useState<'selected' | 'auto_candidates' | 'failed_only'>('selected');
   const [aiSEOIncludeFailed, setAISEOIncludeFailed] = useState(false);
@@ -281,7 +281,7 @@ function AdminProductsContent() {
     setSelectedCategory(c);
     setSelectedBrand(b);
     setStatusFilter(st);
-    setAISEOFilter(['all', 'optimized', 'not_optimized', 'running', 'failed'].includes(seo) ? seo : 'all');
+    setAISEOFilter(['all', 'optimized', 'not_optimized', 'running', 'failed', 'pending_review', 'optimized_inactive'].includes(seo) ? seo : 'all');
     setSortBy(['created_at', 'updated_at', 'price', 'name'].includes(sb) ? sb : 'created_at');
     setSortDir(sd === 'asc' ? 'asc' : 'desc');
     setCurrentPage(Number.isFinite(p) && p > 0 ? p : 1);
@@ -590,6 +590,7 @@ function AdminProductsContent() {
         use_web_search: categoryUseWebSearch,
         create_missing_categories: categoryCreateMissing,
         activate_resolved: categoryActivateResolved,
+        confirm_catalog_wide: !explicitSelection && !selectedCategory && !selectedBrand && !searchQuery,
       });
       setShowCategoryOptimizationModal(false);
       setSelectedIds([]);
@@ -2145,8 +2146,10 @@ function AdminProductsContent() {
                 <option value="all">{locale === 'zh' ? '全部 AI SEO 状态' : 'All AI SEO statuses'}</option>
                 <option value="not_optimized">{locale === 'zh' ? '未 AI 优化' : 'Not AI optimized'}</option>
                 <option value="optimized">{locale === 'zh' ? 'AI 已优化' : 'AI optimized'}</option>
+                <option value="optimized_inactive">{locale === 'zh' ? 'AI 已优化但未启用（可批量上架）' : 'AI optimized but inactive (ready to publish)'}</option>
                 <option value="running">{locale === 'zh' ? 'AI 处理中' : 'AI processing'}</option>
                 <option value="failed">{locale === 'zh' ? 'AI 优化失败' : 'AI failed'}</option>
+                <option value="pending_review">{locale === 'zh' ? '待人工核实（AI 无法确认）' : 'Pending review (AI unresolved)'}</option>
               </select>
             </div>
 
@@ -2197,6 +2200,21 @@ function AdminProductsContent() {
               )}
             </h3>
           </div>
+
+          {aiSEOFilter === 'pending_review' && (
+            <div className="mx-6 mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-medium">
+                {locale === 'zh'
+                  ? '以下商品 AI 无法确认品牌/型号/分类，已保留原数据并保持停用，等待人工核实。'
+                  : 'The assistant could not verify brand, model or category for these products. They keep their original data and stay inactive until reviewed.'}
+              </p>
+              <p className="mt-1">
+                {locale === 'zh'
+                  ? '核实内容无误后，用工具栏「启用」批量上架；确认前也可以直接编辑商品修正分类或标题。'
+                  : 'Once verified, use the toolbar "Activate" action to publish them in bulk. You can also edit a product first to fix its category or title.'}
+              </p>
+            </div>
+          )}
 
           {isLoading ? (
             <div className="text-center py-12">

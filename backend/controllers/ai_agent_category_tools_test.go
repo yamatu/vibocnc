@@ -102,7 +102,7 @@ func TestBuildAICategoryOptimizationJobRequestScopes(t *testing.T) {
 		},
 		{
 			name: "rework",
-			data: map[string]any{"scope": "rework"},
+			data: map[string]any{"scope": "rework", "confirm_catalog_wide": true},
 			check: func(t *testing.T, req aiSEOCategoryJobRequest) {
 				if !req.ReworkOnly {
 					t.Fatal("rework scope must set ReworkOnly")

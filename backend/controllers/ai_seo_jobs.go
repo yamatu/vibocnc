@@ -15,6 +15,7 @@ import (
 	"fanuc-backend/config"
 	"fanuc-backend/models"
 	"fanuc-backend/services"
+	"fanuc-backend/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -602,6 +603,11 @@ func (ac *AIAgentController) EndPausedSEOJob(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Paused AI SEO job ended. Remaining products were released for future optimization.", Data: job})
 }
 
+// optimizedPublishBatchLimit bounds one publish request. The admin UI keeps
+// issuing batches until nothing is left, which avoids one long transaction over
+// tens of thousands of rows.
+const optimizedPublishBatchLimit = 500
+
 func (ac *AIAgentController) GetSEOStats(c *gin.Context) {
 	db := config.GetDB()
 	stats := models.AIAgentSEOStats{}
@@ -611,7 +617,133 @@ func (ac *AIAgentController) GetSEOStats(c *gin.Context) {
 	db.Model(&models.Product{}).Where("ai_seo_status = ?", "running").Count(&stats.Running)
 	db.Model(&models.AIAgentSEOJobItem{}).Where("status = ?", "unresolved").Count(&stats.Unresolved)
 	db.Model(&models.Product{}).Where("ai_seo_status IS NULL OR ai_seo_status = ''").Count(&stats.NotOptimized)
+	// Rewritten by the pipeline but still hidden: the queue an operator can
+	// publish in bulk without re-running any optimisation.
+	db.Model(&models.Product{}).Where("ai_seo_status = ? AND is_active = ?", "optimized", false).Count(&stats.OptimizedInactive)
+	// Unresolved is counted per job item, so a product retried several times
+	// would be counted more than once; the queue itself is product-scoped and
+	// only the newest attempt matters.
+	db.Model(&models.Product{}).
+		Where("products.id IN (?)", config.GetDB().Model(&models.AIAgentSEOJobItem{}).
+			Select("i.product_id").
+			Table("ai_agent_seo_job_items AS i").
+			Joins("JOIN (SELECT product_id, MAX(id) AS mid FROM ai_agent_seo_job_items GROUP BY product_id) m ON m.product_id = i.product_id AND m.mid = i.id").
+			Where("i.status = ?", "unresolved")).
+		Count(&stats.PendingReview)
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: stats})
+}
+
+// ListOptimizedInactive returns the products the pipeline already optimised but
+// that are still inactive, so an administrator can review and publish them in
+// batches. It reuses the shared AI status scope, which means "optimized" here
+// means exactly what it means in the product list and in bulk actions.
+func (ac *AIAgentController) ListOptimizedInactive(c *gin.Context) {
+	db := config.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database connection failed"})
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := applyAISEOStatusScope(db.Model(&models.Product{}), "optimized").Where("products.is_active = ?", false)
+	if search := strings.TrimSpace(c.Query("search")); search != "" {
+		query = applyProductSearchFilter(query, search)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to count optimised products", Error: utils.PublicError(err, "db_error")})
+		return
+	}
+	var products []models.Product
+	if err := query.Select("id, sku, name, brand, model, category_id, is_active, updated_at").
+		Order("updated_at DESC, id DESC").Limit(limit).Offset(offset).Find(&products).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load optimised products", Error: utils.PublicError(err, "db_error")})
+		return
+	}
+
+	items := make([]gin.H, 0, len(products))
+	for _, product := range products {
+		items = append(items, gin.H{
+			"id":         product.ID,
+			"sku":        product.SKU,
+			"name":       product.Name,
+			"brand":      product.Brand,
+			"model":      services.ClassificationModel(product),
+			"category_id": product.CategoryID,
+			"is_active":  product.IsActive,
+			"updated_at": product.UpdatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: gin.H{"items": items, "total": total, "limit": limit, "offset": offset}})
+}
+
+// PublishOptimizedProducts activates optimised products in bulk. It is
+// deliberately limited to rows that are both optimised and currently inactive:
+// a filtered select-all can therefore never publish something the AI has not
+// finished, and it can never flip a product the operator already hid by hand.
+func (ac *AIAgentController) PublishOptimizedProducts(c *gin.Context) {
+	db := config.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database connection failed"})
+		return
+	}
+	var req struct {
+		ProductIDs []uint `json:"product_ids"`
+		Limit      int    `json:"limit"`
+	}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+			return
+		}
+	}
+	if len(req.ProductIDs) > optimizedPublishBatchLimit {
+		req.ProductIDs = req.ProductIDs[:optimizedPublishBatchLimit]
+	}
+
+	scope := applyAISEOStatusScope(db.Model(&models.Product{}), "optimized").Where("products.is_active = ?", false)
+	if len(req.ProductIDs) > 0 {
+		scope = scope.Where("products.id IN ?", req.ProductIDs)
+	}
+
+	var ids []uint
+	if err := scope.Pluck("products.id", &ids).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to select optimised products", Error: utils.PublicError(err, "db_error")})
+		return
+	}
+	// No explicit selection means "all remaining optimised products", however
+	// many that is; a limited request stops after its own batch.
+	wanted := len(ids)
+	if req.Limit > 0 && req.Limit < wanted {
+		ids = ids[:req.Limit]
+	}
+	if len(ids) == 0 {
+		c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "No optimised products needed publishing", Data: gin.H{"published": 0, "remaining": 0}})
+		return
+	}
+
+	if err := db.Model(&models.Product{}).Where("id IN ?", ids).Update("is_active", true).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to publish products", Error: utils.PublicError(err, "db_error")})
+		return
+	}
+
+	// Public listing caches must drop the newly live products immediately.
+	services.InvalidatePublicCaches(context.Background(), "product:publish-optimized", nil)
+	services.TriggerNextRevalidate(nil, []string{"/products"}, true)
+
+	remaining := wanted - len(ids)
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Optimised products published", Data: gin.H{"published": len(ids), "remaining": remaining}})
 }
 
 // processAIAgentSEOJob claims a queued job and runs it. Prefer

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -318,34 +319,9 @@ func (ac *AIAgentController) ApproveClassificationReview(c *gin.Context) {
 		return
 	}
 
-	payload := decodeClassificationReviewPayload(item.EvidenceJSON)
-	brandKey := payload.BrandKey
-	partType := payload.PartType
-	if brandKey == "" {
-		brandKey = services.NormalizeBrandKey(payload.Brand)
-	}
-	if brandKey == "" && strings.TrimSpace(product.Brand) != "" {
-		brandKey = services.NormalizeBrandKey(product.Brand)
-	}
-	inference, err := services.InferenceFromAIClassification(payload.Brand, partType, payload.ModelFamily)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Stored candidate cannot be applied: " + err.Error()})
-		return
-	}
-	if brandKey != "" && brandKey != inference.BrandKey {
-		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Stored candidate brand does not match its brand key"})
-		return
-	}
-
-	ctx := c.Request.Context()
-	result := services.ApplyProductCategoryInference(ctx, db, product, inference, services.ProductCategoryOptimizationOptions{
-		CreateMissingCategories: true,
-		AllowNewProductTypes:    optionalBool(req.AllowNewProductTypes, false),
-		ActivateResolved:        optionalBool(req.ActivateProduct, true),
-		AuditJobID:              item.JobID,
-	})
-	if result.Status != "completed" {
-		c.JSON(http.StatusUnprocessableEntity, models.APIResponse{Success: false, Message: "Candidate could not be applied", Error: result.Message})
+	product, result, applyErr := applyClassificationReviewItem(c.Request.Context(), db, product, item, reviewer, optionalBool(req.AllowNewProductTypes, false), optionalBool(req.ActivateProduct, true))
+	if applyErr != nil {
+		c.JSON(applyErr.status, models.APIResponse{Success: false, Message: applyErr.message, Error: applyErr.detail})
 		return
 	}
 
@@ -362,6 +338,151 @@ func (ac *AIAgentController) ApproveClassificationReview(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Classification approved", Data: gin.H{"item_id": item.ID, "product_id": product.ID, "category_id": result.CategoryID, "category_path": result.CategoryPath, "status": result.Status, "note": strings.TrimSpace(req.Note)}})
+}
+
+// reviewApplyError carries the HTTP status a failed per-item approval should
+// report. The batch endpoint reports the same failures per row instead of
+// aborting the whole run, so one unapplicable candidate cannot block the queue.
+type reviewApplyError struct {
+	status  int
+	message string
+	detail  string
+}
+
+// applyClassificationReviewItem is the single place a stored candidate turns
+// into a live category decision. Both the single-item and batch endpoints call
+// it, so a bulk approval can never mean something different from a manual one.
+func applyClassificationReviewItem(ctx context.Context, db *gorm.DB, product models.Product, item models.AIAgentSEOJobItem, reviewer string, allowNewProductTypes, activateProduct bool) (models.Product, services.ProductCategoryOptimizationResult, *reviewApplyError) {
+	payload := decodeClassificationReviewPayload(item.EvidenceJSON)
+	brandKey := payload.BrandKey
+	partType := payload.PartType
+	if brandKey == "" {
+		brandKey = services.NormalizeBrandKey(payload.Brand)
+	}
+	if brandKey == "" && strings.TrimSpace(product.Brand) != "" {
+		brandKey = services.NormalizeBrandKey(product.Brand)
+	}
+	inference, err := services.InferenceFromAIClassification(payload.Brand, partType, payload.ModelFamily)
+	if err != nil {
+		return product, services.ProductCategoryOptimizationResult{}, &reviewApplyError{status: http.StatusBadRequest, message: "Stored candidate cannot be applied: " + err.Error()}
+	}
+	if brandKey != "" && brandKey != inference.BrandKey {
+		return product, services.ProductCategoryOptimizationResult{}, &reviewApplyError{status: http.StatusBadRequest, message: "Stored candidate brand does not match its brand key"}
+	}
+
+	result := services.ApplyProductCategoryInference(ctx, db, product, inference, services.ProductCategoryOptimizationOptions{
+		CreateMissingCategories: true,
+		AllowNewProductTypes:    allowNewProductTypes,
+		ActivateResolved:        activateProduct,
+		AuditJobID:              item.JobID,
+	})
+	if result.Status != "completed" {
+		return product, result, &reviewApplyError{status: http.StatusUnprocessableEntity, message: "Candidate could not be applied", detail: result.Message}
+	}
+	return product, result, nil
+}
+
+// batchClassificationReviewLimit bounds one bulk decision. The queue is worked
+// through in several passes instead of holding one huge transaction.
+const batchClassificationReviewLimit = 200
+
+type classificationReviewBatchRequest struct {
+	ItemIDs              []uint `json:"item_ids"`
+	AllowNewProductTypes *bool  `json:"allow_new_product_types"`
+	ActivateProduct      *bool  `json:"activate_product"`
+	Note                 string `json:"note"`
+}
+
+// ApproveClassificationReviewBatch decides many stored candidates at once.
+// Every row is reported individually: a candidate the taxonomy cannot accept is
+// counted as a failure and left in the queue, so a bulk "approve all my
+// verified products" action never silently drops work.
+func (ac *AIAgentController) ApproveClassificationReviewBatch(c *gin.Context) {
+	db := config.GetDB()
+	if db == nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database connection failed"})
+		return
+	}
+	var req classificationReviewBatchRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid review decision", Error: err.Error()})
+			return
+		}
+	}
+	ids := req.ItemIDs
+	if len(ids) == 0 {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "No review items were selected", Error: "empty_selection"})
+		return
+	}
+	if len(ids) > batchClassificationReviewLimit {
+		ids = ids[:batchClassificationReviewLimit]
+	}
+
+	role, _ := c.Get("role")
+	name, _ := c.Get("username")
+	reviewer := strings.TrimSpace(strings.Join([]string{stringifyContextValue(role), stringifyContextValue(name)}, "/"))
+	if reviewer == "/" {
+		reviewer = "admin"
+	}
+
+	allowNewProductTypes := optionalBool(req.AllowNewProductTypes, false)
+	activateProduct := optionalBool(req.ActivateProduct, true)
+	ctx := c.Request.Context()
+
+	var items []models.AIAgentSEOJobItem
+	if err := db.Where("id IN ? AND classification_status IN ?", ids, classificationReviewStatuses).Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load review items", Error: utils.PublicError(err, "db_error")})
+		return
+	}
+
+	results := make([]gin.H, 0, len(items))
+	approved, failed := 0, 0
+	activated := 0
+	for _, item := range items {
+		var product models.Product
+		if err := db.Preload("Category").First(&product, item.ProductID).Error; err != nil {
+			failed++
+			results = append(results, gin.H{"item_id": item.ID, "product_id": item.ProductID, "sku": item.SKU, "approved": false, "error": "Reviewed product no longer exists"})
+			continue
+		}
+		_, result, applyErr := applyClassificationReviewItem(ctx, db, product, item, reviewer, allowNewProductTypes, activateProduct)
+		if applyErr != nil {
+			failed++
+			results = append(results, gin.H{"item_id": item.ID, "product_id": item.ProductID, "sku": item.SKU, "approved": false, "error": applyErr.message, "detail": applyErr.detail})
+			continue
+		}
+		updates := map[string]interface{}{
+			"classification_status": classificationStatusApproved,
+			"error":                 truncateRunes("Approved by "+reviewer+": "+result.Message, 1000),
+		}
+		if err := db.Model(&models.AIAgentSEOJobItem{}).Where("id = ?", item.ID).Updates(updates).Error; err != nil {
+			failed++
+			results = append(results, gin.H{"item_id": item.ID, "product_id": item.ProductID, "sku": item.SKU, "approved": false, "error": "Applied but the review entry could not be updated"})
+			continue
+		}
+		// Report the activation that actually happened rather than the request,
+		// so the UI can state how many products went live.
+		var live models.Product
+		if err := db.Select("is_active").First(&live, product.ID).Error; err == nil && live.IsActive {
+			activated++
+		}
+		approved++
+		results = append(results, gin.H{"item_id": item.ID, "product_id": product.ID, "sku": item.SKU, "approved": true, "category_id": result.CategoryID, "category_path": result.CategoryPath})
+	}
+
+	// One cache refresh for the whole batch instead of one per product.
+	if approved > 0 {
+		services.InvalidateLearnedClassificationRules()
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Classification review batch completed", Data: gin.H{
+		"requested": len(ids),
+		"approved":  approved,
+		"failed":    failed,
+		"activated": activated,
+		"results":   results,
+	}})
 }
 
 // DismissClassificationReview closes a review entry without changing the
