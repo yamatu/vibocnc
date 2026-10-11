@@ -332,6 +332,42 @@ body {
   color: var(--site-primary);
 }
 
+/* Bottom action row of a product card (grid + list): fixed two columns so the
+   quote/price block and the view/add buttons line up across every card. */
+.site-product-card-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.site-product-card-price {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.site-product-card-price > * {
+  min-width: 0;
+}
+
+.site-product-card-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.site-product-card-buttons > * {
+  flex-shrink: 0;
+}
+
+/* Narrow cards (1-2 per row on small screens) stack the two columns. */
+@media (max-width: 400px) {
+  .site-product-card-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .site-primary-action,
 .site-secondary-action {
   display: inline-flex;
