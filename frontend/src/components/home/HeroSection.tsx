@@ -233,7 +233,7 @@ export function HeroSection({ content }: Props) {
       </div>
 
       {/* Scroll Indicator */}
-      <div className="hidden md:block absolute bottom-8 right-8 z-20 text-white animate-bounce">
+      <div className="hidden md:motion-safe:block absolute bottom-8 right-8 z-20 text-white motion-safe:animate-bounce" aria-hidden="true">
         <div className="flex flex-col items-center">
           <span className="text-sm mb-2">{t('home.hero.scroll')}</span>
           <svg

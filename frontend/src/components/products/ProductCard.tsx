@@ -80,20 +80,15 @@ export default function ProductCard({
       <div className="relative">
         {/* Product Image */}
         <Link href={`/products/${toProductPathId(product.sku)}`} className="block">
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-slate-200">
-            {imageUrl && imageUrl !== '/images/placeholder.svg' ? (
-              <Image
-                src={imageUrl}
-                alt={product.name}
-                fill
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                className="object-cover object-center"
-              />
-            ) : (
-              <div className="absolute inset-0 bg-slate-200 flex items-center justify-center">
-                <span className="text-slate-400 text-sm">No Image</span>
-              </div>
-            )}
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-slate-100">
+            <Image
+              src={imageUrl}
+              alt={product.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              className="object-contain object-center p-2"
+              unoptimized={typeof imageUrl === 'string' && imageUrl.startsWith('/uploads/')}
+            />
           </div>
         </Link>
 
@@ -111,25 +106,25 @@ export default function ProductCard({
           </button>
         )}
 
-        {/* Featured Badge */}
-        {product.is_featured && (
-          <div className="absolute top-2 left-2 bg-orange-500 text-white px-2 py-1 rounded-md text-xs font-medium z-10">
-            Featured
-          </div>
-        )}
-
-        {/* Compare Price Badge */}
-        {hasProductPrice(product) && product.compare_price && product.compare_price > product.price && (
-          <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-medium z-10">
-            Sale
-          </div>
-        )}
+        {/* Badges — stacked vertically to avoid overlap */}
+        <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+          {product.is_featured && (
+            <div className="bg-orange-500 text-white px-2 py-1 rounded-md text-xs font-medium">
+              Featured
+            </div>
+          )}
+          {hasProductPrice(product) && product.compare_price && product.compare_price > product.price && (
+            <div className="bg-red-500 text-white px-2 py-1 rounded-md text-xs font-medium">
+              Sale
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Product Info */}
       <div className="p-4">
         <Link href={`/products/${toProductPathId(product.sku)}`}>
-          <h3 className="text-lg font-medium text-slate-950 mb-2 line-clamp-2 hover:text-[#003a78] transition-colors cursor-pointer">
+          <h3 className="text-lg font-medium text-slate-950 mb-2 line-clamp-2 hover:text-[var(--site-primary)] transition-colors cursor-pointer">
             {product.name}
           </h3>
         </Link>
@@ -153,7 +148,7 @@ export default function ProductCard({
         {/* Price */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
-            <span className="text-xl font-bold text-[#003a78]">
+            <span className="text-xl font-bold text-[var(--site-primary)]">
               {hasProductPrice(product) ? formatCurrency(product.price) : 'Contact for quote'}
             </span>
             {hasProductPrice(product) && product.compare_price && product.compare_price > product.price && (

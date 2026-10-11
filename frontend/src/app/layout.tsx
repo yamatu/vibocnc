@@ -1,6 +1,17 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ReactQueryProvider } from "@/lib/react-query";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 import { Toaster } from "react-hot-toast";
 import { getSiteUrl } from "@/lib/url";
 import { SITE_NAME } from "@/lib/seo";
@@ -124,7 +135,7 @@ export default async function RootLayout({
   const trackingConfig = await getTrackingConfig();
 
   return (
-    <html lang={localeConfig.hreflang} dir={localeConfig.dir} className="scroll-smooth" suppressHydrationWarning>
+    <html lang={localeConfig.hreflang} dir={localeConfig.dir} className={`scroll-smooth ${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head>
         <TrackingCode config={trackingConfig} />
         <link rel="icon" href="/favicon.ico?v=20260629" sizes="any" />
@@ -132,9 +143,9 @@ export default async function RootLayout({
         <link rel="icon" href="/favicon-32x32.png?v=20260629" sizes="32x32" type="image/png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260629" />
         <link rel="manifest" href="/site.webmanifest" />
-        <meta name="theme-color" content="#0f766e" />
+        <meta name="theme-color" content="#0b3e75" />
       </head>
-      <body className="antialiased">
+      <body className="antialiased font-sans">
         <ReactQueryProvider>
           <PublicI18nProvider initialLocale={locale}>
             {children}

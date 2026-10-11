@@ -283,12 +283,12 @@ export function Header() {
             {/* Cart */}
             <button
               onClick={toggleCart}
-              aria-label={t('header.cart')}
+              aria-label={itemCount > 0 ? `${t('header.cart')} (${itemCount})` : t('header.cart')}
               className="relative p-2 text-slate-600 hover:text-orange-600 transition-colors"
             >
               <ShoppingCartIcon className="h-6 w-6" />
               {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold">
+                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold" aria-hidden="true">
                   {itemCount}
                 </span>
               )}
@@ -302,7 +302,7 @@ export function Header() {
                   className="flex items-center space-x-2 p-2 text-slate-600 hover:text-orange-600 transition-colors"
                 >
                   <UserCircleIcon className="h-6 w-6" />
-                  <span className="hidden whitespace-nowrap text-sm font-medium min-[1720px]:inline">{customer.full_name}</span>
+                  <span className="hidden whitespace-nowrap text-sm font-medium xl:inline">{customer.full_name}</span>
                 </button>
 
                 {userMenuOpen && (
@@ -346,7 +346,7 @@ export function Header() {
                 )}
               </div>
             ) : (
-              <div className="hidden items-center space-x-2 min-[1720px]:flex">
+              <div className="hidden items-center space-x-2 xl:flex">
                 <Link
                   href="/login"
                   className="px-3 py-2 text-sm font-medium text-slate-700 hover:text-orange-600 transition-colors"
@@ -374,7 +374,7 @@ export function Header() {
               aria-label={mobileMenuOpen ? t('header.closeMenu') : t('header.openMenu')}
               aria-controls="responsive-navigation"
               aria-expanded={mobileMenuOpen}
-              className="p-2 text-slate-600 hover:text-orange-600 min-[1720px]:hidden"
+              className="p-2 text-slate-600 hover:text-orange-600 xl:hidden"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? (
@@ -389,7 +389,7 @@ export function Header() {
 
       {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <nav id="responsive-navigation" className="border-t border-slate-200 bg-white min-[1720px]:hidden" aria-label={t('header.mobileNavigation')}>
+        <nav id="responsive-navigation" className="border-t border-slate-200 bg-white xl:hidden" aria-label={t('header.mobileNavigation')}>
           <div className="px-4 py-4 space-y-4">
             {navigation.map((item) => {
               if (item.key === 'nav.categories') {

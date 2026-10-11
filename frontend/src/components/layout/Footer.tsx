@@ -177,7 +177,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
           </div>
 
           {/* Popular Brands */}
-          <div>
+          <nav aria-label={t('footer.popularBrands')}>
             <h3 className="text-lg font-semibold mb-4">{t('footer.popularBrands')}</h3>
             <ul className="space-y-2">
               {footerNavigation.brands.map((item) => (
@@ -191,10 +191,10 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
 
           {/* Products */}
-          <div>
+          <nav aria-label={t('footer.products')}>
             <h3 className="text-lg font-semibold mb-4">{t('footer.products')}</h3>
             <ul className="space-y-2">
               {footerNavigation.products.map((item) => (
@@ -208,10 +208,10 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
 
           {/* Company */}
-          <div>
+          <nav aria-label={t('footer.company')}>
             <h3 className="text-lg font-semibold mb-4">{t('footer.company')}</h3>
             <ul className="space-y-2">
               {footerNavigation.company.map((item) => (
@@ -225,10 +225,10 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
 
           {/* Support */}
-          <div>
+          <nav aria-label={t('footer.support')}>
             <h3 className="text-lg font-semibold mb-4">{t('footer.support')}</h3>
             <ul className="space-y-2">
               {footerNavigation.support.map((item) => (
@@ -242,7 +242,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
 
         </div>
 

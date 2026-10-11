@@ -123,7 +123,7 @@ export function FeaturedProducts({
                         width={640}
                         height={512}
                         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                        className="h-full w-full object-contain p-3 group-hover:scale-105 transition-transform duration-500"
+                        className="h-full w-full object-contain p-3 motion-safe:group-hover:scale-105 transition-transform duration-500"
                         unoptimized={unoptimized}
                       />
                       <Link
