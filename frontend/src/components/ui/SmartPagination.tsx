@@ -4,9 +4,9 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import type { ButtonHTMLAttributes } from 'react';
 
-function PageControl({ href, disabled, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { href?: string }) {
+function PageControl({ href, rel, disabled, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { href?: string; rel?: string }) {
   if (href && !disabled) {
-    return <Link href={href} className={props.className} aria-current={props['aria-current']} prefetch={false}>{children}</Link>;
+    return <Link href={href} rel={rel} className={props.className} aria-current={props['aria-current']} prefetch={false}>{children}</Link>;
   }
   return <button {...props} type="button" disabled={disabled}>{children}</button>;
 }
@@ -62,6 +62,7 @@ export default function SmartPagination({
       <div className="flex flex-1 justify-between sm:hidden">
         <PageControl
           href={getPageHref?.(Math.max(1, currentPage - 1))}
+          rel="prev"
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
           className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -76,6 +77,7 @@ export default function SmartPagination({
         </div>
         <PageControl
           href={getPageHref?.(Math.min(totalPages, currentPage + 1))}
+          rel="next"
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
           className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -97,6 +99,7 @@ export default function SmartPagination({
             {/* Previous button */}
             <PageControl
               href={getPageHref?.(Math.max(1, currentPage - 1))}
+              rel="prev"
               onClick={() => onPageChange(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
               className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -161,6 +164,7 @@ export default function SmartPagination({
             {/* Next button */}
             <PageControl
               href={getPageHref?.(Math.min(totalPages, currentPage + 1))}
+              rel="next"
               onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
               className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"

@@ -189,10 +189,13 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
   })) || [];
   const additionalProperties = [...specProperties, ...attributeProperties];
 
-  // Google requires Product markup to contain a real offer, review, or rating.
-  // Quote-only records without approved reviews remain valid WebPage content,
-  // but are not eligible for a Product rich result.
-  const hasProductRichResultData = product.price > 0 || hasReviews;
+  // Google requires Product markup to contain a real offer, review, or rating,
+  // and an Offer is only valid with a price greater than zero. Quote-only
+  // records therefore stay ineligible for a Product rich result. They still
+  // publish a Product entity without the offers block: entity recognition for
+  // the part number does not depend on price, and omitting offers is what
+  // keeps the markup valid instead of triggering a missing-price error.
+  const hasValidOffer = product.price > 0;
 
   // Generate rich structured data for the product when the record supports it.
   const structuredData: { [key: string]: JsonLdValue } = {
@@ -230,7 +233,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
       "@type": "Audience",
       "audienceType": "CNC maintenance buyers and industrial automation service teams"
     },
-    "offers": product.price > 0 ? {
+    "offers": hasValidOffer ? {
       "@type": "Offer",
       "url": productUrl,
       "price": product.price,
@@ -480,13 +483,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
       // search engines merge the graph into one entity.
       "@id": `${baseUrl}/#website`
     },
-    "about": hasProductRichResultData
-      ? { "@id": productId }
-      : {
-          "@type": "Thing",
-          "name": semanticName,
-          "identifier": product.sku,
-        },
+    "about": { "@id": productId },
     "speakable": {
       "@type": "SpeakableSpecification",
       "cssSelector": ["h1", ".product-summary", ".product-description", ".product-specs"]
@@ -495,16 +492,15 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
 
   return (
     <>
-      {/* Product Structured Data is only emitted when Google has a real
-          offer, review, or aggregate rating to validate. */}
-      {hasProductRichResultData && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify(structuredData)
-          }}
-        />
-      )}
+      {/* The Product entity is always published so the part number, brand and
+          model stay machine-readable. The offers block inside it is only
+          present when a real price exists. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData)
+        }}
+      />
 
       {/* Breadcrumb Structured Data */}
       <script

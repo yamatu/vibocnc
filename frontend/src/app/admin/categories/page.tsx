@@ -17,6 +17,7 @@ import {
 } from '@heroicons/react/24/outline';
 import AdminLayout from '@/components/admin/AdminLayout';
 import CategoryHierarchyEditor from '@/components/admin/CategoryHierarchyEditor';
+import CategoryParentSelect from '@/components/admin/CategoryParentSelect';
 import CategoryAIToolsPanel from '@/components/admin/CategoryAIToolsPanel';
 import { CategoryService, ProductService } from '@/services';
 import { AIAgentService } from '@/services/ai-agent.service';
@@ -35,6 +36,8 @@ export default function AdminCategoriesPage() {
   const isAdmin = user?.role === 'admin';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [listPage, setListPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(50);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deletionCategory, setDeletionCategory] = useState<Category | null>(null);
@@ -168,7 +171,9 @@ export default function AdminCategoriesPage() {
       const matchesSearch =
         !q ||
         category.name?.toLowerCase().includes(q) ||
-        category.description?.toLowerCase().includes(q);
+        category.description?.toLowerCase().includes(q) ||
+        category.slug?.toLowerCase().includes(q) ||
+        (category as any).path?.toLowerCase().includes(q);
       const matchesStatus =
         statusFilter === 'all' ||
         (statusFilter === 'active' && category.is_active) ||
@@ -177,41 +182,45 @@ export default function AdminCategoriesPage() {
     });
   }, [sortedCategories, searchQuery, statusFilter]);
 
-  const parentOptions = useMemo(() => {
-    const list = Array.isArray(categoriesData) ? [...categoriesData] : [];
-    // Build tree for select labels
-    const byParent = new Map<number | null, Category[]>();
-    for (const c of list) {
-      const pid = c.parent_id ?? null;
-      if (!byParent.has(pid)) byParent.set(pid, []);
-      byParent.get(pid)!.push(c);
-    }
+  // A taxonomy of several hundred entries cannot be reviewed in one table, so
+  // the list is paged like the product table.
+  const pagedCategories = useMemo(() => {
+    const start = (listPage - 1) * listPageSize;
+    return filteredCategories.slice(start, start + listPageSize);
+  }, [filteredCategories, listPage, listPageSize]);
 
-    const sort = (a: Category, b: Category) => {
-      const ao = Number(a.sort_order ?? 0);
-      const bo = Number(b.sort_order ?? 0);
-      if (ao !== bo) return ao - bo;
-      return String(a.name || '').localeCompare(String(b.name || ''), locale === 'zh' ? 'zh' : 'en');
-    };
+  const listTotalPages = Math.max(1, Math.ceil(filteredCategories.length / listPageSize));
 
-    for (const arr of byParent.values()) arr.sort(sort);
+  useEffect(() => {
+    if (listPage > listTotalPages) setListPage(1);
+  }, [listPage, listTotalPages]);
 
-    const out: Array<{ value: string; label: string }> = [{ value: '', label: locale === 'zh' ? '（顶级分类）' : '(Root category)' }];
-    const editingId = editingCategory?.id ? Number(editingCategory.id) : 0;
+  // Any filter change invalidates the current page offset.
+  useEffect(() => {
+    setListPage(1);
+  }, [searchQuery, statusFilter]);
 
-    const walk = (pid: number | null, depth: number) => {
-      const arr = byParent.get(pid) || [];
-      for (const c of arr) {
-        if (editingId && Number(c.id) === editingId) continue;
-        const prefix = depth > 0 ? `${'—'.repeat(depth)} ` : '';
-        out.push({ value: String(c.id), label: `${prefix}${c.name}` });
-        walk(Number(c.id), depth + 1);
+  // Full ancestor chain per category, so a deep node is identifiable without
+  // opening it. Built breadth-first from the flat list to avoid recursion
+  // depth issues on wide taxonomies.
+  const categoryPathLabel = useMemo(() => {
+    const labelById = new Map<number, string>();
+    for (const category of categoriesData) {
+      const id = Number(category.id);
+      const chain: string[] = [category.name];
+      const seen = new Set<number>([id]);
+      let parentId = category.parent_id ? Number(category.parent_id) : null;
+      while (parentId != null && !seen.has(parentId)) {
+        seen.add(parentId);
+        const parent = categoryById.get(parentId);
+        if (!parent) break;
+        chain.unshift(parent.name);
+        parentId = parent.parent_id ? Number(parent.parent_id) : null;
       }
-    };
-
-    walk(null, 0);
-    return out;
-  }, [categoriesData, locale, editingCategory]);
+      labelById.set(id, chain.join(' / '));
+    }
+    return labelById;
+  }, [categoriesData, categoryById]);
 
   const normalizeSortMutation = useMutation({
     mutationFn: async () => {
@@ -514,7 +523,7 @@ export default function AdminCategoriesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredCategories.map((category) => {
+                  {pagedCategories.map((category) => {
                     const pid = (category as any).parent_id ? Number((category as any).parent_id) : null;
                     const parent = pid ? categoryById.get(pid) : null;
                     return (
@@ -529,7 +538,9 @@ export default function AdminCategoriesPage() {
                           <div className="text-xs font-mono text-gray-700">/{(category as any).path || category.slug}</div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-sm text-gray-700">{parent?.name || '—'}</div>
+                          <div className="text-sm text-gray-700">
+                            {pid ? (categoryPathLabel.get(pid) || parent?.name || '—') : '—'}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -586,6 +597,52 @@ export default function AdminCategoriesPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-3">
+              <div className="text-sm text-gray-600">
+                {locale === 'zh'
+                  ? `共 ${filteredCategories.length} 个分类，第 ${listPage} / ${listTotalPages} 页`
+                  : `${filteredCategories.length} categories — page ${listPage} of ${listTotalPages}`}
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  {locale === 'zh' ? '每页' : 'Per page'}
+                  <select
+                    value={listPageSize}
+                    onChange={(event) => {
+                      setListPageSize(Number(event.target.value));
+                      setListPage(1);
+                    }}
+                    className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    {[25, 50, 100, 200].map((size) => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </label>
+                {listTotalPages > 1 ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
+                      disabled={listPage === 1}
+                      className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {locale === 'zh' ? '上一页' : 'Previous'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setListPage((prev) => Math.min(listTotalPages, prev + 1))}
+                      disabled={listPage === listTotalPages}
+                      className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {locale === 'zh' ? '下一页' : 'Next'}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         ) : null}
@@ -656,18 +713,12 @@ export default function AdminCategoriesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {t('categories.field.parent', 'Parent Category')}
                   </label>
-                  <select
-                    name="parent_id"
-                    value={String((formData as any).parent_id || '')}
-                    onChange={handleInputChange}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    {parentOptions.map((opt) => (
-                      <option key={opt.value || 'root'} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  <CategoryParentSelect
+                    categories={categoriesData}
+                    value={String(formData.parent_id || '')}
+                    onChange={(parentId) => setFormData((prev) => ({ ...prev, parent_id: parentId }))}
+                    excludeId={editingCategory ? Number(editingCategory.id) : null}
+                  />
                   <p className="mt-1 text-xs text-gray-500">
                     {t('categories.field.parentHint', 'Set a parent to create nested URLs like /parent/child.')}
                   </p>

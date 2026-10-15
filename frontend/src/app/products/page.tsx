@@ -202,10 +202,18 @@ export async function generateMetadata({ searchParams }: {
 
   if (page > 1) title = `${title} - Page ${page}`;
 
+  // Deep pages of a filtered catalogue repeat the same product copy as page 1
+  // and, once a brand filter is present, each of them would otherwise be
+  // indexable and compete with the product detail pages they link to. They
+  // stay crawlable so crawlers still reach the products linked from them.
+  const isDeepPage = page > 1;
+
   return {
     title,
     description,
-    robots: hasSearch || !!brand || pageSize !== 48 ? { index: false, follow: true } : { index: true, follow: true },
+    robots: hasSearch || !!brand || pageSize !== 48 || isDeepPage
+      ? { index: false, follow: true }
+      : { index: true, follow: true },
     keywords: [
       'CNC parts', 'industrial automation', 'servo motors', 'PCB boards',
       'I/O modules', 'control units', searchQuery,

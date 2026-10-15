@@ -154,9 +154,16 @@ function buildCategoryFaqEntries(
   ];
 }
 
-export async function generateMetadata({ params }: CategoryPathPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: CategoryPathPageProps): Promise<Metadata> {
   try {
     const { categoryPath } = await params;
+    const resolvedSearchParams = (await searchParams) || {};
+    const rawPage = Array.isArray(resolvedSearchParams.page) ? resolvedSearchParams.page[0] : resolvedSearchParams.page;
+    const currentPage = Math.max(1, Number.parseInt(rawPage || '1', 10) || 1);
+    // Deep pages of a category repeat page 1's product copy across thousands of
+    // filtered listings. They stay crawlable so crawlers can still follow the
+    // product links, but they must not be indexed in their own right.
+    const isDeepPage = currentPage > 1;
     const locale = await getRequestPublicLocale();
     const path = (categoryPath || []).join('/');
     const resolved = await CategoryService.getCategoryByPath(path);
@@ -181,7 +188,7 @@ export async function generateMetadata({ params }: CategoryPathPageProps): Promi
       // category titles stay within the ~70-character SERP display limit.
       title: trimMetaText(`${category.name} - ${titleSuffix} | Buy Online`, 58),
       description: trimMetaText(metaDescription, 160),
-      robots: { index: hasRequestedTranslation, follow: true },
+      robots: { index: hasRequestedTranslation && !isDeepPage, follow: true },
       openGraph: {
         title: withSiteName(`${category.name} - ${titleSuffix} | Buy Online`),
         description: metaDescription,

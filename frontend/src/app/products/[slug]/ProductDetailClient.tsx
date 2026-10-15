@@ -522,6 +522,7 @@ export default function ProductDetailClient({ productSku, initialProduct, conten
         category={category}
         categoryBreadcrumb={categoryBreadcrumb}
         contentLocale={contentLocale}
+        commercePolicy={commercePolicy}
       />
 
       <div className="site-page-shell min-h-screen">
