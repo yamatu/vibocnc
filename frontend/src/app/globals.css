@@ -293,12 +293,26 @@ body {
 }
 
 .site-product-card {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--site-line);
   background: #ffffff;
   border-radius: 0.5rem;
   box-shadow: 0 16px 32px -30px rgba(8, 24, 39, 0.42);
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+/* Description text is optional per record, so the text block absorbs the
+   leftover height and the price/actions row stays level across the grid. */
+.site-product-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.site-product-card-actions {
+  margin-top: auto;
 }
 
 .site-product-card:hover {

@@ -348,7 +348,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                         </button>
                       </div>
 
-                      <div className="p-4">
+                      <div className="site-product-card-body p-4">
                         <h3 className="text-base font-semibold text-slate-950 mb-2 line-clamp-2 min-h-[3rem]">
                           <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-title">
 
@@ -357,22 +357,20 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                           </Link>
                         </h3>
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">SKU: {product.sku}</p>
-                        {product.description && (
-                          <p className="text-sm text-slate-600 mb-4 line-clamp-2">
-                            {product.description}
-                          </p>
-                        )}
+                        <p className="text-sm text-slate-600 mb-4 line-clamp-2 min-h-[2.5rem]">
+                          {product.description || ''}
+                        </p>
 
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <span className="text-xl font-bold text-[#0b3e75]">
+                        <div className="site-product-card-actions flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex min-h-[2.5rem] flex-1 items-center text-xl font-bold text-[#0b3e75]">
                             {hasProductPrice(product) ? formatCurrency(product.price) : (
                               <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
                                 {t('products.contactForQuote')}
                               </Link>
                             )}
-                          </span>
+                          </div>
 
-                          <div className="flex items-stretch gap-2">
+                          <div className="flex flex-shrink-0 items-stretch gap-2">
                             <Link
                               href={href(`/products/${toProductPathId(product.sku)}`)}
                               className="site-secondary-action w-9 flex-shrink-0"

@@ -24,7 +24,9 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
     title,
     description,
     keywords: ['industrial automation blog', 'CNC troubleshooting', 'PLC and HMI guides', 'servo drive repair', 'automation parts sourcing', 'FANUC Siemens Mitsubishi ABB technical articles', search].filter(Boolean).join(', '),
-    robots: search ? { index: false, follow: true } : { index: true, follow: true },
+    // Paged archives repeat page 1's headlines. They stay crawlable so the
+    // article links are followed, but they are not indexable pages of their own.
+    robots: search || page > 1 ? { index: false, follow: true } : { index: true, follow: true },
     alternates: { canonical: url, languages },
     openGraph: { title: withSiteName(title), description, type: 'website', url },
     twitter: { card: 'summary_large_image', title: withSiteName(title), description },

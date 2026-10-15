@@ -31,7 +31,9 @@ export async function generateMetadata({ searchParams }: {
   return {
     title,
     description,
-    robots: hasSearch ? { index: false, follow: true } : { index: true, follow: true },
+    // Paged archives repeat page 1's headlines. They stay crawlable so the
+    // article links are followed, but they are not indexable pages of their own.
+    robots: hasSearch || page > 1 ? { index: false, follow: true } : { index: true, follow: true },
     keywords: ['FANUC news', 'CNC articles', 'industrial automation', 'technical blog', search].filter(Boolean).join(', '),
     openGraph: {
       title: withSiteName(title),
