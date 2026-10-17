@@ -544,62 +544,43 @@ func (ac *AIAgentController) ResumeSEOJob(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "AI SEO job resumed", Data: job})
 }
 
-// EndPausedSEOJob permanently ends a paused job. Completed products keep their
-// applied SEO data; every queued or in-flight SKU is released for a future job.
-func (ac *AIAgentController) EndPausedSEOJob(c *gin.Context) {
+// EndSEOJob permanently ends a queued, running or paused job. Completed
+// products keep their results; unfinished items are released in batches so a
+// job over a 100k+ product catalogue can always be ended.
+func (ac *AIAgentController) EndSEOJob(c *gin.Context) {
 	db := config.GetDB()
 	jobID := c.Param("id")
 	if !authorizeCategoryJobControl(c, db, jobID) {
 		return
 	}
 	now := time.Now().UTC()
-	err := db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&models.AIAgentSEOJob{}).
-			Where("id = ? AND status = ?", jobID, "paused").
-			Updates(map[string]interface{}{
-				"status":       "cancelled",
-				"error":        "Ended by administrator while paused",
-				"completed_at": &now,
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
-		}
-
-		var productIDs []uint
-		if err := tx.Model(&models.AIAgentSEOJobItem{}).
-			Where("job_id = ? AND status IN ?", jobID, []string{"queued", "running"}).
-			Pluck("product_id", &productIDs).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&models.AIAgentSEOJobItem{}).
-			Where("job_id = ? AND status IN ?", jobID, []string{"queued", "running"}).
-			Updates(map[string]interface{}{"status": "cancelled", "error": "Task ended by administrator"}).Error; err != nil {
-			return err
-		}
-		if len(productIDs) > 0 {
-			return tx.Model(&models.Product{}).
-				Where("id IN ? AND ai_seo_optimization_job_id = ? AND ai_seo_status = ?", productIDs, jobID, "running").
-				Updates(map[string]interface{}{"ai_seo_status": "", "ai_seo_optimization_job_id": ""}).Error
-		}
-		return nil
-	})
+	result := db.Model(&models.AIAgentSEOJob{}).
+		Where("id = ? AND status IN ?", jobID, []string{"queued", "running", "paused"}).
+		Updates(map[string]interface{}{
+			"status":       "cancelled",
+			"error":        "任务已被管理员结束 / Ended by administrator",
+			"completed_at": &now,
+		})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "结束任务失败 / Failed to end AI job", Error: result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "只有排队、运行或暂停中的任务可以结束 / Only queued, running or paused jobs can be ended"})
+		return
+	}
+	released, err := releaseEndedJobItems(db, jobID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "Only paused AI SEO jobs can be ended"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to end paused AI SEO job", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "任务已结束，但释放剩余产品失败，可再次点击结束重试 / Job ended but releasing items failed", Error: err.Error()})
 		return
 	}
 	var job models.AIAgentSEOJob
 	if err := db.First(&job, "id = ?", jobID).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "AI SEO job was ended but could not be reloaded", Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "AI job was ended but could not be reloaded", Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Paused AI SEO job ended. Remaining products were released for future optimization.", Data: job})
+	dispatchQueuedAISEOJobsAsync()
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: fmt.Sprintf("任务已结束，释放了 %d 个未处理产品 / Job ended, %d unprocessed products released", released, released), Data: job})
 }
 
 func (ac *AIAgentController) GetSEOStats(c *gin.Context) {
@@ -665,6 +646,7 @@ func runAIAgentSEOJob(jobID, workerToken string) {
 		return
 	}
 	jobRuntime := aiSEOJobRuntime{prompt: claimedJob.Prompt, scope: aiSEOScopeFromPrompt(claimedJob.Prompt)}
+	configSource := newAIJobConfigSource(jobID, setting, apiKey)
 	workers := normalizedAISEOJobConcurrency(setting)
 	if workers > 0 {
 		work := make(chan models.AIAgentSEOJobItem)
@@ -674,7 +656,8 @@ func runAIAgentSEOJob(jobID, workerToken string) {
 			go func() {
 				defer wg.Done()
 				for item := range work {
-					processAIAgentSEOItem(context.Background(), setting, apiKey, jobID, workerToken, jobRuntime, item)
+					currentSetting, currentKey := configSource.current(db)
+					processAIAgentSEOItem(context.Background(), currentSetting, currentKey, jobID, workerToken, jobRuntime, item)
 				}
 			}()
 		}
@@ -1438,18 +1421,14 @@ func markAIAgentSEOItemUnresolvedWithProposal(jobID, workerToken string, item mo
 func failQueuedAIAgentSEOItems(jobID, message string) {
 	db := config.GetDB()
 	message = truncateRunes(message, 1000)
-	var productIDs []uint
-	if err := db.Model(&models.AIAgentSEOJobItem{}).
+	result := db.Model(&models.AIAgentSEOJobItem{}).
 		Where("job_id = ? AND status = ?", jobID, "queued").
-		Pluck("product_id", &productIDs).Error; err != nil || len(productIDs) == 0 {
+		Updates(map[string]interface{}{"status": "failed", "error": message})
+	if result.Error != nil || result.RowsAffected == 0 {
 		return
 	}
-	_ = db.Model(&models.AIAgentSEOJobItem{}).
-		Where("job_id = ? AND status = ?", jobID, "queued").
-		Updates(map[string]interface{}{"status": "failed", "error": message}).Error
-
 	_ = db.Model(&models.AIAgentSEOJob{}).Where("id = ?", jobID).
-		Updates(map[string]interface{}{"processed": gorm.Expr("processed + ?", len(productIDs)), "failed": gorm.Expr("failed + ?", len(productIDs))}).Error
+		Updates(map[string]interface{}{"processed": gorm.Expr("processed + ?", result.RowsAffected), "failed": gorm.Expr("failed + ?", result.RowsAffected)}).Error
 }
 
 // publishAIAgentSEOJobCompletion makes the new content discoverable without
@@ -1457,23 +1436,19 @@ func failQueuedAIAgentSEOItems(jobID, message string) {
 // database-backed IndexNow integration is explicitly enabled by an administrator.
 func publishAIAgentSEOJobCompletion(jobID string) {
 	db := config.GetDB()
-	var productIDs []uint
-	if err := db.Model(&models.AIAgentSEOJobItem{}).
-		Where("job_id = ? AND status = ?", jobID, "optimized").
-		Pluck("product_id", &productIDs).Error; err != nil {
-		return
-	}
 	services.InvalidatePublicCaches(context.Background(), "ai-seo-job:complete", nil)
 	// Revalidating the catalogue tag and sitemap keeps the number of on-demand
 	// requests constant even when a single job updates 30,000 product records.
 	services.TriggerNextRevalidate(nil, []string{"/products", "/sitemap.xml"}, true)
-	if len(productIDs) > 0 {
-		go func(ids []uint) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-			services.SubmitProductBatchURLsBestEffort(ctx, db, ids)
-		}(productIDs)
-	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		_ = forEachJobProductBatch(db, jobID, "optimized", func(ids []uint) {
+			if ctx.Err() == nil {
+				services.SubmitProductBatchURLsBestEffort(ctx, db, ids)
+			}
+		})
+	}()
 }
 
 func incrementAIAgentSEOJob(jobID string, succeeded bool) {

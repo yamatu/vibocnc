@@ -228,26 +228,11 @@ func loadAIAgentConfigWithProfile() (*models.AIAgentSetting, *models.AIAgentProf
 	return decryptAIAgentConfig(setting, profile, err)
 }
 
-// loadAIAgentConfigForProfile is used by durable jobs. New interactive calls
-// pass nil and use the active profile; a saved profile ID keeps resumed work on
-// the same provider even when an administrator switches the global selection.
-func loadAIAgentConfigForProfile(profileID *uint) (*models.AIAgentSetting, *models.AIAgentProfile, string, error) {
-	if profileID == nil || *profileID == 0 {
-		return loadAIAgentConfigWithProfile()
-	}
-	db := config.GetDB()
-	setting, err := getOrCreateAIAgentSetting(db)
-	if err != nil {
-		return nil, nil, "", err
-	}
-	var profile models.AIAgentProfile
-	if err := db.First(&profile, *profileID).Error; err != nil {
-		return nil, nil, "", fmt.Errorf("saved AI profile %d is unavailable: %w", *profileID, err)
-	}
-	effective := *setting
-	effective.ActiveProfileID = &profile.ID
-	copyAIAgentProfileToSetting(&effective, &profile)
-	return decryptAIAgentConfig(&effective, &profile, nil)
+// loadAIAgentConfigForProfile is used by durable jobs. Jobs always follow the
+// currently active profile, so switching or editing the model takes effect for
+// queued, paused and running work instead of being blocked by them.
+func loadAIAgentConfigForProfile(_ *uint) (*models.AIAgentSetting, *models.AIAgentProfile, string, error) {
+	return loadAIAgentConfigWithProfile()
 }
 
 func decryptAIAgentConfig(setting *models.AIAgentSetting, profile *models.AIAgentProfile, err error) (*models.AIAgentSetting, *models.AIAgentProfile, string, error) {
@@ -489,13 +474,6 @@ func (ac *AIAgentController) UpdateSettings(c *gin.Context) {
 		}
 
 		if providerMutation && activeProfile != nil {
-			activeJobs, err := countActiveAIAgentSEOJobsForProfile(tx, activeProfile.ID)
-			if err != nil {
-				return err
-			}
-			if activeJobs > 0 {
-				return errAIProfileInUse
-			}
 			copyAIAgentSettingToProfile(&effective, activeProfile)
 			if err := tx.Model(activeProfile).Updates(map[string]any{
 				"base_url":         activeProfile.BaseURL,
@@ -565,10 +543,6 @@ func (ac *AIAgentController) UpdateSettings(c *gin.Context) {
 	})
 	if errors.Is(err, errAIProfileNeedsAPIKey) {
 		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Save an API key before enabling the AI assistant"})
-		return
-	}
-	if errors.Is(err, errAIProfileInUse) {
-		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "Finish the queued, running, or paused SEO job before changing this AI provider"})
 		return
 	}
 	if err != nil {

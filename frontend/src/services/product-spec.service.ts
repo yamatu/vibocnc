@@ -72,7 +72,7 @@ export class ProductSpecService {
   }
 
   static async endResearchJob(id: string): Promise<AIAgentSEOJob> {
-    return AIAgentService.endPausedSEOJob(id);
+    return AIAgentService.endSEOJob(id);
   }
 
   /** Reads the per-item summary the job worker stored (draft id, conflicts). */

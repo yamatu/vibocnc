@@ -763,6 +763,19 @@ func (ac *AIAgentController) ListSEOJobItems(c *gin.Context) {
 	if status := strings.ToLower(strings.TrimSpace(c.Query("status"))); status != "" {
 		query = query.Where("status = ?", status)
 	}
+	if search := truncateRunes(strings.TrimSpace(c.Query("q")), 100); search != "" {
+		query = query.Where("sku LIKE ?", "%"+search+"%")
+	}
+	var statusRows []struct {
+		Status string
+		Total  int64
+	}
+	statusCounts := map[string]int64{}
+	if err := db.Model(&models.AIAgentSEOJobItem{}).Select("status, COUNT(*) AS total").Where("job_id = ?", jobID).Group("status").Scan(&statusRows).Error; err == nil {
+		for _, row := range statusRows {
+			statusCounts[row.Status] = row.Total
+		}
+	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to count task items", Error: err.Error()})
@@ -773,7 +786,7 @@ func (ac *AIAgentController) ListSEOJobItems(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load task items", Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: gin.H{"items": items, "total": total, "limit": limit, "offset": offset}})
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: gin.H{"items": items, "total": total, "limit": limit, "offset": offset, "status_counts": statusCounts}})
 }
 
 func isAdminRequest(c *gin.Context) bool {

@@ -203,6 +203,8 @@ func createListingJob(db *gorm.DB, products []aiSEOProductRef, prompt string, cr
 	}
 	listingJobCreationMu.Lock()
 	defer listingJobCreationMu.Unlock()
+	// The settings row lock only guards the capacity check. Inserting 100k+ items
+	// under it would block saving or switching the AI model for the whole insert.
 	err := db.Transaction(func(tx *gorm.DB) error {
 		setting, err := getAIAgentSettingForUpdate(tx)
 		if err != nil {
@@ -213,16 +215,19 @@ func createListingJob(db *gorm.DB, products []aiSEOProductRef, prompt string, cr
 			return err
 		}
 		pinAIAgentSEOJobProfile(job, setting, profile)
-		if err := ensureAISEOJobCapacity(tx, aiListingSelectionMode); err != nil {
-			return err
-		}
-		if err := ensureNoPendingAISEOProducts(tx, products); err != nil {
-			return err
-		}
+		return ensureAISEOJobCapacity(tx, aiListingSelectionMode)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureNoPendingAISEOProducts(db, products); err != nil {
+		return nil, err
+	}
+	err = db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(job).Error; err != nil {
 			return err
 		}
-		return tx.CreateInBatches(&items, 500).Error
+		return tx.CreateInBatches(&items, 1000).Error
 	})
 	if err != nil {
 		return nil, err
@@ -248,6 +253,7 @@ func processListingOptimizationJob(jobID, workerToken, prompt string) {
 		finishAIAgentSEOJob(jobID, workerToken, "paused", "AI 配置不可用，修复后可继续；已处理的产品不受影响 / AI configuration unavailable")
 		return
 	}
+	configSource := newAIJobConfigSource(jobID, setting, apiKey)
 	work := make(chan models.AIAgentSEOJobItem)
 	var wg sync.WaitGroup
 	for index := 0; index < normalizedAISEOJobConcurrency(setting); index++ {
@@ -255,7 +261,8 @@ func processListingOptimizationJob(jobID, workerToken, prompt string) {
 		go func() {
 			defer wg.Done()
 			for item := range work {
-				processListingItem(context.Background(), setting, apiKey, jobID, workerToken, opts, item)
+				currentSetting, currentKey := configSource.current(db)
+				processListingItem(context.Background(), currentSetting, currentKey, jobID, workerToken, opts, item)
 			}
 		}()
 	}

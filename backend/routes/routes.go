@@ -211,7 +211,7 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.GET("/seo/jobs/:id/items", aiAgentController.ListSEOJobItems)
 				aiAgent.POST("/seo/jobs/:id/pause", aiAgentController.PauseSEOJob)
 				aiAgent.POST("/seo/jobs/:id/resume", aiAgentController.ResumeSEOJob)
-				aiAgent.POST("/seo/jobs/:id/end", aiAgentController.EndPausedSEOJob)
+				aiAgent.POST("/seo/jobs/:id/end", aiAgentController.EndSEOJob)
 				aiAgent.GET("/seo/stats", aiAgentController.GetSEOStats)
 				// Classification review queue: candidates that could not be published
 				// automatically are decided by an administrator here, which is the

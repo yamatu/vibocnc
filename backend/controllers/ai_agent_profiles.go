@@ -30,14 +30,12 @@ const aiAgentAPIModeStandard = "standard_chat"
 const aiAgentAPIModeReasoning = "reasoning_chat"
 
 var errActiveAIProfile = errors.New("active AI profile cannot be deleted")
-var errAIProfileInUse = errors.New("AI profile is used by an active SEO job")
 var errAIProfileNeedsAPIKey = errors.New("active AI profile needs an API key while the assistant is enabled")
 var errAIProfileNameConflict = errors.New("AI profile name already exists")
 var errAIProfileLimitReached = errors.New("AI profile limit reached")
 var errAIProfileKeyUnavailable = errors.New("active AI profile key is unavailable")
 var errAIProfileCrossProviderKeyReuse = errors.New("active AI profile key belongs to another provider")
 
-var activeAISEOJobStatuses = []string{"queued", "running", "paused"}
 
 type aiAgentProfileMutationRequest struct {
 	Name              *string `json:"name"`
@@ -51,18 +49,6 @@ type aiAgentProfileMutationRequest struct {
 	TimeoutSeconds    *int    `json:"timeout_seconds"`
 }
 
-// Legacy SEO jobs created before named profiles have no ai_profile_id column.
-// In that state every active job is conservatively treated as using the
-// profile, which avoids an unknown-column error without weakening the mutation
-// lock. The explicit migration adds profile-scoped locking on the next deploy.
-func scopeActiveAIAgentSEOJobs(query *gorm.DB, profileID uint, hasProfileIDColumn bool) *gorm.DB {
-	query = query.Where("status IN ?", activeAISEOJobStatuses)
-	if hasProfileIDColumn {
-		query = query.Where("ai_profile_id = ?", profileID)
-	}
-	return query
-}
-
 func isMissingAIAgentProfileIDError(err error) bool {
 	if err == nil {
 		return false
@@ -73,23 +59,6 @@ func isMissingAIAgentProfileIDError(err error) bool {
 
 func hasAIAgentSEOJobProfileIDColumn(db *gorm.DB) bool {
 	return db != nil && db.Migrator().HasColumn(&models.AIAgentSEOJob{}, "AIProfileID")
-}
-
-func countActiveAIAgentSEOJobsForProfile(tx *gorm.DB, profileID uint) (int64, error) {
-	hasProfileIDColumn := hasAIAgentSEOJobProfileIDColumn(tx)
-	var count int64
-	err := scopeActiveAIAgentSEOJobs(
-		tx.Model(&models.AIAgentSEOJob{}),
-		profileID,
-		hasProfileIDColumn,
-	).Count(&count).Error
-	// A deployment can race an additive migration, and older binaries may have
-	// cached the schema capability. Retry without profile scoping if MySQL still
-	// reports the legacy missing-column error.
-	if err != nil && isMissingAIAgentProfileIDError(err) {
-		err = scopeActiveAIAgentSEOJobs(tx.Model(&models.AIAgentSEOJob{}), profileID, false).Count(&count).Error
-	}
-	return count, err
 }
 
 func normalizeAIAgentProfileName(value string) (string, error) {
@@ -492,13 +461,6 @@ func (ac *AIAgentController) UpdateProfile(c *gin.Context) {
 		if exists {
 			return errAIProfileNameConflict
 		}
-		activeJobs, err := countActiveAIAgentSEOJobsForProfile(tx, profileID)
-		if err != nil {
-			return err
-		}
-		if activeJobs > 0 {
-			return errAIProfileInUse
-		}
 		isActive := setting.ActiveProfileID != nil && *setting.ActiveProfileID == profile.ID
 		if isActive && setting.Enabled && profile.APIKeyEnc == "" {
 			return errAIProfileNeedsAPIKey
@@ -522,10 +484,6 @@ func (ac *AIAgentController) UpdateProfile(c *gin.Context) {
 	}
 	if errors.Is(err, errAIProfileNameConflict) {
 		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "An AI profile with this name already exists"})
-		return
-	}
-	if errors.Is(err, errAIProfileInUse) {
-		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "Pause is not enough to edit this AI: finish the queued, running, or paused SEO job first"})
 		return
 	}
 	if errors.Is(err, errAIProfileNeedsAPIKey) {
@@ -557,13 +515,6 @@ func (ac *AIAgentController) DeleteProfile(c *gin.Context) {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&profile, profileID).Error; err != nil {
 			return err
 		}
-		activeJobs, err := countActiveAIAgentSEOJobsForProfile(tx, profileID)
-		if err != nil {
-			return err
-		}
-		if activeJobs > 0 {
-			return errAIProfileInUse
-		}
 		result := tx.Delete(&profile)
 		if result.Error != nil {
 			return result.Error
@@ -575,10 +526,6 @@ func (ac *AIAgentController) DeleteProfile(c *gin.Context) {
 	})
 	if errors.Is(err, errActiveAIProfile) {
 		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "Switch to another AI profile before deleting the active profile"})
-		return
-	}
-	if errors.Is(err, errAIProfileInUse) {
-		c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "This AI profile is still used by a queued, running, or paused SEO job"})
 		return
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {

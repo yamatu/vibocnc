@@ -10,9 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 )
 
 func stringPointer(value string) *string {
@@ -140,39 +137,6 @@ func TestCopyAIAgentProfileToSettingPreservesGlobalValues(t *testing.T) {
 	}
 	if setting.SEOJobConcurrency != 12 || setting.DefaultProductPrice != 55.5 {
 		t.Fatalf("profile copy changed singleton business settings: %#v", setting)
-	}
-}
-
-func TestScopeActiveAIAgentSEOJobsSupportsLegacySchema(t *testing.T) {
-	db, err := gorm.Open(mysql.New(mysql.Config{
-		DSN:                       "user:password@tcp(localhost:3306)/test?charset=utf8mb4&parseTime=True&loc=Local",
-		SkipInitializeWithVersion: true,
-	}), &gorm.Config{DryRun: true, DisableAutomaticPing: true})
-	if err != nil {
-		t.Fatalf("open dry-run database: %v", err)
-	}
-
-	for _, test := range []struct {
-		name               string
-		hasProfileIDColumn bool
-		wantProfileScope   bool
-	}{
-		{name: "current schema", hasProfileIDColumn: true, wantProfileScope: true},
-		{name: "legacy schema", hasProfileIDColumn: false, wantProfileScope: false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
-				return scopeActiveAIAgentSEOJobs(tx.Model(&models.AIAgentSEOJob{}), 7, test.hasProfileIDColumn).
-					Find(&[]models.AIAgentSEOJob{})
-			})
-			hasProfileScope := strings.Contains(sql, "ai_profile_id = 7")
-			if hasProfileScope != test.wantProfileScope {
-				t.Fatalf("profile scope mismatch: SQL = %s", sql)
-			}
-			if !strings.Contains(sql, "status IN ('queued','running','paused')") {
-				t.Fatalf("active status scope missing: SQL = %s", sql)
-			}
-		})
 	}
 }
 
