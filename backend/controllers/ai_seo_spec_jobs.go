@@ -598,7 +598,8 @@ func jobRequeuesRunningItemsOnResume(db *gorm.DB, jobID string) (bool, error) {
 	}
 	return job.SelectionMode == aiSEOCategorySelectionMode ||
 		job.SelectionMode == aiSEOSpecSelectionMode ||
-		job.SelectionMode == aiSEOIdentificationSelectionMode, nil
+		job.SelectionMode == aiSEOIdentificationSelectionMode ||
+		job.SelectionMode == aiListingSelectionMode, nil
 }
 
 // finalizeDraftJob atomically releases residual items and closes a job that only

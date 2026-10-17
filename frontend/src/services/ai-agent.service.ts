@@ -304,7 +304,7 @@ export interface AIAgentPricePreview {
 }
 
 export type AIAgentSEOJobStatus = 'queued' | 'running' | 'paused' | 'cancelled' | 'completed' | 'completed_with_errors' | 'failed';
-export type AIAgentSEOItemStatus = 'queued' | 'running' | 'optimized' | 'unresolved' | 'failed' | 'cancelled';
+export type AIAgentSEOItemStatus = 'queued' | 'running' | 'optimized' | 'skipped' | 'unresolved' | 'failed' | 'cancelled';
 
 export interface AIAgentSEOJobItem {
   id: number;
@@ -324,7 +324,7 @@ export interface AIAgentSEOJob {
   id: string;
   prompt: string;
   focus?: AIAgentSEOFocus[];
-  selection_mode: 'selected' | 'auto_candidates' | 'auto_failed' | 'category_optimization' | 'spec_research' | 'product_identification';
+  selection_mode: 'selected' | 'auto_candidates' | 'auto_failed' | 'category_optimization' | 'spec_research' | 'product_identification' | 'listing_optimization';
   status: AIAgentSEOJobStatus;
   ai_profile_id?: number;
   ai_profile_name?: string;

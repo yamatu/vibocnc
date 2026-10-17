@@ -17,13 +17,16 @@ import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
   SparklesIcon,
+  ClipboardDocumentListIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import AdminLayout from '@/components/admin/AdminLayout';
 import Pagination from '@/components/common/Pagination';
 import MediaPickerModal from '@/components/admin/MediaPickerModal';
-import { ProductService, CategoryService, CommercePolicyService, ProductSpecService } from '@/services';
-import { AIAgentService, type AIAgentSEOFocus, type AIAgentSEOJob } from '@/services/ai-agent.service';
+import AIListingJobModal from '@/components/admin/AIListingJobModal';
+import ListingImportModal from '@/components/admin/ListingImportModal';
+import { ProductService, CategoryService, CommercePolicyService } from '@/services';
+import { AIAgentService, type AIAgentSEOJob } from '@/services/ai-agent.service';
 import type {
   ProductImportResult,
   ProductImportTaskSnapshot,
@@ -69,19 +72,7 @@ type BulkProgress = {
 
 type AISEOFilter = 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed';
 
-const AI_SEO_DEFAULT_PROMPT = "逐项审核品牌、完整型号、产品名称、分类、简介、描述和 SEO。保留已经准确的内容；名称采用品牌 + 完整型号 + 经证实的产品类型；简介简洁，描述原创且具体，SEO 标题和描述自然包含型号与类型。严格遵循本次选择的优化范围。分类必须有明确证据，无法确认则待人工审核，绝不强行归类。不编造参数、库存、认证、兼容性或保修承诺。不修改价格、库存、图片或管理员设置。输出网站默认语言英文内容，并说明修改依据。";
-
-const AI_SEO_FOCUS_COPY: Record<AIAgentSEOFocus, { zh: string; en: string; instruction: string }> = {
-  all: { zh: '全部字段', en: 'All fields', instruction: 'Optimize all supported product fields, including taxonomy, SEO metadata, and product content.' },
-  category: { zh: '只优化分类', en: 'Category only', instruction: 'Focus on product taxonomy: select the best matching existing active leaf category using verified brand, product type, and model evidence. If no category can be verified, leave the product inactive for review. Never create a category. Keep SEO metadata and product content unchanged.' },
-  seo: { zh: 'SEO 标题 / 描述 / 关键词', en: 'SEO title / description / keywords', instruction: 'Focus on SEO metadata: meta title, meta description, and meta keywords. Keep taxonomy and product content unchanged.' },
-	content: { zh: '只优化内容', en: 'Content only', instruction: 'Focus on product content: the short description and long description. Keep the product name, taxonomy, and SEO metadata unchanged.' },
-};
-
 const BULK_UPDATE_BATCH_SIZE = 100;
-// Research runs as a background AI task (one public web lookup per product), so
-// the request only has to queue it and the operator can leave the page.
-const SPEC_RESEARCH_BATCH_LIMIT = 50;
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -106,21 +97,10 @@ function AdminProductsContent() {
   const [selectAllResults, setSelectAllResults] = useState<boolean>(false);
   const [customSelectCount, setCustomSelectCount] = useState('');
   const [selectingCustomCount, setSelectingCustomCount] = useState(false);
-  const [showAISEOModal, setShowAISEOModal] = useState(false);
-  const [showCategoryOptimizationModal, setShowCategoryOptimizationModal] = useState(false);
-  const [categoryOptimizationScope, setCategoryOptimizationScope] = useState<'selected' | 'filtered'>('filtered');
-  const [categoryOptimizationLimit, setCategoryOptimizationLimit] = useState('');
-  const [categoryUseWebSearch, setCategoryUseWebSearch] = useState(true);
-  const [categoryCreateMissing, setCategoryCreateMissing] = useState(true);
-  const [categoryActivateResolved, setCategoryActivateResolved] = useState(true);
-  const [isStartingCategoryJob, setIsStartingCategoryJob] = useState(false);
-  const [aiSEOJobMode, setAISEOJobMode] = useState<'selected' | 'auto_candidates' | 'failed_only'>('selected');
-  const [aiSEOIncludeFailed, setAISEOIncludeFailed] = useState(false);
-  const [aiSEOFocus, setAISEOFocus] = useState<AIAgentSEOFocus>('all');
-  const [aiSEOPrompt, setAISEOPrompt] = useState(AI_SEO_DEFAULT_PROMPT);
+  const [showAIListingModal, setShowAIListingModal] = useState(false);
+  const [showListingImport, setShowListingImport] = useState(false);
   const [activeAISEOJob, setActiveAISEOJob] = useState<AIAgentSEOJob | null>(null);
   const [isPausingAISEOJob, setIsPausingAISEOJob] = useState(false);
-  const [isStartingAISEOJob, setIsStartingAISEOJob] = useState(false);
   // Product/quote import modal
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -161,9 +141,6 @@ function AdminProductsContent() {
     totalBatches: 0,
     message: '',
   });
-  // Model-number specification research runs on the server (public web search)
-  // and only ever produces review drafts.
-  const [specResearchRunning, setSpecResearchRunning] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -321,7 +298,6 @@ function AdminProductsContent() {
   const totalProducts = productsData?.total || 0;
   // Products are already filtered and paginated by the admin API.
   const filteredProducts = products;
-  const selectedCurrentPageIds = selectedIds.filter((id) => filteredProducts.some((product) => product.id === id));
 
   // Restore scroll position after data is loaded and page is rendered
   useEffect(() => {
@@ -541,67 +517,6 @@ function AdminProductsContent() {
       toast.error(getErrorMessage(error, locale === 'zh' ? '选择产品失败' : 'Failed to select products'));
     } finally {
       setSelectingCustomCount(false);
-    }
-  };
-
-  const openCategoryOptimizationModal = () => {
-    if (totalProducts <= 0) {
-      toast.error(locale === 'zh' ? '当前范围内没有可优化分类的商品' : 'There are no products to classify in the current scope');
-      return;
-    }
-    const hasExplicitSelection = !selectAllResults && selectedCurrentPageIds.length > 0;
-    const nextScope = hasExplicitSelection ? 'selected' : 'filtered';
-    setCategoryOptimizationScope(nextScope);
-    // Zero queues the full filtered scope; processing is batched on the server.
-    setCategoryOptimizationLimit("0");
-    setShowCategoryOptimizationModal(true);
-  };
-
-  const startCategoryOptimizationJob = async () => {
-    const explicitSelection = categoryOptimizationScope === 'selected';
-    const available = explicitSelection ? selectedCurrentPageIds.length : totalProducts;
-    const parsedLimit = Number(categoryOptimizationLimit);
-    const maximum = available;
-    if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 0 || parsedLimit > maximum) {
-      toast.error(locale === 'zh'
-        ? `请输入 0（全部）或 1 到 ${maximum.toLocaleString()} 之间的商品数量`
-        : `Use 0 for all, or a product count between 1 and ${maximum.toLocaleString()}`);
-      return;
-    }
-    if (explicitSelection && selectedCurrentPageIds.length === 0) {
-      toast.error(locale === 'zh' ? '请先勾选需要优化分类的商品' : 'Select products to classify first');
-      return;
-    }
-
-    setIsStartingCategoryJob(true);
-    try {
-      const categoryID = Number(selectedCategory);
-      const job = await AIAgentService.startCategoryOptimizationJob({
-        product_ids: explicitSelection ? (parsedLimit === 0 ? selectedCurrentPageIds : selectedCurrentPageIds.slice(0, parsedLimit)) : undefined,
-        limit: parsedLimit,
-        category_id: !explicitSelection && Number.isSafeInteger(categoryID) && categoryID > 0 ? categoryID : undefined,
-        include_descendants: !explicitSelection && Boolean(selectedCategory),
-        brand: !explicitSelection ? selectedBrand || undefined : undefined,
-        search: !explicitSelection ? searchQuery || undefined : undefined,
-        status: !explicitSelection && (statusFilter === 'active' || statusFilter === 'inactive') ? statusFilter : 'all',
-        featured: !explicitSelection && statusFilter === 'featured' ? 'true' : undefined,
-        include_inactive: !explicitSelection ? statusFilter !== 'active' : true,
-        ai_seo_status: !explicitSelection && aiSEOFilter !== 'all' ? aiSEOFilter : undefined,
-        use_web_search: categoryUseWebSearch,
-        create_missing_categories: categoryCreateMissing,
-        activate_resolved: categoryActivateResolved,
-      });
-      setShowCategoryOptimizationModal(false);
-      setSelectedIds([]);
-      setSelectAllResults(false);
-      toast.success(locale === 'zh'
-        ? `自动分类后台任务已创建，共 ${job.total.toLocaleString()} 个商品`
-        : `Background category optimization job started for ${job.total.toLocaleString()} products`);
-      router.push(`/admin/ai-seo?job=${encodeURIComponent(job.id)}`);
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, locale === 'zh' ? '创建自动分类任务失败' : 'Unable to start category optimization job'));
-    } finally {
-      setIsStartingCategoryJob(false);
     }
   };
 
@@ -960,48 +875,6 @@ function AdminProductsContent() {
     void runBulkFlagUpdate('is_featured', value);
   };
 
-  /**
-   * Research product parameters from the model number (型号) of the selected
-   * products. The backend searches public manufacturer/distributor pages and
-   * stores the result as a *draft*; every value keeps its citation and needs an
-   * explicit approval in Admin → Spec Research before it reaches a live page.
-   */
-  const runSpecResearch = async () => {
-    if (!selectAllResults && selectedIds.length === 0) {
-      toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
-      return;
-    }
-    setSpecResearchRunning(true);
-    try {
-      let targetIds = [...selectedIds];
-      if (selectAllResults) {
-        const snapshot = await ProductService.getAdminProductSelectionIds(buildSelectAllPayload());
-        targetIds = snapshot.ids;
-      }
-      const requested = targetIds.slice(0, SPEC_RESEARCH_BATCH_LIMIT);
-      if (requested.length === 0) {
-        toast.error(t('products.bulk.noProducts', locale === 'zh' ? '没有可处理的产品' : 'No products to process'));
-        return;
-      }
-      // The task runs in the background queue: it keeps going if the operator
-      // closes the tab, and it never publishes anything by itself.
-      const job = await ProductSpecService.startBatchResearchJob({
-        product_ids: requested,
-        limit: SPEC_RESEARCH_BATCH_LIMIT,
-        only_missing: true,
-      });
-      toast.success(
-        locale === 'zh'
-          ? `已加入检索队列（${job.total} 个产品），进度与审核请在“型号参数检索”页面查看`
-          : `Research queued for ${job.total} product(s); track progress and review results in Spec Research`
-      );
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, locale === 'zh' ? '型号参数检索失败' : 'Specification research failed'));
-    } finally {
-      setSpecResearchRunning(false);
-    }
-  };
-
   const runBulkFlagUpdate = async (field: 'is_active' | 'is_featured', value: boolean) => {
     if (!selectAllResults && selectedIds.length === 0) {
       toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
@@ -1146,21 +1019,21 @@ function AdminProductsContent() {
         stopAISEOPolling();
         queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
         if (job.status === 'completed') {
-          toast.success(locale === 'zh' ? `AI SEO 优化完成：成功 ${job.succeeded} 个商品` : `AI SEO job completed: ${job.succeeded} products optimized`);
+          toast.success(locale === 'zh' ? `AI 任务完成：成功 ${job.succeeded} 个商品（含质检合格跳过的）` : `AI SEO job completed: ${job.succeeded} products optimized`);
         } else if (job.status === 'completed_with_errors') {
-          toast.error(locale === 'zh' ? `AI SEO 已完成，但有 ${job.failed} 个商品失败` : `AI SEO job completed with ${job.failed} failed products`);
+          toast.error(locale === 'zh' ? `AI 任务已完成，但有 ${job.failed} 个商品失败，可在 AI 优化记录查看原因` : `AI SEO job completed with ${job.failed} failed products`);
         } else if (job.status === 'paused') {
-          toast.success(locale === 'zh' ? 'AI SEO 任务已暂停；未处理商品会保留在队列中，可在 AI SEO 优化记录继续。' : 'AI SEO job paused. Unprocessed products remain queued and can be resumed in AI SEO Records.');
+          toast.success(locale === 'zh' ? 'AI 任务已暂停；未处理商品会保留在队列中，可在 AI 优化记录继续。' : 'AI SEO job paused. Unprocessed products remain queued and can be resumed in AI SEO Records.');
         } else if (job.status === 'cancelled') {
-          toast.success(locale === 'zh' ? 'AI SEO 任务已结束；未处理商品已释放，可在以后重新优化。' : 'AI SEO job ended. Unprocessed products were released for future optimization.');
+          toast.success(locale === 'zh' ? 'AI 任务已结束；未处理商品已释放，可在以后重新优化。' : 'AI SEO job ended. Unprocessed products were released for future optimization.');
         } else {
-          toast.error(job.error || (locale === 'zh' ? 'AI SEO 任务失败' : 'AI SEO job failed'));
+          toast.error(job.error || (locale === 'zh' ? 'AI 任务失败' : 'AI SEO job failed'));
         }
         return true;
       }
     } catch (error: unknown) {
       stopAISEOPolling();
-      toast.error(getErrorMessage(error, locale === 'zh' ? '无法读取 AI SEO 任务进度' : 'Unable to read AI SEO job progress'));
+      toast.error(getErrorMessage(error, locale === 'zh' ? '无法读取 AI 任务进度' : 'Unable to read AI SEO job progress'));
       return true;
     }
     return false;
@@ -1182,66 +1055,23 @@ function AdminProductsContent() {
       const job = await AIAgentService.pauseSEOJob(activeAISEOJob.id);
       setActiveAISEOJob(job);
       stopAISEOPolling();
-      toast.success(locale === 'zh' ? 'AI SEO 任务已暂停。已发出的请求可能会完成当前商品。' : 'AI SEO job paused. Requests already sent may finish their current product.');
+      toast.success(locale === 'zh' ? 'AI 任务已暂停。已发出的请求可能会完成当前商品。' : 'AI SEO job paused. Requests already sent may finish their current product.');
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, locale === 'zh' ? '暂停 AI SEO 任务失败' : 'Unable to pause AI SEO job'));
+      toast.error(getErrorMessage(error, locale === 'zh' ? '暂停 AI 任务失败' : 'Unable to pause AI SEO job'));
     } finally {
       setIsPausingAISEOJob(false);
     }
   };
 
-  const startAISEO = async () => {
-    const isSelectAllScope = aiSEOJobMode === 'selected' && selectAllResults;
-    if (aiSEOJobMode === 'selected' && !isSelectAllScope && selectedCurrentPageIds.length === 0) {
-      toast.error(locale === 'zh' ? '请先勾选当前页需要 AI SEO 优化的商品' : 'Select products on this page for AI SEO first');
-      return;
-    }
-    const prompt = aiSEOPrompt.trim();
-    if (prompt.length < 2) {
-      toast.error(locale === 'zh' ? '请输入至少 2 个字符的 SEO 优化提示词' : 'Enter an SEO instruction with at least 2 characters');
-      return;
-    }
-    setIsStartingAISEOJob(true);
-    try {
-      const categoryID = Number(selectedCategory);
-      const promptWithFocus = aiSEOFocus === 'all'
-        ? prompt
-        : `${AI_SEO_FOCUS_COPY[aiSEOFocus].instruction}\n\nAdministrator instruction:\n${prompt}`;
-      const useCandidateScope = aiSEOJobMode !== 'selected' || isSelectAllScope;
-      const job = useCandidateScope
-        ? await AIAgentService.startSEOCandidateJob({
-            prompt: promptWithFocus,
-            limit: 0,
-            category_id: Number.isSafeInteger(categoryID) && categoryID > 0 ? categoryID : undefined,
-            include_descendants: Boolean(selectedCategory),
-            brand: selectedBrand || undefined,
-            search: searchQuery || undefined,
-            include_failed: isSelectAllScope || (aiSEOJobMode === 'auto_candidates' && aiSEOIncludeFailed),
-            failed_only: aiSEOJobMode === 'failed_only',
-            include_optimized: isSelectAllScope,
-            ai_seo_status: aiSEOFilter === 'all' ? undefined : aiSEOFilter,
-            focus: [aiSEOFocus],
-          })
-        : await AIAgentService.startSEOJob(selectedCurrentPageIds, promptWithFocus, aiSEOFocus);
-      setActiveAISEOJob(job);
-      setShowAISEOModal(false);
-      if (aiSEOJobMode === 'selected') setSelectedIds([]);
-      if (isSelectAllScope) setSelectAllResults(false);
-      setAISEOPrompt(AI_SEO_DEFAULT_PROMPT);
-      toast.success(locale === 'zh'
-        ? `${isSelectAllScope ? 'AI SEO 全部筛选结果任务' : aiSEOJobMode === 'failed_only' ? 'AI SEO 失败重试任务' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO 自动候选任务' : 'AI SEO 任务'}已启动：${job.total} 个商品`
-        : `${isSelectAllScope ? 'AI SEO filtered-results job' : aiSEOJobMode === 'failed_only' ? 'AI SEO failed-item retry job' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO candidate job' : 'AI SEO job'} started for ${job.total} products`);
-      void startAISEOPolling(job.id);
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, locale === 'zh' ? '创建 AI SEO 任务失败' : 'Unable to start AI SEO job'));
-    } finally {
-      setIsStartingAISEOJob(false);
-    }
-  };
-
-  const isAISEOSelectAllMode = aiSEOJobMode === 'selected' && selectAllResults;
-  const isAISEOCandidateMode = aiSEOJobMode !== 'selected' || isAISEOSelectAllMode;
-  const isAISEOFailedOnly = aiSEOJobMode === 'failed_only';
+  const aiListingFilters = {
+    category_id: Number(selectedCategory) > 0 ? Number(selectedCategory) : undefined,
+    include_descendants: Boolean(selectedCategory),
+    brand: selectedBrand || undefined,
+    search: searchQuery || undefined,
+    status: (statusFilter === 'active' || statusFilter === 'inactive') ? statusFilter : 'all',
+    featured: statusFilter === 'featured' ? 'true' : undefined,
+    ai_seo_status: aiSEOFilter === 'all' ? undefined : aiSEOFilter,
+  } as const;
 
   return (
     <AdminLayout>
@@ -1260,7 +1090,7 @@ function AdminProductsContent() {
               className="inline-flex items-center px-4 py-2 border border-violet-200 rounded-md shadow-sm text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100"
             >
               <SparklesIcon className="h-4 w-4 mr-2" />
-              {locale === 'zh' ? 'AI SEO 优化记录' : 'AI SEO Records'}
+              {locale === 'zh' ? 'AI 优化记录' : 'AI Job Records'}
             </Link>
             <button
               type="button"
@@ -1282,6 +1112,14 @@ function AdminProductsContent() {
               {bulkClearProductImagesMutation.isPending
                 ? (locale === 'zh' ? '清空中...' : 'Clearing...')
                 : (locale === 'zh' ? '清空全部产品图片' : 'Clear All Images')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowListingImport(true)}
+              className="inline-flex items-center px-4 py-2 border border-violet-200 rounded-md shadow-sm text-sm font-medium text-violet-700 bg-white hover:bg-violet-50"
+            >
+              <ClipboardDocumentListIcon className="h-4 w-4 mr-2" />
+              {locale === 'zh' ? '粘贴资料批量导入' : 'Paste Listings'}
             </button>
             <button
               onClick={() => {
@@ -1726,71 +1564,17 @@ function AdminProductsContent() {
 
               <button
                 type="button"
-                onClick={() => void runSpecResearch()}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-700 hover:bg-indigo-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={specResearchRunning || (!selectAllResults && selectedIds.length === 0)}
-                title={locale === 'zh'
-                  ? '根据型号在公开的厂家/代理页面检索参数，加入后台任务队列；结果生成待审核草稿，不会自动发布。进度见“型号参数检索”。'
-                  : 'Search public manufacturer/distributor pages by model number and queue the lookup as a background task. Results become review drafts and are never auto-published; progress is shown in Spec Research.'}
-              >
-                <SparklesIcon className="mr-2 h-4 w-4" />
-                {specResearchRunning
-                  ? (locale === 'zh' ? '检索中…' : 'Researching…')
-                  : (locale === 'zh' ? `检索型号参数` : 'Research Specs')}
-              </button>
-
-              {isAdmin && <button
-                type="button"
-                onClick={openCategoryOptimizationModal}
-                className="inline-flex items-center rounded-lg bg-cyan-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isStartingCategoryJob || totalProducts === 0}
-                title={locale === 'zh'
-                  ? '打开配置窗口，自定义商品数量并创建后台自动分类任务；进度可在 AI SEO 优化记录中查看。'
-                  : 'Configure the product count and start a background category job. Progress appears in AI SEO Records.'}
-              >
-                <SparklesIcon className="mr-2 h-4 w-4" />
-                {selectedCurrentPageIds.length > 0 && !selectAllResults
-                    ? (locale === 'zh' ? `自动优化分类（已选 ${selectedCurrentPageIds.length}）` : `Auto-classify (${selectedCurrentPageIds.length} selected)`)
-                    : (locale === 'zh' ? `自动优化分类（可选数量）` : 'Auto-classify (choose count)')}
-              </button>}
-
-              <button
-                onClick={() => {
-                  if (!selectAllResults && selectedCurrentPageIds.length === 0) {
-                    toast.error(locale === 'zh' ? '请先勾选当前页需要优化的商品' : 'Select products on the current page first');
-                    return;
-                  }
-                  setAISEOJobMode('selected');
-                  setShowAISEOModal(true);
-                }}
+                onClick={() => setShowAIListingModal(true)}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isStartingAISEOJob || (!selectAllResults && (selectedCurrentPageIds.length === 0))}
-                title={locale === 'zh' ? `优化当前勾选或全部筛选结果，不限总量，后台分批执行` : `Optimize checked products or all filtered results, with background batching`}
+                disabled={totalProducts === 0}
+                title={locale === 'zh' ? '质检后只优化资料不完整或 SEO 不合格的产品：联网检索、按固定格式重写、自动归类' : 'Check listings and rewrite only incomplete or weak ones in the fixed format'}
               >
                 <SparklesIcon className="h-4 w-4 mr-2" />
                 {selectAllResults
-                  ? (locale === 'zh' ? `AI SEO 优化（全部筛选 ${totalProducts}）` : `AI SEO (all ${totalProducts} filtered)`)
-                  : (locale === 'zh' ? `AI SEO 优化（当前页已选 ${selectedCurrentPageIds.length}）` : `AI SEO (${selectedCurrentPageIds.length} selected)`)}
-              </button>
-
-              <button
-                onClick={() => { setAISEOJobMode('auto_candidates'); setShowAISEOModal(true); }}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-fuchsia-700 hover:bg-fuchsia-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isStartingAISEOJob}
-                title={locale === 'zh' ? '自动选择全部匹配的启用、未 AI 优化且内容较薄弱的产品；可按当前分类、品牌和搜索范围限定。' : 'Automatically select all matching active, not-yet-AI-optimized products with thinner content, optionally scoped by the current category, brand, and search.'}
-              >
-                <SparklesIcon className="h-4 w-4 mr-2" />
-                {locale === 'zh' ? 'AI 自动候选优化（不限总量）' : 'AI Auto Candidates (all matching)'}
-              </button>
-
-              <button
-                onClick={() => { setAISEOJobMode('failed_only'); setAISEOIncludeFailed(false); setShowAISEOModal(true); }}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-rose-700 hover:bg-rose-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isStartingAISEOJob}
-                title={locale === 'zh' ? '只选择此前 AI SEO 优化失败的启用商品，不限总量；可按当前分类、品牌和搜索范围限定。' : 'Retry only active products whose previous AI SEO optimization failed, all matching, scoped by the current category, brand, and search.'}
-              >
-                <SparklesIcon className="h-4 w-4 mr-2" />
-                {locale === 'zh' ? 'AI 自动重试失败（不限总量）' : 'AI Retry Failed (all matching)'}
+                  ? (locale === 'zh' ? `AI 智能优化（全部筛选 ${totalProducts}）` : `AI Optimize (all ${totalProducts})`)
+                  : selectedIds.length > 0
+                    ? (locale === 'zh' ? `AI 智能优化（已选 ${selectedIds.length}）` : `AI Optimize (${selectedIds.length} selected)`)
+                    : (locale === 'zh' ? 'AI 智能优化' : 'AI Optimize')}
               </button>
 
               <button
@@ -1925,8 +1709,8 @@ function AdminProductsContent() {
             {selectAllResults && (
               <p className="mt-3 text-sm text-amber-700">
                 {locale === 'zh'
-                  ? `已选择全部筛选结果。AI SEO 将按当前搜索、分类、品牌和状态筛选通过候选接口处理，全部匹配商品；已优化商品也会按提示词重新处理。`
-                  : `All filtered results are selected. AI SEO will use the candidate endpoint with the current search, category, brand, and status scope, all matching; optimized products are included for rewrites.`}
+                  ? `已选择全部筛选结果。批量操作与 AI 智能优化会作用于当前搜索、分类、品牌和状态筛选出的全部商品。`
+                  : `All filtered results are selected. Bulk actions and AI optimization apply to every product matching the current filters.`}
               </p>
             )}
             {activeAISEOJob && (
@@ -1941,7 +1725,7 @@ function AdminProductsContent() {
               }`}>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="text-sm font-semibold text-gray-900">{locale === 'zh' ? 'AI SEO 任务进度' : 'AI SEO job progress'}</div>
+                    <div className="text-sm font-semibold text-gray-900">{locale === 'zh' ? 'AI 任务进度' : 'AI job progress'}</div>
                     <div className="mt-1 text-xs text-gray-600">{locale === 'zh' ? `任务 ${activeAISEOJob.id.slice(0, 8)}…` : `Job ${activeAISEOJob.id.slice(0, 8)}…`} · {activeAISEOJob.status}</div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -2411,160 +2195,31 @@ function AdminProductsContent() {
           )}
         </div>
       </div>
-      {showCategoryOptimizationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="category-optimization-modal-title">
-          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
-              <div>
-                <div className="flex items-center gap-2 text-cyan-700">
-                  <SparklesIcon className="h-5 w-5" />
-                  <h2 id="category-optimization-modal-title" className="text-lg font-semibold text-gray-900">
-                    {locale === 'zh' ? '创建自动分类后台任务' : 'Start background category optimization'}
-                  </h2>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-gray-600">
-                  {locale === 'zh'
-                    ? '任务创建后会立即进入“AI SEO / 分类优化任务记录”。关闭产品页面不会中断处理，可在那里查看每个 SKU、暂停或继续任务。'
-                    : 'After creation you will be taken to AI SEO / Category Job Records. Closing the product page will not stop processing, and each SKU can be reviewed, paused, or resumed there.'}
-                </p>
-              </div>
-              <button type="button" onClick={() => setShowCategoryOptimizationModal(false)} disabled={isStartingCategoryJob} className="rounded-md p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-50" aria-label={locale === 'zh' ? '关闭' : 'Close'}>
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-5 px-5 py-5">
-              <fieldset>
-                <legend className="text-sm font-medium text-gray-800">{locale === 'zh' ? '商品范围' : 'Product scope'}</legend>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <label className={`flex items-start gap-2 rounded-lg border px-3 py-3 text-sm ${categoryOptimizationScope === 'selected' ? 'border-cyan-400 bg-cyan-50 text-cyan-950 ring-1 ring-cyan-200' : 'border-gray-200 text-gray-700'} ${selectedCurrentPageIds.length === 0 || selectAllResults ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-                    <input
-                      type="radio"
-                      name="category-optimization-scope"
-                      checked={categoryOptimizationScope === 'selected'}
-                      disabled={selectedCurrentPageIds.length === 0 || selectAllResults}
-                      onChange={() => {
-                        setCategoryOptimizationScope('selected');
-                        setCategoryOptimizationLimit(String(Math.min(selectedCurrentPageIds.length, 500)));
-                      }}
-                      className="mt-0.5 border-gray-300 text-cyan-700 focus:ring-cyan-600"
-                    />
-                    <span><strong className="block font-semibold">{locale === 'zh' ? '当前勾选' : 'Checked products'}</strong>{locale === 'zh' ? `${selectedCurrentPageIds.length.toLocaleString()} 个商品` : `${selectedCurrentPageIds.length.toLocaleString()} products`}</span>
-                  </label>
-                  <label className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-3 text-sm ${categoryOptimizationScope === 'filtered' ? 'border-cyan-400 bg-cyan-50 text-cyan-950 ring-1 ring-cyan-200' : 'border-gray-200 text-gray-700'}`}>
-                    <input
-                      type="radio"
-                      name="category-optimization-scope"
-                      checked={categoryOptimizationScope === 'filtered'}
-                      onChange={() => {
-                        setCategoryOptimizationScope('filtered');
-                        setCategoryOptimizationLimit(String(Math.min(totalProducts, 500)));
-                      }}
-                      className="mt-0.5 border-gray-300 text-cyan-700 focus:ring-cyan-600"
-                    />
-                    <span><strong className="block font-semibold">{locale === 'zh' ? '当前筛选 / 全部商品' : 'Current filters / all products'}</strong>{locale === 'zh' ? `范围内共 ${totalProducts.toLocaleString()} 个商品` : `${totalProducts.toLocaleString()} products in scope`}</span>
-                  </label>
-                </div>
-              </fieldset>
-
-              <label className="block text-sm font-medium text-gray-800">
-                {locale === 'zh' ? '本次处理数量' : 'Products to process'}
-                <input
-                  type="number"
-                  min={0}
-                  max={(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts)}
-                  step={1}
-                  value={categoryOptimizationLimit}
-                  onChange={(event) => setCategoryOptimizationLimit(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
-                />
-                <span className="mt-1.5 block text-xs font-normal text-gray-500">
-                  {locale === 'zh'
-                    ? `可自定义 1–${(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts).toLocaleString()} 个；0 表示全部，后台分批处理。`
-                    : `Choose 1–${(categoryOptimizationScope === 'selected' ? selectedCurrentPageIds.length : totalProducts).toLocaleString()}; 0 means all, processed in background batches.`}
-                </span>
-              </label>
-
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700">
-                <label className="flex items-start gap-2">
-                  <input type="checkbox" checked={categoryUseWebSearch} onChange={(event) => setCategoryUseWebSearch(event.target.checked)} className="mt-0.5 rounded border-gray-300 text-cyan-700 focus:ring-cyan-600" />
-                  <span>{locale === 'zh' ? '本地无法确认时联网核实完整型号、品牌和产品类型。' : 'Verify full model, brand, and product type online when local rules are inconclusive.'}</span>
-                </label>
-                <label className="flex items-start gap-2">
-                  <input type="checkbox" checked={categoryCreateMissing} onChange={(event) => setCategoryCreateMissing(event.target.checked)} className="mt-0.5 rounded border-gray-300 text-cyan-700 focus:ring-cyan-600" />
-                  <span>{locale === 'zh' ? '品牌已确认且没有合适分类时，在品牌下创建去重后的产品类型分类。' : 'Create a deduplicated product-type category under the verified brand when no suitable category exists.'}</span>
-                </label>
-                <label className="flex items-start gap-2">
-                  <input type="checkbox" checked={categoryActivateResolved} onChange={(event) => setCategoryActivateResolved(event.target.checked)} className="mt-0.5 rounded border-gray-300 text-cyan-700 focus:ring-cyan-600" />
-                  <span>{locale === 'zh' ? '分类确认成功后启用商品；无法确认的商品继续保持停用。' : 'Activate products after classification succeeds; unresolved products remain inactive.'}</span>
-                </label>
-              </div>
-            </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-gray-200 px-5 py-4 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setShowCategoryOptimizationModal(false)} disabled={isStartingCategoryJob} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{locale === 'zh' ? '取消' : 'Cancel'}</button>
-              <button type="button" onClick={() => void startCategoryOptimizationJob()} disabled={isStartingCategoryJob || !categoryOptimizationLimit} className="inline-flex items-center justify-center rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50">
-                <SparklesIcon className={`mr-2 h-4 w-4 ${isStartingCategoryJob ? 'animate-spin' : ''}`} />
-                {isStartingCategoryJob ? (locale === 'zh' ? '正在创建任务…' : 'Starting job…') : (locale === 'zh' ? '创建任务并进入记录' : 'Start job and view records')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showAISEOModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="ai-seo-modal-title">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
-              <div>
-                <div className="flex items-center gap-2 text-violet-700"><SparklesIcon className="h-5 w-5" /><h2 id="ai-seo-modal-title" className="text-lg font-semibold text-gray-900">{locale === 'zh' ? (isAISEOSelectAllMode ? 'AI SEO 优化全部筛选结果' : isAISEOFailedOnly ? 'AI SEO 自动重试失败商品' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO 自动候选优化' : 'AI SEO 优化已选商品') : (isAISEOSelectAllMode ? 'AI SEO optimize all filtered results' : isAISEOFailedOnly ? 'AI SEO retry failed products' : aiSEOJobMode === 'auto_candidates' ? 'AI SEO automatic candidate optimization' : 'AI SEO optimize selected products')}</h2></div>
-                <p className="mt-2 text-sm text-gray-600">{isAISEOCandidateMode
-                  ? (locale === 'zh'
-                    ? (isAISEOSelectAllMode ? `系统会按当前筛选结果启动任务，处理全部匹配商品；已优化、失败和未优化商品都会纳入，已在其他 AI SEO 任务中排队或处理的商品会被排除。` : isAISEOFailedOnly ? '系统会在当前分类、品牌、搜索词范围内，自动选择全部匹配的此前 AI SEO 优化失败的启用商品进行重试。已在其他 AI SEO 任务中排队或处理的商品会被排除。' : '系统会在当前分类、品牌、搜索词范围内，自动选择全部匹配的启用商品；默认选择从未 AI 优化且内容较薄弱的商品，也可同时纳入失败商品。已在其他 AI SEO 任务中排队或处理的商品会被排除。')
-                    : (isAISEOSelectAllMode ? `The current filters will be sent to the candidate endpoint, all matching products. Optimized, failed, and never-optimized products are included; products already queued or running elsewhere are excluded.` : isAISEOFailedOnly ? 'The system will retry all matching active products whose previous AI SEO attempt failed within the current category, brand, and search scope. Products queued or running in another AI SEO job are excluded.' : 'The system will choose all matching active products within the current category, brand, and search scope. By default it selects never-optimized products with thinner content, and it can also include failed attempts. Products queued or running in another AI SEO job are excluded.'))
-                  : (locale === 'zh' ? `本次只处理当前页手动勾选的 ${selectedCurrentPageIds.length} 个商品。每个商品由 AI 单独处理。` : `This job will process only the ${selectedCurrentPageIds.length} products explicitly checked on this page. AI handles each product separately.`)}</p>
-              </div>
-              <button type="button" onClick={() => setShowAISEOModal(false)} disabled={isStartingAISEOJob} className="rounded-md p-1 text-gray-500 hover:bg-gray-100 disabled:opacity-50" aria-label={locale === 'zh' ? '关闭' : 'Close'}><XMarkIcon className="h-5 w-5" /></button>
-            </div>
-            <div className="space-y-4 px-5 py-5">
-              <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-sm text-violet-900">
-                {locale === 'zh' ? `本次范围：${AI_SEO_FOCUS_COPY[aiSEOFocus].zh}。${AI_SEO_FOCUS_COPY[aiSEOFocus].instruction} 不会修改价格、库存或图片。任务完成后会刷新站点缓存；若后台已启用 IndexNow，也会批量通知搜索引擎更新 URL。` : `Scope: ${AI_SEO_FOCUS_COPY[aiSEOFocus].en}. ${AI_SEO_FOCUS_COPY[aiSEOFocus].instruction} Prices, inventory, and images are not changed. Completion refreshes site caches and submits changed URLs in one batch when IndexNow is enabled.`}
-              </div>
-              <fieldset>
-                <legend className="text-sm font-medium text-gray-800">{locale === 'zh' ? '本次优化范围' : 'Optimization scope'}</legend>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  {(Object.keys(AI_SEO_FOCUS_COPY) as AIAgentSEOFocus[]).map((focus) => (
-                    <label key={focus} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition ${aiSEOFocus === focus ? 'border-violet-400 bg-violet-50 text-violet-900 ring-1 ring-violet-200' : 'border-gray-200 bg-white text-gray-700 hover:border-violet-200'}`}>
-                      <input type="radio" name="ai-seo-focus" value={focus} checked={aiSEOFocus === focus} onChange={() => { setAISEOFocus(focus); setAISEOPrompt(AI_SEO_FOCUS_COPY[focus].instruction + "\n\n" + AI_SEO_DEFAULT_PROMPT); }} className="mt-0.5 border-gray-300 text-violet-600 focus:ring-violet-500" />
-                      <span>{locale === 'zh' ? AI_SEO_FOCUS_COPY[focus].zh : AI_SEO_FOCUS_COPY[focus].en}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              {aiSEOJobMode === 'auto_candidates' && (
-                <label className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={aiSEOIncludeFailed} onChange={(event) => setAISEOIncludeFailed(event.target.checked)} className="mt-0.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500" />
-                  <span>{locale === 'zh' ? '同时纳入此前 AI 优化失败的商品（默认只选择从未 AI 优化的商品）。' : 'Also include products that failed a previous AI SEO attempt (by default only never-AI-optimized products are selected).'}</span>
-                </label>
-              )}
-              <label className="block text-sm font-medium text-gray-800">
-                {locale === 'zh' ? '本次优化提示词' : 'Optimization instruction'}
-                <textarea
-                  value={aiSEOPrompt}
-                  onChange={(event) => setAISEOPrompt(event.target.value)}
-                  maxLength={2000}
-                  rows={6}
-                  autoFocus
-                  placeholder={locale === 'zh' ? '例如：面向英文工业自动化采购用户优化 SEO；按已确认品牌、型号和产品类型选择现有分类；无法确认时保持产品未启用并返回人工审核，避免夸大宣传。' : 'Example: Optimize SEO for English industrial automation buyers. Use only an existing category that matches the verified brand, model, and product type. Keep unresolved products inactive for review and avoid unsupported claims.'}
-                  className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
-                />
-              </label>
-              <p className="text-xs text-gray-500">{aiSEOPrompt.length}/2000 · {locale === 'zh' ? '任务创建后可在“AI SEO 优化记录”中查看每个 SKU 的成功、处理中或失败状态，也可暂停后继续。' : 'After creation, AI SEO Records shows the status for every SKU, and lets you pause and resume the job.'}</p>
-            </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-gray-200 px-5 py-4 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setShowAISEOModal(false)} disabled={isStartingAISEOJob} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{locale === 'zh' ? '取消' : 'Cancel'}</button>
-              <button type="button" onClick={() => void startAISEO()} disabled={isStartingAISEOJob || aiSEOPrompt.trim().length < 2} className="inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"><SparklesIcon className="mr-2 h-4 w-4" />{isStartingAISEOJob ? (locale === 'zh' ? '正在创建任务…' : 'Starting job…') : isAISEOSelectAllMode ? (locale === 'zh' ? `优化全部筛选结果（全量）` : `Optimize all filtered results (all matches)`) : isAISEOFailedOnly ? (locale === 'zh' ? '自动重试失败商品' : 'Retry failed products') : aiSEOJobMode === 'auto_candidates' ? (locale === 'zh' ? '自动选择并优化全部匹配商品' : 'Select and optimize all matching candidates') : (locale === 'zh' ? `开始优化 ${selectedCurrentPageIds.length} 个商品` : `Optimize ${selectedCurrentPageIds.length} products`)}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AIListingJobModal
+        open={showAIListingModal}
+        locale={locale}
+        isAdmin={isAdmin}
+        selectedIds={selectedIds}
+        selectAllResults={selectAllResults}
+        totalProducts={totalProducts}
+        filters={aiListingFilters}
+        onClose={() => setShowAIListingModal(false)}
+        onStarted={(job) => {
+          setShowAIListingModal(false);
+          setSelectedIds([]);
+          setSelectAllResults(false);
+          void startAISEOPolling(job.id);
+        }}
+      />
+      <ListingImportModal
+        open={showListingImport}
+        locale={locale}
+        onClose={() => setShowListingImport(false)}
+        onImported={() => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
+          queryClient.invalidateQueries({ queryKey: queryKeys.categories.lists() });
+        }}
+      />
       <MediaPickerModal
         open={showCategoryImagePicker}
         onClose={() => setShowCategoryImagePicker(false)}

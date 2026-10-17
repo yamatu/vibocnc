@@ -647,6 +647,10 @@ func runAIAgentSEOJob(jobID, workerToken string) {
 		processIdentificationJob(jobID, workerToken)
 		return
 	}
+	if claimedJob.SelectionMode == aiListingSelectionMode {
+		processListingOptimizationJob(jobID, workerToken, claimedJob.Prompt)
+		return
+	}
 	profileID, err := loadAIAgentSEOJobProfileID(db, jobID)
 	if err != nil {
 		finishAIAgentSEOJob(jobID, workerToken, "paused", "AI job profile could not be loaded. Repair profile/schema and resume; existing product results are unchanged.")

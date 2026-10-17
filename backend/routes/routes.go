@@ -193,6 +193,12 @@ func SetupRoutes(r *gin.Engine) {
 				aiAgent.POST("/article-draft", aiAgentController.GenerateArticleDraft)
 				aiAgent.POST("/prices/preview", aiAgentController.PreviewPrices)
 				aiAgent.POST("/apply", aiAgentController.Apply)
+				// Unified AI optimization in the fixed listing format, plus pasted bulk import.
+				aiAgent.POST("/listing/generate", aiAgentController.GenerateListing)
+				aiAgent.POST("/listing/jobs", aiAgentController.StartListingJob)
+				aiAgent.POST("/listing/import/preview", aiAgentController.PreviewListingImport)
+				aiAgent.POST("/listing/import/categories", aiAgentController.SuggestListingCategories)
+				aiAgent.POST("/listing/import/apply", aiAgentController.ApplyListingImport)
 				aiAgent.POST("/seo/jobs", aiAgentController.StartSelectedSEO)
 				aiAgent.POST("/seo/candidates", aiAgentController.StartCandidateSEO)
 				aiAgent.POST("/seo/category-jobs", middleware.AdminOnly(), aiAgentController.StartCategoryOptimizationJob)

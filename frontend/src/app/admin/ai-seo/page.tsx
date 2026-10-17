@@ -36,6 +36,9 @@ function statusLabel(status: AIAgentSEOJob['status'], zh: boolean) {
 const JOB_ITEM_PAGE_SIZE = 200;
 
 function visibleJobPrompt(job: AIAgentSEOJob, zh: boolean) {
+  if (job.selection_mode === 'listing_optimization') {
+    return job.prompt.split('[[VIBOCNC_LISTING_JOB_OPTIONS=')[0].trim();
+  }
   if (job.selection_mode === 'category_optimization') {
     try {
       const encoded = job.prompt.split('[[VIBOCNC_CATEGORY_JOB_OPTIONS=')[1]?.split(']]')[0];
@@ -52,6 +55,7 @@ function itemStatusLabel(status: AIAgentSEOJobItemsPage['items'][number]['status
   if (categoryJob) {
     const labels = {
       optimized: ['已分类', 'Classified'],
+      skipped: ['已跳过', 'Skipped'],
       unresolved: ['待核实', 'Unresolved'],
       failed: ['待确认 / 失败', 'Needs review / failed'],
       queued: ['排队中', 'Queued'],
@@ -62,6 +66,7 @@ function itemStatusLabel(status: AIAgentSEOJobItemsPage['items'][number]['status
   }
   const labels = {
     optimized: ['已优化', 'Optimized'],
+    skipped: ['合格跳过', 'Skipped (OK)'],
     unresolved: ['待核实', 'Unresolved'],
     failed: ['失败', 'Failed'],
     queued: ['排队中', 'Queued'],
@@ -279,7 +284,7 @@ export default function AISEORecordsPage() {
                   {jobs.map((job) => <Fragment key={job.id}>
                     <tr className="hover:bg-gray-50">
                       <td className="px-4 py-3"><button type="button" onClick={() => void toggleDetails(job)} className="rounded p-1 text-gray-500 hover:bg-gray-200" aria-label={zh ? '查看任务详情' : 'View job details'}>{loadingJobID === job.id ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : expandedJob?.id === job.id ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}</button></td>
-                      <td className="px-4 py-3"><div className="whitespace-nowrap text-gray-900">{new Date(job.created_at).toLocaleString()}</div><div className="mt-1 flex items-center gap-2"><span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${job.selection_mode === 'category_optimization' ? 'bg-cyan-100 text-cyan-900' : job.selection_mode === 'auto_failed' ? 'bg-rose-100 text-rose-800' : job.selection_mode === 'auto_candidates' ? 'bg-fuchsia-100 text-fuchsia-800' : 'bg-slate-100 text-slate-700'}`}>{job.selection_mode === 'category_optimization' ? (zh ? '自动分类' : 'Auto category') : job.selection_mode === 'auto_failed' ? (zh ? '失败重试' : 'Failed retry') : job.selection_mode === 'auto_candidates' ? (zh ? '自动候选' : 'Auto candidates') : (zh ? '手动选择' : 'Selected')}</span><span className="font-mono text-xs text-gray-400">{job.id}</span></div></td>
+                      <td className="px-4 py-3"><div className="whitespace-nowrap text-gray-900">{new Date(job.created_at).toLocaleString()}</div><div className="mt-1 flex items-center gap-2"><span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${job.selection_mode === 'listing_optimization' ? 'bg-violet-100 text-violet-900' : job.selection_mode === 'category_optimization' ? 'bg-cyan-100 text-cyan-900' : job.selection_mode === 'auto_failed' ? 'bg-rose-100 text-rose-800' : job.selection_mode === 'auto_candidates' ? 'bg-fuchsia-100 text-fuchsia-800' : 'bg-slate-100 text-slate-700'}`}>{job.selection_mode === 'listing_optimization' ? (zh ? 'AI 智能优化' : 'AI listing') : job.selection_mode === 'category_optimization' ? (zh ? '自动分类' : 'Auto category') : job.selection_mode === 'auto_failed' ? (zh ? '失败重试' : 'Failed retry') : job.selection_mode === 'auto_candidates' ? (zh ? '自动候选' : 'Auto candidates') : (zh ? '手动选择' : 'Selected')}</span><span className="font-mono text-xs text-gray-400">{job.id}</span></div></td>
                       <td className="max-w-md px-4 py-3 text-gray-700"><p className="line-clamp-2">{visibleJobPrompt(job, zh)}</p>{job.error && <p className="mt-1 line-clamp-1 text-xs text-rose-700">{job.error}</p>}</td>
                       <td className="px-4 py-3"><div className="whitespace-nowrap font-medium text-gray-900">{job.processed}/{job.total}</div><div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-gray-100"><div className="h-full bg-violet-600" style={{ width: `${job.total ? Math.min(100, Math.round((job.processed / job.total) * 100)) : 0}%` }} /></div></td>
                       <td className="whitespace-nowrap px-4 py-3">{job.selection_mode === 'category_optimization' && <div className="mb-1 text-[10px] text-gray-500">{zh ? '已分类 / 待确认' : 'Classified / review'}</div>}<span className="font-medium text-emerald-700">{job.succeeded}</span><span className="text-gray-400"> / </span><span className={job.failed ? 'font-medium text-rose-700' : 'text-gray-600'}>{job.failed}</span></td>
@@ -302,7 +307,7 @@ export default function AISEORecordsPage() {
                           <div className="flex flex-wrap items-center gap-3 p-3 text-sm">
                             <span>{zh ? '处理状态 / 当前步骤' : 'Status / current stage'}</span>
                             <select value={itemFilter} onChange={(e) => { setItemFilter(e.target.value); void loadItemPage(0,e.target.value); }} className="rounded border p-2">
-                              <option value="">{zh ? '全部' : 'All'}</option><option value="running">{zh ? '正在处理' : 'Running'}</option><option value="queued">{zh ? '待处理' : 'Queued'}</option><option value="optimized">{zh ? '完成及修改明细' : 'Completed / changes'}</option><option value="failed">{zh ? '待审核 / 失败' : 'Review / failed'}</option>
+                              <option value="">{zh ? '全部' : 'All'}</option><option value="running">{zh ? '正在处理' : 'Running'}</option><option value="queued">{zh ? '待处理' : 'Queued'}</option><option value="optimized">{zh ? '完成及修改明细' : 'Completed / changes'}</option><option value="skipped">{zh ? '合格跳过' : 'Skipped'}</option><option value="failed">{zh ? '待审核 / 失败' : 'Review / failed'}</option>
                             </select>
                             <span>{job.ai_profile_name || 'Default'} · {job.ai_model || 'Legacy model'}</span>
                           </div>
@@ -313,7 +318,7 @@ export default function AISEORecordsPage() {
                                 {loadingItems && !itemsPage ? <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-500">{zh ? '正在加载明细…' : 'Loading items…'}</td></tr> : (itemsPage?.items || []).map((item) => <tr key={item.id}>
                                   <td className="px-4 py-2 font-mono text-gray-900">{item.sku}</td>
                                   <td className="px-4 py-2"><Link href={`/admin/products/${item.product_id}/edit`} className="text-violet-700 hover:underline">#{item.product_id}</Link></td>
-                                  <td className="px-4 py-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'optimized' ? 'bg-emerald-100 text-emerald-800' : item.status === 'failed' ? 'bg-rose-100 text-rose-800' : item.status === 'cancelled' ? 'bg-slate-200 text-slate-800' : item.status === 'running' ? 'bg-violet-100 text-violet-800' : 'bg-gray-100 text-gray-700'}`}>{itemStatusLabel(item.status, job.selection_mode === 'category_optimization', zh)}</span></td>
+                                  <td className="px-4 py-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'optimized' ? 'bg-emerald-100 text-emerald-800' : item.status === 'skipped' ? 'bg-sky-100 text-sky-800' : item.status === 'failed' ? 'bg-rose-100 text-rose-800' : item.status === 'cancelled' ? 'bg-slate-200 text-slate-800' : item.status === 'running' ? 'bg-violet-100 text-violet-800' : 'bg-gray-100 text-gray-700'}`}>{itemStatusLabel(item.status, job.selection_mode === 'category_optimization', zh)}</span></td>
                                   <td className={`max-w-xl px-4 py-2 text-xs ${item.status === 'failed' ? 'text-rose-700' : item.status === 'optimized' ? 'text-emerald-700' : 'text-gray-600'}`}>{item.error || '—'}</td>
                                 </tr>)}
                               </tbody>

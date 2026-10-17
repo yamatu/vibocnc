@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import {
   PlusIcon,
   MagnifyingGlassIcon,
   PencilIcon,
-  PencilSquareIcon,
   SparklesIcon,
   TrashIcon,
   TagIcon,
@@ -19,11 +19,9 @@ import AdminLayout from '@/components/admin/AdminLayout';
 import CategoryHierarchyEditor from '@/components/admin/CategoryHierarchyEditor';
 import CategoryParentSelect from '@/components/admin/CategoryParentSelect';
 import CategoryAIToolsPanel from '@/components/admin/CategoryAIToolsPanel';
-import { CategoryService, ProductService } from '@/services';
-import { AIAgentService } from '@/services/ai-agent.service';
+import { CategoryService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
 import { useAdminI18n } from '@/lib/admin-i18n';
-import { useAuth } from '@/hooks/useAuth';
 import type { CategoryDeletionImpact } from '@/services/category.service';
 import type { Category, CategoryCreateRequest } from '@/types';
 import { getErrorMessage } from '@/lib/errors';
@@ -32,8 +30,6 @@ import { getErrorMessage } from '@/lib/errors';
 
 export default function AdminCategoriesPage() {
   const { locale, t } = useAdminI18n();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [listPage, setListPage] = useState(1);
@@ -42,8 +38,6 @@ export default function AdminCategoriesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deletionCategory, setDeletionCategory] = useState<Category | null>(null);
   const [deletionTargetId, setDeletionTargetId] = useState('');
-  const [seoJobCategoryId, setSeoJobCategoryId] = useState<number | null>(null);
-  const [titleJobCategoryId, setTitleJobCategoryId] = useState<number | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -246,70 +240,6 @@ export default function AdminCategoriesPage() {
     setDeletionTargetId('');
   };
 
-  // Per-category AI SEO run: focuses on titles/meta and re-optimizes already
-  // optimized products so a category can be polished after reclassification.
-  const startCategorySEOJob = async (category: Category) => {
-    const message = locale === 'zh'
-      ? `对「${category.name}」分类（含子分类）启动 AI SEO 优化任务？将优化产品标题和 SEO 元信息，已优化过的产品也会重新处理。`
-      : `Start an AI SEO job for "${category.name}" (including subcategories)? Product titles and SEO metadata are optimized; already-optimized products are re-processed.`;
-    if (!window.confirm(message)) return;
-    setSeoJobCategoryId(Number(category.id));
-    try {
-      const job = await AIAgentService.startSEOCandidateJob({
-        prompt: `Optimize the SEO title, meta description, meta keywords, and corrected product name for each product in the "${category.name}" category. Use the verified brand, model, and category; keep titles precise and non-repetitive.`,
-        limit: 30000,
-        category_id: Number(category.id),
-        include_descendants: true,
-        include_optimized: true,
-        ai_seo_status: 'all',
-        focus: ['seo'],
-      });
-      toast.success(locale === 'zh'
-        ? `已为「${category.name}」启动 SEO 任务（${job.total} 个产品），可到 AI SEO 页面查看进度`
-        : `SEO job started for "${category.name}" (${job.total} products) — track it on the AI SEO page`);
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, locale === 'zh' ? '启动 SEO 任务失败' : 'Failed to start the SEO job'));
-    } finally {
-      setSeoJobCategoryId(null);
-    }
-  };
-
-  // Per-category title standardization: renames verified products in this
-  // subtree to "Brand Model Type" in paged batches.
-  const standardizeCategoryTitles = async (category: Category) => {
-    const message = locale === 'zh'
-      ? `将「${category.name}」分类（含子分类）下可核验产品的标题统一为「品牌 型号 类型」？URL 不受影响。`
-      : `Rename verifiable products under "${category.name}" (including subcategories) to "Brand Model Type"? URLs are unchanged.`;
-    if (!window.confirm(message)) return;
-    setTitleJobCategoryId(Number(category.id));
-    try {
-      let afterId = 0;
-      let updated = 0;
-      let processed = 0;
-      for (let batch = 0; batch < 200; batch++) {
-        const result = await ProductService.standardizeTitles({
-          category_id: Number(category.id),
-          include_descendants: true,
-          include_inactive: true,
-          limit: 500,
-          after_id: afterId,
-          apply: true,
-        });
-        updated += result.updated;
-        processed += result.processed;
-        if (!result.has_more || !result.next_after_id || result.next_after_id <= afterId) break;
-        afterId = result.next_after_id;
-      }
-      queryClient.invalidateQueries({ queryKey: queryKeys.products.lists() });
-      toast.success(locale === 'zh'
-        ? `「${category.name}」标题规范化完成：检查 ${processed} 个产品，重命名 ${updated} 个`
-        : `Titles standardized for "${category.name}": ${processed} checked, ${updated} renamed`);
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, locale === 'zh' ? '标题规范化失败' : 'Title standardization failed'));
-    } finally {
-      setTitleJobCategoryId(null);
-    }
-  };
 
   useEffect(() => {
     const impact = deletionImpactQuery.data;
@@ -556,26 +486,14 @@ export default function AdminCategoriesPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => startCategorySEOJob(category)}
-                              disabled={seoJobCategoryId !== null || titleJobCategoryId !== null}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-violet-200 text-sm text-violet-700 hover:bg-violet-50 disabled:opacity-50"
-                              title={locale === 'zh' ? '对此分类（含子分类）启动 AI SEO 标题优化任务' : 'Start an AI SEO title job for this category and its subcategories'}
+                            <Link
+                              href={`/admin/products?category=${encodeURIComponent(String(category.id))}`}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-violet-200 text-sm text-violet-700 hover:bg-violet-50"
+                              title={locale === 'zh' ? '打开该分类（含子分类）的产品列表，用「AI 智能优化」处理' : 'Open this category in the product list to run AI optimization'}
                             >
                               <SparklesIcon className="h-4 w-4" />
-                              {seoJobCategoryId === Number(category.id) ? (locale === 'zh' ? '启动中…' : 'Starting…') : 'SEO'}
-                            </button>
-                            {isAdmin && (
-                              <button
-                                onClick={() => standardizeCategoryTitles(category)}
-                                disabled={seoJobCategoryId !== null || titleJobCategoryId !== null}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-blue-200 text-sm text-blue-700 hover:bg-blue-50 disabled:opacity-50"
-                                title={locale === 'zh' ? '将此分类（含子分类）下的产品标题统一为「品牌 型号 类型」' : 'Rename products under this category to "Brand Model Type"'}
-                              >
-                                <PencilSquareIcon className="h-4 w-4" />
-                                {titleJobCategoryId === Number(category.id) ? (locale === 'zh' ? '处理中…' : 'Working…') : (locale === 'zh' ? '标题' : 'Titles')}
-                              </button>
-                            )}
+                              {locale === 'zh' ? 'AI 优化产品' : 'AI optimize'}
+                            </Link>
                             <button
                               onClick={() => openEdit(category)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-white"

@@ -15,7 +15,9 @@ import SeoPreview from '@/components/admin/SeoPreview';
 import CategoryCombobox from '@/components/admin/CategoryCombobox';
 import ShippingQuoteCalculator from '@/components/admin/ShippingQuoteCalculator';
 import TranslationEditor from '@/components/admin/TranslationEditor';
-import { ProductService, CategoryService, CommercePolicyService, ProductSpecService } from '@/services';
+import AIListingAssist from '@/components/admin/AIListingAssist';
+import type { AIListingGenerateResult } from '@/services/ai-listing.service';
+import { ProductService, CategoryService, CommercePolicyService } from '@/services';
 import { queryKeys } from '@/lib/react-query';
 import { ProductCreateRequest, type Product, type Category, type CommercePolicySetting } from '@/types';
 import { getErrorMessage } from '@/lib/errors';
@@ -136,23 +138,8 @@ export default function EditProductPage() {
     ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy }
     : FALLBACK_COMMERCE_POLICY;
 
-  // Model-number (型号) specification research. The run is queued as an AI task
-  // so a slow web lookup cannot block this form; results always land in the
-  // review queue at /admin/spec-drafts — nothing is written to this product here.
-  const specResearchMutation = useMutation({
-    mutationFn: () => ProductSpecService.startProductResearchJob(productId as number, { use_ai: true }),
-    onSuccess: (job) => {
-      toast.success(
-        locale === 'zh'
-          ? `已加入检索队列（任务 ${job.id.slice(0, 8)}）— 进度与审核请在“型号参数检索”页面查看`
-          : `Research queued (task ${job.id.slice(0, 8)}) — track progress and review under Spec Research`,
-      );
-      queryClient.invalidateQueries({ queryKey: ['spec-drafts'] });
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, locale === 'zh' ? '型号参数检索失败' : 'Specification research failed'));
-    },
-  });
+  // The form has no short-description input; an AI rewrite keeps its summary here until save.
+  const [aiShortDescription, setAIShortDescription] = useState<string | null>(null);
 
 	const watchedWeight = Number(watch('weight') || 0);
 	const watchedPrice = Number(watch('price') || 0);
@@ -315,7 +302,7 @@ export default function EditProductPage() {
 		const productData: ProductCreateRequest = {
 			name: data.name,
 			sku: data.sku,
-			short_description: existing.short_description || '',
+			short_description: aiShortDescription ?? (existing.short_description || ''),
 			description: data.description || '',
 			price: Number(data.price),
 			compare_price: existing.compare_price ?? undefined,
@@ -398,6 +385,30 @@ export default function EditProductPage() {
     toast.success(locale === 'zh' ? '已恢复默认 SEO，并关闭自动品牌 SEO 覆盖' : 'Default SEO restored and automatic brand SEO disabled');
   };
 
+  const applyAIListing = (result: AIListingGenerateResult) => {
+    const listing = result.listing;
+    const dirty = { shouldDirty: true, shouldValidate: true };
+    if (listing.name) setValue('name', listing.name, dirty);
+    if (!watch('sku') && listing.sku) setValue('sku', listing.sku, dirty);
+    if (listing.brand) setValue('brand', listing.brand, dirty);
+    if (listing.model) setValue('model', listing.model, dirty);
+    if (listing.part_number) setValue('part_number', listing.part_number, dirty);
+    if (listing.warranty_period) setValue('warranty_period', listing.warranty_period, dirty);
+    if (listing.lead_time) setValue('lead_time', listing.lead_time, dirty);
+    if (listing.weight_kg && !(Number(watch('weight')) > 0)) setValue('weight', listing.weight_kg, dirty);
+    if (listing.description) setValue('description', listing.description, dirty);
+    if (listing.meta_title) setValue('meta_title', listing.meta_title, dirty);
+    if (listing.meta_description) setValue('meta_description', listing.meta_description, dirty);
+    if (listing.meta_keywords) setValue('meta_keywords', listing.meta_keywords, dirty);
+    if (listing.short_description) setAIShortDescription(listing.short_description);
+    // Keeps the reviewed AI copy from being rewritten by the rule-based optimizer after save.
+    setValue('disable_auto_seo', true, { shouldDirty: true });
+    if (result.category?.category_id) {
+      if (result.category.created) queryClient.invalidateQueries({ queryKey: queryKeys.categories.lists() });
+      setValue('category_id', result.category.category_id, dirty);
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -425,6 +436,26 @@ export default function EditProductPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {/* Main Content */}
             <div className="lg:col-span-2 space-y-6">
+              <AIListingAssist
+                locale={locale}
+                productId={productId}
+                getCurrent={() => ({
+                  name: watch('name'),
+                  sku: watch('sku'),
+                  brand: watch('brand'),
+                  model: watch('model'),
+                  part_number: watch('part_number'),
+                  description: watch('description'),
+                  meta_title: watch('meta_title'),
+                  meta_description: watch('meta_description'),
+                  meta_keywords: watch('meta_keywords'),
+                  warranty_period: watch('warranty_period'),
+                  lead_time: watch('lead_time'),
+                  category_id: Number(watch('category_id')) || undefined,
+                })}
+                onApply={applyAIListing}
+              />
+
               {/* Basic Information */}
               <div className="bg-white shadow rounded-lg p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">{t('products.basic.title', locale === 'zh' ? '基础信息' : 'Basic Information')}</h3>
@@ -562,20 +593,6 @@ export default function EditProductPage() {
 						className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
 						placeholder={locale === 'zh' ? '例如：A06B-0215-B805' : 'e.g., A06B-0215-B805'}
 					/>
-					<button
-						type="button"
-						onClick={() => specResearchMutation.mutate()}
-						disabled={specResearchMutation.isPending || !productId}
-						className="mt-2 inline-flex items-center rounded-md border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
-					>
-						{specResearchMutation.isPending
-							? locale === 'zh'
-								? '检索中…'
-								: 'Researching…'
-							: locale === 'zh'
-								? '按型号检索参数（需审核）'
-								: 'Research specs by model number (review required)'}
-					</button>
 				  </div>
 
 				  <div>
