@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ProductService, CategoryService } from '@/services';
+import { ProductService } from '@/services/product.service';
+import { CategoryService } from '@/services/category.service';
 import {
   CpuChipIcon,
   BoltIcon,

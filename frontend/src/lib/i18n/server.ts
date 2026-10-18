@@ -1,4 +1,3 @@
-import { headers } from 'next/headers';
 import { getSiteUrl } from '@/lib/url';
 import {
   buildLanguageAlternates,
@@ -9,13 +8,20 @@ import {
   type PublicLocale,
 } from './config';
 
-export async function getRequestPublicLocale(): Promise<PublicLocale> {
-  const requestHeaders = await headers();
-  return normalizePublicLocale(requestHeaders.get('x-site-locale'));
+export type LocaleRouteParams = Promise<{ locale: string }>;
+
+// Middleware rewrites every public URL to /{locale}{path}. Reading the locale
+// from the route segment (not request headers) keeps public pages ISR-cacheable.
+export async function resolveRouteLocale(params: Promise<{ locale?: string }>): Promise<PublicLocale> {
+  const { locale } = await params;
+  return normalizePublicLocale(locale);
 }
 
-export async function getLocalizedMetadataPaths(pathname: string, availableLocales?: readonly PublicLocale[]) {
-  const locale = await getRequestPublicLocale();
+export async function getLocalizedMetadataPaths(
+  locale: PublicLocale,
+  pathname: string,
+  availableLocales?: readonly PublicLocale[],
+) {
   const baseUrl = getSiteUrl();
   const localizedPath = localizePublicPath(pathname, locale);
   const allowedLocales = availableLocales
@@ -29,11 +35,12 @@ export async function getLocalizedMetadataPaths(pathname: string, availableLocal
 }
 
 export async function getLocalizedMetadataPathsWithQuery(
+  locale: PublicLocale,
   pathname: string,
   query: string,
   availableLocales?: readonly PublicLocale[],
 ) {
-  const metadata = await getLocalizedMetadataPaths(pathname, availableLocales);
+  const metadata = await getLocalizedMetadataPaths(locale, pathname, availableLocales);
   const normalizedQuery = query ? (query.startsWith('?') ? query : `?${query}`) : '';
   return {
     ...metadata,

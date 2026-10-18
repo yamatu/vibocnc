@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import type { PayPalScriptOptions } from '@paypal/paypal-js';
 import { toast } from 'react-hot-toast';
-import { PayPalService, OrderService } from '@/services';
+import { PayPalService } from '@/services/paypal.service';
+import { OrderService } from '@/services/order.service';
 import type { Order } from '@/types';
 
 interface PayPalCheckoutProps {

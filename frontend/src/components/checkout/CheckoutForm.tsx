@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { UseFormRegister, FieldErrors } from 'react-hook-form';
-import { CheckoutFormData } from '@/app/(private)/checkout/page';
+import { CheckoutFormData } from '@/app/[locale]/(private)/checkout/page';
 import { Combobox } from '@headlessui/react';
 import {
   UserIcon,

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { ContactService } from '@/services';
+import ContactService from '@/services/contact.service';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import type { PublicLocale } from '@/lib/i18n/config';
 import { getRepairPageCopy } from '@/lib/i18n/repair';

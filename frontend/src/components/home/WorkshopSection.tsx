@@ -111,7 +111,6 @@ export function WorkshopSection({ content }: Props) {
                       height={640}
                       sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 50vw"
                       className="h-full w-full object-cover"
-                      unoptimized={typeof activeFacility.image === 'string' && activeFacility.image.startsWith('/uploads/')}
                       loading="lazy"
                     />
                   </div>

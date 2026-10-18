@@ -1,156 +1,14 @@
 import type { PublicLocale } from './config';
 import { detailedPublicMessages } from './detailedMessages';
+import {
+  enMessages as en,
+  formatPublicMessage,
+  type PublicMessageKey as MessageKey,
+  type PublicMessageVariables,
+} from './messages-en';
 
-export type PublicMessageVariables = Record<string, string | number>;
+export type { PublicMessageVariables };
 
-const en = {
-  'language.label': 'Language and region',
-  'header.searchCategories': 'Search categories', 'header.noCategories': 'No matching categories',
-  'nav.home': 'Home', 'nav.products': 'Products', 'nav.categories': 'Categories', 'nav.news': 'News',
-  'nav.blog': 'Blog', 'nav.about': 'About', 'nav.contact': 'Contact', 'nav.repair': 'Repair Request',
-  'header.supply': 'Industrial automation parts supply | Vibocnc Since 2007',
-  'header.search': 'Search', 'header.searchProducts': 'Search products...', 'header.viewResults': 'View all results',
-  'header.cart': 'Shopping cart', 'header.openMenu': 'Open menu', 'header.closeMenu': 'Close menu',
-  'header.primaryNavigation': 'Primary navigation', 'header.mobileNavigation': 'Mobile navigation',
-  'header.noProducts': 'No products found', 'header.login': 'Login', 'header.register': 'Register',
-  'header.trackOrder': 'Track Order', 'header.myAccount': 'My Account', 'header.myOrders': 'My Orders',
-  'header.supportTickets': 'Support Tickets', 'header.logout': 'Logout', 'header.productCategories': 'Product Categories',
-  'header.hub': 'CNC Parts Hub', 'header.automationSupply': 'Automation Supply',
-  'footer.products': 'Products', 'footer.services': 'Services', 'footer.company': 'Company', 'footer.support': 'Support',
-  'footer.partners': 'Partners', 'footer.stayUpdated': 'Stay Updated',
-  'footer.newsletter': 'Subscribe to our newsletter for the latest automation components and industry updates.',
-  'footer.emailPlaceholder': 'Enter your email', 'footer.subscribe': 'Subscribe',
-  'footer.description': 'Since 2007, Vibocnc has supported industrial maintenance teams with current, legacy and obsolete CNC and automation parts across 20+ brands, plus model checks, repair evaluation and worldwide delivery.',
-  'footer.address': 'Kunshan, Jiangsu Province, China', 'footer.hours': 'Mon-Fri: 8:00 AM - 6:00 PM',
-  'footer.copyright': 'Copyright 2024 Vibocnc. All rights reserved.',
-  'footer.privacy': 'Privacy Policy', 'footer.terms': 'Terms of Service', 'footer.sitemap': 'Sitemap',
-  'footer.allProducts': 'All Products', 'footer.productCategories': 'Product Categories',
-  'footer.since': 'Since 2007',
-  'footer.popularBrands': 'Popular Brands', 'footer.weAccept': 'We accept',
-  'products.show': 'Show', 'products.perPage': 'Products per page',
-  'home.hero.kicker': 'Industrial Automation Supply', 'home.hero.previous': 'Previous slide',
-  'home.hero.next': 'Next slide', 'home.hero.goTo': 'Go to slide {number}', 'home.hero.scroll': 'Scroll Down',
-  'home.hero.title': 'Vibocnc Industrial Automation Parts',
-  'home.hero.subtitle': 'CNC and robot spare parts, tested and ready to ship',
-  'home.hero.description': 'Source multi-brand industrial automation parts from deep stock with inspection, technical support, repair evaluation, and worldwide shipping.',
-  'home.hero.primary': 'Browse Products', 'home.hero.secondary': 'Get a Quote',
-  'home.featured.title': 'Featured Industrial Automation Parts',
-  'home.featured.description': 'Browse selected CNC and automation components tested for dependable industrial service.',
-  'home.featured.viewAll': 'View All Products', 'home.featured.save': 'Save {percent}%',
-  'common.inStock': 'In Stock: {count}', 'common.outOfStock': 'Out of Stock', 'common.addToCart': 'Add to Cart',
-  'common.home': 'Home', 'common.by': 'By {name}', 'common.views': '{count} views',
-  'common.readTime': '{count} min read', 'common.backTo': 'Back to {section}', 'common.lastUpdated': 'Last updated: {date}',
-  'common.cncParts': 'CNC Parts', 'common.learnMore': 'Learn More', 'common.contactUs': 'Contact Us',
-  'common.loading': 'Loading...', 'common.loadError': 'Failed to load products',
-  'common.tryAgain': 'Please try again later.', 'common.viewDetails': 'View details',
-  'home.stats.title': 'Vibocnc Multi-Brand Automation Parts Supplier',
-  'home.stats.description': 'Industrial automation components, deep inventory, testing, maintenance support, and worldwide delivery.',
-  'home.stats.ctaTitle': 'Ready to Experience Professional Service?',
-  'home.stats.ctaDescription': 'Contact our sales and technical team for sourcing, testing, maintenance, and international shipping support.',
-  'home.stats.contact': 'Contact Our Experts', 'home.stats.browse': 'Browse Products',
-  'home.workshop.title': '3,500 sqm Parts Inspection & Service Facility',
-  'home.workshop.description': 'Structured inventory, inspection benches, repair capability, and export packaging for dependable CNC parts supply.',
-  'home.services.title': 'Comprehensive CNC Parts Services',
-  'home.services.description': 'End-to-end support for industrial automation parts supply, repair, technical support, and global shipping.',
-  'products.title': 'Industrial Automation Parts & Components',
-  'products.description': 'Browse CNC and industrial automation parts with worldwide delivery.',
-  'products.search': 'Search products', 'products.searchPlaceholder': 'Search by name, SKU, or description...',
-  'products.allCategories': 'All Categories', 'products.results': '{count} products', 'products.noResults': 'No products found',
-  'products.searching': 'Searching for "{query}"...', 'products.showing': 'Showing {shown} of {total} products',
-  'products.filtered': 'filtered', 'products.forQuery': 'for "{query}"',
-  'products.gridView': 'Grid view', 'products.listView': 'List view', 'products.contactForQuote': 'Contact for quote',
-  'products.sortNameAsc': 'Name (A-Z)', 'products.sortNameDesc': 'Name (Z-A)',
-  'products.sortPriceAsc': 'Price: Low to High', 'products.sortPriceDesc': 'Price: High to Low',
-  'products.sortNewest': 'Newest First', 'products.sortStock': 'Stock: High to Low',
-  'products.sortFeatured': 'Featured First', 'products.clearFilters': 'Clear all filters',
-  'products.pageOf': 'Page {page} of {total}',
-  'filters.title': 'Filters', 'filters.clearAll': 'Clear All', 'filters.priceRange': 'Price Range',
-  'filters.minPrice': 'Min Price', 'filters.maxPrice': 'Max Price',
-  'filters.priceHint': 'Enter a price range to filter products', 'filters.active': 'Active Filters:',
-  'filters.searchValue': 'Search: "{query}"', 'filters.categoryValue': 'Category: {category}',
-  'filters.unknown': 'Unknown', 'filters.noMax': 'No maximum',
-  'product.notFound': 'Product Not Found', 'product.notFoundDescription': "The product you're looking for doesn't exist.",
-  'product.back': 'Back to Products', 'product.information': 'Product information', 'product.alternate': 'Alternate',
-  'product.whatsApp': 'WhatsApp Us', 'product.buyNow': 'Buy Now', 'product.contactForQuote': 'Contact us for price', 'product.quotePriceHint': 'Request current price and lead time by WhatsApp or email.', 'product.emailForQuote': 'Email for quote', 'product.brand': 'Brand',
-  'product.partNumber': 'Part Number', 'product.warranty': 'Warranty', 'product.leadTime': 'Lead time',
-  'product.inStock': 'In Stock', 'product.readyToShip': 'Ready to ship', 'product.availableToOrder': 'Available to Order',
-  'product.worldwideShipping': 'Worldwide Shipping', 'product.qualityTested': 'Quality Tested',
-  'product.aboutPart': 'About This Part', 'product.quickAnswer': 'Quick Answer',
-  'product.description': 'Product Description', 'product.specifications': 'Technical Specifications',
-  'product.details': 'Part Details', 'product.category': 'Category', 'product.condition': 'Condition',
-  'product.origin': 'Country of Origin', 'product.certifications': 'Certifications',
-  'product.compatibility': 'Compatibility Information', 'product.installation': 'Installation Guide',
-  'product.maintenance': 'Maintenance Tips', 'product.downloads': 'Downloads and References',
-  'product.faq': 'Frequently Asked Questions', 'product.reviews': 'Customer Reviews',
-  'product.explore': 'Explore More Options', 'product.browseAll': 'Browse all products',
-  'product.moreCategory': 'More {category}', 'product.moreBrand': 'More {brand} parts', 'product.related': 'Related Products',
-  'categories.kicker': 'Category Supply', 'categories.home': 'Home',
-  'news.title': 'Company News', 'news.blogTitle': 'Industrial Automation Blog',
-  'news.description': 'Company updates, product announcements, and industrial automation news from Vibocnc.',
-  'news.blogDescription': 'Practical guides, troubleshooting knowledge, and purchasing insights for CNC and industrial automation professionals.',
-  'news.kicker': 'Company updates', 'news.blogKicker': 'Technical library', 'news.search': 'Search articles...',
-  'news.noArticles': 'No articles found', 'news.checkBack': 'Check back later for new content.',
-  'news.featured': 'Featured', 'news.latest': 'Latest Articles', 'news.views': '{count} views',
-  'news.results': '{count} results for "{query}"', 'news.clearSearch': 'Clear search',
-  'about.title': 'About Vibocnc', 'about.kicker': 'Industrial parts expertise since 2007',
-  'about.subtitle': 'Your trusted one-stop CNC solution supplier since 2007',
-  'about.profile': 'Company Profile', 'about.warehouse': 'Warehouse & Items',
-  'about.services': 'Professional Service', 'about.experience': '15+ Years of Experience',
-  'about.sales': 'Sales Service', 'about.testing': 'Testing Service', 'about.maintenance': 'Maintenance Service',
-  'about.years': 'Years Experience', 'about.topSupplier': 'Automation Brands Supplied',
-  'about.workshop': 'sqm Workshop', 'about.employees': 'Total Employees',
-  'about.items': 'Items in Stock', 'about.parcels': 'Daily Parcels',
-  'about.profileDescription': 'We have supplied CNC and industrial automation parts since 2007, combining product expertise, dependable sourcing, and responsive international service.',
-  'about.warehouseDescription': 'Our 3,500 m² facility supports organized inventory, inspection, repair, export packing, and efficient worldwide dispatch.',
-  'about.servicesDescription': 'Our specialist team supports customers throughout product selection, functional testing, maintenance, and after-sales service.',
-  'about.salesDescription': 'Experienced sales specialists identify compatible automation components and practical sourcing options for your application.',
-  'about.testingDescription': 'Documented inspection and functional testing help confirm component quality before dispatch.',
-  'about.maintenanceDescription': 'Skilled technicians provide maintenance and repair support to keep automation systems operating reliably.',
-  'about.experienceDescription': 'More than 15 years of industry experience helps us coordinate sourcing, inspection, export documentation, and international transport as one service.',
-  'about.trustedPartner': 'Trusted Partner', 'about.trustedDescription': 'Reliable industrial solutions worldwide',
-  'contact.title': 'Contact Us', 'contact.kicker': 'Contact Vibocnc',
-  'contact.description': 'Get in touch with our expert team for all your automation needs.',
-  'contact.getInTouch': 'Get in Touch', 'contact.address': 'Address', 'contact.phone': 'Phone',
-  'contact.email': 'Email', 'contact.hours': 'Business Hours', 'contact.facility': 'Facility',
-  'contact.serviceArea': 'Service Area', 'contact.sendTitle': 'Send us a Message',
-  'contact.fullName': 'Full Name', 'contact.emailAddress': 'Email Address', 'contact.company': 'Company Name',
-  'contact.phoneNumber': 'Phone Number', 'contact.inquiryType': 'Inquiry Type', 'contact.subject': 'Subject',
-  'contact.message': 'Message', 'contact.send': 'Send Message', 'contact.sending': 'Sending Message...',
-  'contact.general': 'General Inquiry', 'contact.parts': 'Parts Request', 'contact.repair': 'Repair Service',
-  'contact.support': 'Technical Support', 'contact.quote': 'Request Quote',
-  'contact.success': 'Thank you for your message! We will get back to you soon.',
-  'contact.error': 'Failed to send message. Please check your connection.',
-  'contact.fastResponse': 'Fast Response', 'contact.fastResponseDescription': 'Our team responds promptly to product, quotation, and technical inquiries.',
-  'contact.largeInventory': 'Large Inventory', 'contact.largeInventoryDescription': 'A broad stock of CNC and automation parts helps reduce sourcing and delivery time.',
-  'contact.globalShipping': 'Global Shipping', 'contact.globalShippingDescription': 'Export packing and international delivery are available for customers worldwide.',
-  'contact.loading': 'Loading...',
-  'contact.whyChoose': 'Why Choose Vibocnc?',
-  'order.kicker': 'Logistics status', 'order.trackTitle': 'Track Your Order',
-  'order.trackDescription': 'Enter the order number from your confirmation email to check current handling, shipment, and delivery status.',
-  'order.enterNumber': 'Please enter your order number', 'order.trackAction': 'Track Order',
-  'order.numberHint': 'You can find your order number in the confirmation email sent after your purchase.',
-  'order.loadingDetails': 'Loading order details...', 'order.notFound': 'Order Not Found',
-  'order.notFoundDescription': 'The order number you entered could not be found.',
-  'order.loadError': 'Failed to load order details', 'order.backHome': 'Back to Home',
-  'order.placedOn': 'Placed on {date}', 'order.progress': 'Order Progress',
-  'order.currentStatus': 'Current status', 'order.details': 'Order Details',
-  'order.number': 'Order Number', 'order.status': 'Status', 'order.paymentStatus': 'Payment Status',
-  'order.totalAmount': 'Total Amount', 'order.paymentMethod': 'Payment Method',
-  'order.tracking': 'Tracking', 'order.carrier': 'Carrier', 'order.customerInfo': 'Customer Information',
-  'order.name': 'Name', 'order.email': 'Email', 'order.phone': 'Phone',
-  'order.shippingAddress': 'Shipping Address', 'order.items': 'Order Items',
-  'order.product': 'Product', 'order.quantity': 'Quantity', 'order.each': 'each', 'order.notes': 'Order Notes',
-  'status.pending': 'Order Placed', 'status.confirmed': 'Confirmed', 'status.processing': 'Processing',
-  'status.shipped': 'Shipped', 'status.delivered': 'Delivered', 'status.cancelled': 'Cancelled',
-  'payment.pending': 'Pending', 'payment.paid': 'Paid', 'payment.failed': 'Failed', 'payment.refund_pending': 'Refund pending', 'payment.partially_refunded': 'Partially refunded', 'payment.refunded': 'Refunded',
-  'faq.title': 'Frequently Asked Questions', 'faq.kicker': 'Support center',
-  'faq.description': 'Find answers about multi-brand industrial automation parts, shipping, warranty, repair evaluation, and technical support.',
-  'faq.more': 'Still Have Questions?', 'faq.moreDescription': 'Our team can help with CNC, PLC, HMI, drive, servo, and other industrial automation parts.',
-  'faq.email': 'Email Support', 'docs.title': 'Documentation', 'docs.comingSoon': 'Documentation is coming soon.',
-  'product.searchCountry': 'Search or select a country...', 'product.noCountries': 'No countries found', 'product.free': 'Free',
-} as const;
-
-type MessageKey = keyof typeof en;
 type Messages = Partial<Record<MessageKey, string>>;
 
 const translations: Record<Exclude<PublicLocale, 'en'>, Messages> = {
@@ -280,6 +138,20 @@ export function translatePublicMessage(locale: PublicLocale, key: string, variab
     : detailedMessage || translations[locale]?.[key as MessageKey])
     || en[key as MessageKey]
     || key;
-  if (!variables) return message;
-  return message.replace(/\{(\w+)\}/g, (_match: string, variable: string) => String(variables[variable] ?? `{${variable}}`));
+  return formatPublicMessage(message, variables);
+}
+
+// Non-English strings for one locale, in the same precedence as
+// translatePublicMessage. The client provider receives only this map (from the
+// server layout) instead of bundling every language.
+export function getPublicMessageOverrides(locale: PublicLocale): Record<string, string> | null {
+  if (locale === 'en') return null;
+  const detailed = locale !== 'zh' ? detailedPublicMessages[locale] : undefined;
+  const merged: Record<string, string> = {};
+  for (const source of [translations[locale], detailed]) {
+    for (const [key, value] of Object.entries(source || {})) {
+      if (value) merged[key] = value;
+    }
+  }
+  return merged;
 }

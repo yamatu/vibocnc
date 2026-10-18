@@ -24,7 +24,7 @@ export default function HomeBlogSection({ content, articles }: { content?: Homep
           {articles.slice(0, 3).map((article) => {
             const path = article.public_path || `/blog/${article.slug}`;
             return <article key={article.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-              {article.featured_image ? <Link href={href(path)} className="block aspect-[16/9] overflow-hidden bg-slate-100"><Image src={article.featured_image} alt={article.title} width={720} height={405} className="h-full w-full object-cover transition duration-500 hover:scale-105" unoptimized={article.featured_image.startsWith('/uploads/')} /></Link> : <div className="aspect-[16/9] bg-[linear-gradient(135deg,#082f5a,#0b3e75)]" />}
+              {article.featured_image ? <Link href={href(path)} className="block aspect-[16/9] overflow-hidden bg-slate-100"><Image src={article.featured_image} alt={article.title} width={720} height={405} className="h-full w-full object-cover transition duration-500 hover:scale-105" /></Link> : <div className="aspect-[16/9] bg-[linear-gradient(135deg,#082f5a,#0b3e75)]" />}
               <div className="p-6">
                 <p className="text-xs font-bold uppercase tracking-wider text-orange-700">Featured guide</p>
                 <h3 className="mt-3 text-xl font-bold leading-7 text-slate-950"><Link href={href(path)} className="hover:text-[#0b3e75]">{article.title}</Link></h3>

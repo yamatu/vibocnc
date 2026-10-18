@@ -12,7 +12,7 @@ import {
 import { useCart } from '@/store/cart.store';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
-import { ProductService } from '@/services';
+import { ProductService } from '@/services/product.service';
 import { queryKeys } from '@/lib/react-query';
 import { DEFAULT_FEATURED_PRODUCTS_SECTION_DATA } from '@/lib/homepage-defaults';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
@@ -114,7 +114,6 @@ export function FeaturedProducts({
               <div className="relative h-64 overflow-hidden">
                 {(() => {
                   const src = getProductImageUrl((product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []), getDefaultProductImageWithSku(product.sku));
-                  const unoptimized = typeof src === 'string' && src.startsWith('/uploads/');
                   return (
                     <>
                       <Image
@@ -124,7 +123,6 @@ export function FeaturedProducts({
                         height={512}
                         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                         className="h-full w-full object-contain p-3 motion-safe:group-hover:scale-105 transition-transform duration-500"
-                        unoptimized={unoptimized}
                       />
                       <Link
                         href={href(`/products/${toProductPathId(product.sku)}`)}

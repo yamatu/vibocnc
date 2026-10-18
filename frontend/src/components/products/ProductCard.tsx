@@ -87,7 +87,6 @@ export default function ProductCard({
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               className="object-contain object-center p-2"
-              unoptimized={typeof imageUrl === 'string' && imageUrl.startsWith('/uploads/')}
             />
           </div>
         </Link>

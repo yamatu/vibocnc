@@ -1,5 +1,5 @@
 import { getRequestBaseUrl } from '@/lib/request-url';
-import { CategoryService } from '@/services';
+import { CategoryService } from '@/services/category.service';
 import { getCommercePolicyCached } from '@/services/commerce-policy.server';
 import { SITE_NAME } from '@/lib/seo';
 

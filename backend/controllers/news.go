@@ -636,6 +636,7 @@ func (nc *NewsController) CreateArticle(c *gin.Context) {
 	services.InvalidatePublicCaches(c.Request.Context(), "news:create", articleCacheURLs(article))
 	if article.IsPublished {
 		services.TriggerNextRevalidate(nil, articleCacheURLs(article), false)
+		services.TriggerNextRevalidateTags([]string{"news"})
 		go func(articleID uint, publicPath string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
@@ -777,6 +778,7 @@ func (nc *NewsController) UpdateArticle(c *gin.Context) {
 	services.InvalidatePublicCaches(c.Request.Context(), "news:update", []string{"/news", "/blog", oldPath, newPath, "/sitemap.xml", "/sitemap-news.xml", "/sitemap-blog.xml"})
 	paths := []string{"/news", "/blog", oldPath, newPath, "/sitemap.xml", "/sitemap-news.xml", "/sitemap-blog.xml"}
 	services.TriggerNextRevalidate(nil, paths, false)
+	services.TriggerNextRevalidateTags([]string{"news"})
 	if article.IsPublished {
 		go func(articleID uint, publicPath string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -812,6 +814,7 @@ func (nc *NewsController) DeleteArticle(c *gin.Context) {
 	db.Delete(&article)
 	services.InvalidatePublicCaches(c.Request.Context(), "news:delete", []string{"/news", "/blog", oldPath, "/sitemap.xml", "/sitemap-news.xml", "/sitemap-blog.xml"})
 	services.TriggerNextRevalidate(nil, []string{"/news", "/blog", oldPath, "/sitemap.xml", "/sitemap-news.xml", "/sitemap-blog.xml"}, false)
+	services.TriggerNextRevalidateTags([]string{"news"})
 
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Article deleted"})
 }

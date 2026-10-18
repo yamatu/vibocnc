@@ -2,7 +2,7 @@ import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { AuthService } from '@/services';
+import { AuthService } from '@/services/auth.service';
 import { useAuthStore } from '@/store/auth.store';
 import { queryKeys } from '@/lib/react-query';
 import { AdminUser, LoginRequest } from '@/types';

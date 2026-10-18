@@ -107,5 +107,6 @@ func (pc *SitePageController) UpsertPage(c *gin.Context) {
 	}
 
 	services.InvalidatePublicCaches(c.Request.Context(), "site-page:update", []string{"/" + key, "/sitemap-static.xml", "/sitemap.xml"})
+	services.TriggerNextRevalidate(nil, []string{"/" + key}, false)
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Page saved", Data: page})
 }

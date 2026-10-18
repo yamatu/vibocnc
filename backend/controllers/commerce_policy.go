@@ -67,6 +67,7 @@ func (cc *CommercePolicyController) UpdateSettings(c *gin.Context) {
 	}
 
 	services.InvalidateCommercePolicyCache()
+	services.TriggerNextRevalidateTags([]string{"commerce-policy"})
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Commerce policy updated", Data: next})
 }
 

@@ -1,5 +1,19 @@
 import path from 'node:path';
 import type { NextConfig } from "next";
+import { PUBLIC_LOCALES } from './src/lib/i18n/config';
+
+// First path segments that are not English public pages: explicit locale
+// prefixes plus admin, API, proxied media and the paged product sitemaps.
+const NON_DEFAULT_LOCALE_SEGMENTS = [
+  ...PUBLIC_LOCALES.map((locale) => locale.code),
+  'admin',
+  'api',
+  '_next',
+  'uploads',
+  'media-thumb',
+  'images',
+  'sitemap-products',
+].join('|');
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -51,6 +65,16 @@ const nextConfig: NextConfig = {
         {
           source: '/api/:path*',
           destination: `${apiBase}/api/:path*`,
+        },
+        // Unprefixed public URLs are the English pages under app/[locale].
+        // afterFiles runs after static routes and public/ files have been
+        // matched, so /robots.txt, /sitemap.xml, favicons etc. are untouched.
+        // This must be a config rewrite: Next only serves ISR for rewrites it
+        // can replay itself; middleware rewrites always render dynamically.
+        { source: '/', destination: '/en' },
+        {
+          source: `/:first((?!(?:${NON_DEFAULT_LOCALE_SEGMENTS})(?:/|$))[^/]+)/:rest*`,
+          destination: '/en/:first/:rest*',
         },
       ],
     };

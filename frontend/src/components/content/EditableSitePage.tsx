@@ -7,8 +7,8 @@ import MarkdownContent from '@/components/content/MarkdownContent';
 import { SitePageService } from '@/services/site-page.service';
 import { getSitePageDefault } from '@/lib/site-page-defaults';
 import { buildStaticPageMetadata } from '@/lib/seo';
-import { getLocalizedMetadataPaths, getRequestPublicLocale } from '@/lib/i18n/server';
-import { localizePublicPath } from '@/lib/i18n/config';
+import { getLocalizedMetadataPaths } from '@/lib/i18n/server';
+import { localizePublicPath, type PublicLocale } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 
 export async function getEditablePage(pageKey: string) {
@@ -18,11 +18,11 @@ export async function getEditablePage(pageKey: string) {
   }
 }
 
-export async function buildEditablePageMetadata(pageKey: string): Promise<Metadata> {
+export async function buildEditablePageMetadata(pageKey: string, locale: PublicLocale): Promise<Metadata> {
   const page = await getEditablePage(pageKey);
   if (!page) return { robots: { index: false, follow: false } };
   const metadata = buildStaticPageMetadata(`/${pageKey}`, 'meta_title' in page && page.meta_title ? page.meta_title : page.title, 'meta_description' in page && page.meta_description ? page.meta_description : page.summary, 'meta_keywords' in page ? page.meta_keywords : undefined);
-  const { canonical, languages } = await getLocalizedMetadataPaths(`/${pageKey}`);
+  const { canonical, languages } = await getLocalizedMetadataPaths(locale, `/${pageKey}`);
   return {
     ...metadata,
     alternates: { canonical, languages },
@@ -30,10 +30,9 @@ export async function buildEditablePageMetadata(pageKey: string): Promise<Metada
   };
 }
 
-export default async function EditableSitePage({ pageKey }: { pageKey: string }) {
+export default async function EditableSitePage({ pageKey, locale }: { pageKey: string; locale: PublicLocale }) {
   const page = await getEditablePage(pageKey);
   if (!page) notFound();
-  const locale = await getRequestPublicLocale();
   const updatedAt = 'updated_at' in page ? page.updated_at : undefined;
   return <PublicLayout>
     <main className="min-h-screen bg-gray-50 py-10 sm:py-14">

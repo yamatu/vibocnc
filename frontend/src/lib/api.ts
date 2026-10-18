@@ -70,6 +70,33 @@ api.interceptors.request.use(
   }
 );
 
+// Server-side public reads go through Next's patched fetch so they share the
+// Data Cache (with tags the backend revalidates) and are deduplicated within a
+// render. Axios' default Node http adapter bypasses both.
+const SERVER_PUBLIC_REVALIDATE_SECONDS = 300;
+
+function serverCacheTagsFor(url: string): string[] {
+  if (url.startsWith('/public/products') || url.startsWith('/public/categories')) return ['public-api', 'all-products'];
+  if (url.startsWith('/public/news')) return ['public-api', 'news'];
+  if (url.startsWith('/public/homepage')) return ['public-api', 'homepage-content'];
+  return ['public-api'];
+}
+
+if (typeof window === 'undefined') {
+  api.interceptors.request.use((config) => {
+    const method = (config.method || 'get').toLowerCase();
+    const url = config.url || '';
+    if (method === 'get' && url.startsWith('/public/') && !config.headers?.Authorization) {
+      config.adapter = 'fetch';
+      config.fetchOptions = {
+        ...config.fetchOptions,
+        next: { revalidate: SERVER_PUBLIC_REVALIDATE_SECONDS, tags: serverCacheTagsFor(url) },
+      };
+    }
+    return config;
+  });
+}
+
 // Response interceptor for error handling
 let sessionExpiredRedirecting = false;
 

@@ -152,7 +152,6 @@ export function HeroSection({ content }: Props) {
           loading={currentSlide === 0 ? 'eager' : 'lazy'}
           fetchPriority={currentSlide === 0 ? 'high' : 'auto'}
           quality={70}
-          unoptimized={imageSrc.startsWith('/uploads/')}
           onError={() => {
             if (imageSrc === fallbackImage) return;
             setFailedImages((current) => new Set(current).add(activeSlide.image));
