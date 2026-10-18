@@ -419,6 +419,11 @@ func (ac *AIAgentController) UpdateSettings(c *gin.Context) {
 		}
 		enc, encryptErr := utils.EncryptSecret(apiKey)
 		if encryptErr != nil {
+			// A missing/invalid key is a server misconfiguration: say so instead of
+			// blaming the value the administrator pasted.
+			if respondSecretEncryptionFailure(c, "AI API Key", encryptErr) {
+				return
+			}
 			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Could not encrypt AI API key", Error: encryptErr.Error()})
 			return
 		}

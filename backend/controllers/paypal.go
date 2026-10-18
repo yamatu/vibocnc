@@ -114,6 +114,9 @@ func (pc *PayPalController) UpdateSettings(c *gin.Context) {
 	if req.ClientSecretSandbox != nil && strings.TrimSpace(*req.ClientSecretSandbox) != "" {
 		encrypted, encryptErr := utils.EncryptSecret(strings.TrimSpace(*req.ClientSecretSandbox))
 		if encryptErr != nil {
+			if respondSecretEncryptionFailure(c, "PayPal Sandbox Secret", encryptErr) {
+				return
+			}
 			c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to encrypt PayPal sandbox secret", Error: encryptErr.Error()})
 			return
 		}
@@ -122,6 +125,9 @@ func (pc *PayPalController) UpdateSettings(c *gin.Context) {
 	if req.ClientSecretLive != nil && strings.TrimSpace(*req.ClientSecretLive) != "" {
 		encrypted, encryptErr := utils.EncryptSecret(strings.TrimSpace(*req.ClientSecretLive))
 		if encryptErr != nil {
+			if respondSecretEncryptionFailure(c, "PayPal Live Secret", encryptErr) {
+				return
+			}
 			c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to encrypt PayPal live secret", Error: encryptErr.Error()})
 			return
 		}

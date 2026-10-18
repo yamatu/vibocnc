@@ -62,12 +62,29 @@ else
 fi
 
 encryption_key="$(env_file_value "$ENV_FILE" SETTINGS_ENCRYPTION_KEY)"
+# The backend AES-256-gcm cipher needs exactly 32 bytes: raw 32 chars, or
+# base64/hex decoding to 32 bytes. A 48-char hex value (24 bytes) is a valid
+# looking key that can never encrypt an AI key / PayPal / SMTP secret, so
+# validate the real length here instead of only "is set".
+encryption_key_bytes() {
+  local value="$1"
+  if [[ ${#value} -eq 32 ]]; then echo 32; return 0; fi
+  if command -v base64 >/dev/null 2>&1; then
+    local b64
+    b64="$(printf '%s' "$value" | base64 -d 2>/dev/null | wc -c | tr -d ' ')"
+    if [[ "$b64" == "32" ]]; then echo 32; return 0; fi
+  fi
+  if [[ "$value" =~ ^[0-9a-fA-F]+$ ]] && [[ ${#value} -eq 64 ]]; then echo 32; return 0; fi
+  echo 0
+}
 if [[ -z "$encryption_key" ]]; then
   fail "SETTINGS_ENCRYPTION_KEY is required to encrypt PayPal/AI credentials at rest"
 elif is_weak "$encryption_key"; then
   fail "SETTINGS_ENCRYPTION_KEY looks like a placeholder value"
+elif [[ "$(encryption_key_bytes "$encryption_key")" != "32" ]]; then
+  fail "SETTINGS_ENCRYPTION_KEY must decode to 32 bytes (got ${#encryption_key} chars); generate one with: openssl rand -hex 32"
 else
-  pass "SETTINGS_ENCRYPTION_KEY is set"
+  pass "SETTINGS_ENCRYPTION_KEY is 32 bytes"
 fi
 
 revalidate_secret="$(env_file_value "$ENV_FILE" REVALIDATE_SECRET)"

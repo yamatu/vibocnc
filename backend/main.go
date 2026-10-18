@@ -6,6 +6,7 @@ import (
 	"fanuc-backend/middleware"
 	"fanuc-backend/routes"
 	"fanuc-backend/services"
+	"fanuc-backend/utils"
 	"io"
 	"log"
 	"net/http"
@@ -42,6 +43,14 @@ func main() {
 	}
 
 	log.Printf("Loaded environment from: %s", envFile)
+
+	// A missing or malformed SETTINGS_ENCRYPTION_KEY does not stop the site from
+	// serving, but every attempt to store an AI key / PayPal secret / SMTP
+	// password fails at the moment an administrator saves it. Say it at boot,
+	// where an operator will actually see it.
+	if err := utils.ValidateEncryptionKey(); err != nil {
+		log.Printf("WARNING: SETTINGS_ENCRYPTION_KEY unusable (%v): saving AI API keys, PayPal secrets and SMTP passwords will fail. %s", err, utils.EncryptionKeyHint)
+	}
 
 	// Connect to database
 	config.ConnectDatabase()

@@ -14,7 +14,28 @@ import (
 
 const (
 	encPrefixV1 = "v1:"
+
+	// EncryptionKeyHint is appended to every key error: the backend cannot invent
+	// a key, and the administrator cannot see the value, so the message must say
+	// exactly what to run and what it costs to rotate it.
+	EncryptionKeyHint = "generate one with `openssl rand -hex 32` (or `python -c \"import secrets;print(secrets.token_hex(32))\"`), " +
+		"set SETTINGS_ENCRYPTION_KEY in the backend environment and restart the service; " +
+		"any secret already saved (AI keys, PayPal, SMTP password) must be entered again afterwards"
 )
+
+var (
+	// ErrEncryptionKeyMissing and ErrEncryptionKeyInvalid let callers answer with
+	// an actionable message instead of a generic "invalid request".
+	ErrEncryptionKeyMissing = errors.New("SETTINGS_ENCRYPTION_KEY is not set")
+	ErrEncryptionKeyInvalid = errors.New("SETTINGS_ENCRYPTION_KEY must decode to 32 bytes (raw 32 chars, base64 or hex)")
+)
+
+// ValidateEncryptionKey reports whether the configured key can be used at all.
+// Startup calls it so a broken key is visible before an administrator saves one.
+func ValidateEncryptionKey() error {
+	_, err := getEncryptionKey()
+	return err
+}
 
 // getEncryptionKey reads SETTINGS_ENCRYPTION_KEY from env.
 // Accepted formats:
@@ -24,7 +45,7 @@ const (
 func getEncryptionKey() ([]byte, error) {
 	v := strings.TrimSpace(os.Getenv("SETTINGS_ENCRYPTION_KEY"))
 	if v == "" {
-		return nil, errors.New("SETTINGS_ENCRYPTION_KEY not set")
+		return nil, ErrEncryptionKeyMissing
 	}
 	// Raw 32-byte string
 	if len(v) == 32 {
@@ -42,7 +63,7 @@ func getEncryptionKey() ([]byte, error) {
 			return b, nil
 		}
 	}
-	return nil, errors.New("SETTINGS_ENCRYPTION_KEY must be 32 bytes (raw/base64/hex)")
+	return nil, ErrEncryptionKeyInvalid
 }
 
 // EncryptSecret encrypts plaintext into a versioned string suitable for DB storage.
