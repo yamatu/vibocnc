@@ -233,6 +233,20 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
   };
 }
 
+// The sidebar tree only renders names and nesting. The raw tree carries every
+// language's translations per node, which would be serialized into the page.
+function toFilterTreeNode(category: Category): Category {
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    path: category.path,
+    parent_id: category.parent_id,
+    product_count: category.product_count,
+    children: category.children?.map(toFilterTreeNode),
+  } as Category;
+}
+
 // Server-side data fetching for SEO
 async function getServerSideData(searchParams: PageSearchParams, locale: PublicLocale): Promise<ProductsPageServerData> {
   const categoryId = getFirstParamValue(searchParams.category_id) || getFirstParamValue(searchParams.category);
@@ -263,7 +277,7 @@ async function getServerSideData(searchParams: PageSearchParams, locale: PublicL
       products: (productsData.data || []).map((product) => localizeProductContent(product, locale)),
       totalPages: Math.max(1, Math.ceil((productsData.total || 0) / pageSize)),
       total: productsData.total || 0,
-      categories: (categories || []).map((category) => localizeCategoryContent(category, locale)),
+      categories: (categories || []).map((category) => toFilterTreeNode(localizeCategoryContent(category, locale))),
       currentPage: page,
       pageSize,
       selectedCategory: categoryId || '',

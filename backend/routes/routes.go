@@ -88,6 +88,7 @@ func SetupRoutes(r *gin.Engine) {
 			public.GET("/categories/path/*path", categoryController.GetCategoryByPath)
 
 			public.GET("/categories/:id", categoryController.GetCategory)
+			public.GET("/categories/:id/trail", categoryController.GetCategoryTrail)
 			public.GET("/categories/slug/:slug", categoryController.GetCategoryBySlug)
 
 			// Products (public read access) - cached

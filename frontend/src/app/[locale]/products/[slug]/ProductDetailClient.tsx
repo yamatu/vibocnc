@@ -161,27 +161,21 @@ export default function ProductDetailClient({
     retry: false,
   });
 
-  // Fetch product category details
-  const { data: fetchedCategory } = useQuery({
-    queryKey: ['category', product?.category_id],
-    queryFn: () => CategoryService.getCategory(product!.category_id),
+  // Category + breadcrumb normally come from the server; the trail endpoint is
+  // a small fallback (never the full category tree or the category's products).
+  const { data: fetchedTrail } = useQuery({
+    queryKey: ['categoryTrail', product?.category_id],
+    queryFn: () => CategoryService.getCategoryTrail(product!.category_id),
     enabled: !!product?.category_id && !initialCategory,
-    initialData: initialCategory,
     staleTime: 300000,
   });
+  const fetchedCategory = initialCategory ?? fetchedTrail?.category;
+  const fetchedCategoryBreadcrumb = initialCategoryBreadcrumb ?? fetchedTrail?.breadcrumb;
+  const categoryPath = initialCategoryPath !== undefined ? initialCategoryPath : fetchedTrail?.category.path;
   const category = useMemo(
     () => fetchedCategory ? localizeCategoryContent(fetchedCategory, locale) : product?.category,
     [fetchedCategory, locale, product?.category],
   );
-
-  // Fetch category breadcrumb
-  const { data: fetchedCategoryBreadcrumb } = useQuery({
-    queryKey: ['categoryBreadcrumb', product?.category_id],
-    queryFn: () => CategoryService.getCategoryBreadcrumb(product!.category_id),
-    enabled: !!product?.category_id && !initialCategoryBreadcrumb,
-    initialData: initialCategoryBreadcrumb,
-    staleTime: 300000,
-  });
   const categoryBreadcrumb = useMemo(
     () => fetchedCategoryBreadcrumb?.map((item) => localizeCategoryContent(item, locale)),
     [fetchedCategoryBreadcrumb, locale],
@@ -210,35 +204,9 @@ export default function ProductDetailClient({
     [fetchedRelatedProducts, locale],
   );
 
-  // Fetch all categories for internal linking
-  const { data: fetchedCategories } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => CategoryService.getCategories(),
-    staleTime: 600000,
-    enabled: initialCategoryPath === undefined,
-  });
-  const allCategories = useMemo(
-    () => fetchedCategories?.map((item) => localizeCategoryContent(item, locale)),
-    [fetchedCategories, locale],
-  );
-
   const resolveCategoryHref = () => {
-    const tree: Category[] = Array.isArray(allCategories) ? allCategories : [];
-    const targetId = product?.category_id;
-    if (!targetId) return null;
-    if (initialCategoryPath) return `/categories/${initialCategoryPath}`;
-    const findById = (nodes: Category[]): Category | null => {
-      for (const n of nodes) {
-        if (Number(n.id) === Number(targetId)) return n;
-        if (Array.isArray(n.children) && n.children.length > 0) {
-          const hit = findById(n.children);
-          if (hit) return hit;
-        }
-      }
-      return null;
-    };
-    const node = findById(tree);
-    if (node?.path) return `/categories/${node.path}`;
+    if (!product?.category_id) return null;
+    if (categoryPath) return `/categories/${categoryPath}`;
     if (product?.category?.slug) return `/categories/${product.category.slug}`;
     return null;
   };

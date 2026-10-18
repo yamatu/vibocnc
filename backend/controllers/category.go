@@ -226,19 +226,10 @@ func (cc *CategoryController) GetCategoryByPath(c *gin.Context) {
 		return
 	}
 
-	// Compute paths using one scan of active categories.
-	db := config.GetDB()
-	var all []models.Category
-	if err := db.Model(&models.Category{}).Preload("Translations").Where("is_active = ?", true).Order("sort_order ASC, name ASC").Find(&all).Error; err != nil {
+	flat, byID, err := loadActiveCategoryIndex()
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: err.Error()})
 		return
-	}
-	tree := services.BuildCategoryTree(all)
-	flat := services.FlattenCategoryTree(tree)
-
-	byID := make(map[uint]services.CategoryNode, len(flat))
-	for _, n := range flat {
-		byID[n.ID] = n
 	}
 
 	var node *services.CategoryNode
@@ -253,9 +244,58 @@ func (cc *CategoryController) GetCategoryByPath(c *gin.Context) {
 		return
 	}
 
-	// Build breadcrumb by following parent_id chain.
+	breadcrumbNodes := categoryBreadcrumb(*node, byID)
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Category retrieved successfully", Data: gin.H{"category": node, "breadcrumb": breadcrumbNodes}})
+}
+
+// GetCategoryTrail returns one active category and its breadcrumb (with
+// computed nested paths) without children or products, so product pages can
+// link to their category without downloading the whole tree or catalogue.
+// GET /api/v1/public/categories/:id/trail
+func (cc *CategoryController) GetCategoryTrail(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid category id", Error: "invalid_id"})
+		return
+	}
+
+	_, byID, err := loadActiveCategoryIndex()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: err.Error()})
+		return
+	}
+	node, ok := byID[uint(id)]
+	if !ok {
+		c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Category not found", Error: "category_not_found"})
+		return
+	}
+
+	breadcrumbNodes := categoryBreadcrumb(node, byID)
+	for i := range breadcrumbNodes {
+		breadcrumbNodes[i].Children = nil
+	}
+	node.Children = nil
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Category retrieved successfully", Data: gin.H{"category": node, "breadcrumb": breadcrumbNodes}})
+}
+
+// loadActiveCategoryIndex computes nested paths with one scan of active categories.
+func loadActiveCategoryIndex() ([]services.CategoryNode, map[uint]services.CategoryNode, error) {
+	var all []models.Category
+	if err := config.GetDB().Model(&models.Category{}).Preload("Translations").Where("is_active = ?", true).Order("sort_order ASC, name ASC").Find(&all).Error; err != nil {
+		return nil, nil, err
+	}
+	flat := services.FlattenCategoryTree(services.BuildCategoryTree(all))
+	byID := make(map[uint]services.CategoryNode, len(flat))
+	for _, n := range flat {
+		byID[n.ID] = n
+	}
+	return flat, byID, nil
+}
+
+// categoryBreadcrumb follows the parent_id chain from node up to its root.
+func categoryBreadcrumb(node services.CategoryNode, byID map[uint]services.CategoryNode) []services.CategoryNode {
 	breadcrumbNodes := make([]services.CategoryNode, 0, 8)
-	cur := *node
+	cur := node
 	for {
 		breadcrumbNodes = append(breadcrumbNodes, cur)
 		if cur.ParentID == nil {
@@ -267,12 +307,10 @@ func (cc *CategoryController) GetCategoryByPath(c *gin.Context) {
 		}
 		cur = p
 	}
-	// reverse
 	for i, j := 0, len(breadcrumbNodes)-1; i < j; i, j = i+1, j-1 {
 		breadcrumbNodes[i], breadcrumbNodes[j] = breadcrumbNodes[j], breadcrumbNodes[i]
 	}
-
-	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Category retrieved successfully", Data: gin.H{"category": node, "breadcrumb": breadcrumbNodes}})
+	return breadcrumbNodes
 }
 
 type reorderCategoryItem struct {
@@ -327,7 +365,6 @@ func (cc *CategoryController) GetCategory(c *gin.Context) {
 	if err := db.Preload("Translations").
 		Preload("Children", "is_active = ?", true).
 		Preload("Children.Translations").
-		Preload("Products", "is_active = ?", true).
 		First(&category, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, models.APIResponse{
@@ -363,7 +400,6 @@ func (cc *CategoryController) GetCategoryBySlug(c *gin.Context) {
 		Preload("Translations").
 		Preload("Children", "is_active = ?", true).
 		Preload("Children.Translations").
-		Preload("Products", "is_active = ?", true).
 		First(&category).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, models.APIResponse{

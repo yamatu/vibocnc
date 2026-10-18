@@ -269,13 +269,21 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   );
 }
 
-function findCategoryPath(nodes: Category[], categoryId: number): string | null {
-  for (const node of nodes) {
-    if (Number(node.id) === Number(categoryId)) return node.path || null;
-    const hit = Array.isArray(node.children) ? findCategoryPath(node.children, categoryId) : null;
-    if (hit) return hit;
-  }
-  return null;
+// Only what the breadcrumb, category link and structured data render. The
+// backend category payloads can be megabytes (children, translations), and
+// every byte here is serialized into each cached product page.
+function compactCategory(category: Category, locale: PublicLocale): Category {
+  const translation = locale === DEFAULT_PUBLIC_LOCALE
+    ? undefined
+    : (category.translations || []).find((item) => normalizePublicLocale(item.language_code) === locale);
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    path: category.path,
+    parent_id: category.parent_id,
+    translations: translation ? [{ ...translation, description: '' }] : [],
+  } as Category;
 }
 
 // Related-product cards only need identity, name and images; dropping the long
@@ -296,22 +304,19 @@ function compactRelatedProduct(product: Product, locale: PublicLocale): Product 
   } as Product;
 }
 
-// Category, breadcrumb and related products used to be fetched by the browser
-// after hydration (plus the full category tree just to build one link). They
-// are cached server reads now; on failure the client fetches them as before.
+// Category trail and related products are cached server reads (small,
+// bounded payloads); on failure the client fetches them after hydration.
 async function loadProductPageContext(product: Product, locale: PublicLocale) {
   const categoryId = product.category_id;
   if (!categoryId) return {};
-  const [category, breadcrumb, related, categories] = await Promise.all([
-    CategoryService.getCategory(categoryId).catch(() => undefined),
-    CategoryService.getCategoryBreadcrumb(categoryId).catch(() => undefined),
+  const [trail, related] = await Promise.all([
+    CategoryService.getCategoryTrail(categoryId).catch(() => undefined),
     ProductService.getProducts({ category_id: String(categoryId), page_size: 4 }).catch(() => undefined),
-    CategoryService.getCategories().catch(() => undefined),
   ]);
   return {
-    category,
-    breadcrumb,
+    category: trail ? compactCategory(trail.category, locale) : undefined,
+    breadcrumb: trail ? trail.breadcrumb.map((item) => compactCategory(item, locale)) : undefined,
     related: related ? { ...related, data: (related.data || []).map((item) => compactRelatedProduct(item, locale)) } : undefined,
-    categoryPath: categories ? findCategoryPath(categories, categoryId) : undefined,
+    categoryPath: trail ? trail.category.path || null : undefined,
   };
 }

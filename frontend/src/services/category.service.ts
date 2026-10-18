@@ -162,6 +162,17 @@ export class CategoryService {
     throw new Error(response.data.message || 'Category not found');
   }
 
+  // Category plus breadcrumb with nested paths; no children or products.
+  static async getCategoryTrail(id: number): Promise<{ category: Category; breadcrumb: Category[] }> {
+    const response = await apiClient.get<APIResponse<{ category: Category; breadcrumb: Category[] }>>(
+      `/public/categories/${id}/trail`
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Category not found');
+  }
+
   // Admin: Get categories
   static async getAdminCategories(): Promise<Category[]> {
     const response = await apiClient.get<APIResponse<Category[]>>(
