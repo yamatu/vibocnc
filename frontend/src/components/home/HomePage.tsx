@@ -169,24 +169,26 @@ async function sanitizeHeroContent(content?: HomepageContent): Promise<HomepageC
   };
 }
 
+// The homepage is ISR-cached. A failed request must throw so Next keeps serving
+// the last good page: resolving to [] renders the hard-coded default sections
+// and images, which would then be cached as if the admin had configured them.
 async function getHomepageContentList(options?: { fresh?: boolean }): Promise<HomepageContent[]> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+  // Fetch inactive too so the public page can respect the admin "is_active" toggle (hide sections).
+  const endpoint = `${backendUrl}/api/v1/public/homepage-content?include_inactive=1`;
   try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
-    // Fetch inactive too so the public page can respect the admin "is_active" toggle (hide sections).
-    const endpoint = `${backendUrl}/api/v1/public/homepage-content?include_inactive=1`;
     const res = options?.fresh
-      ? await fetch(endpoint, { cache: 'no-store', signal: controller.signal })
-      : await fetch(endpoint, { next: { revalidate: 300, tags: ['homepage-content'] }, signal: controller.signal });
-    if (!res.ok) return [];
+      ? await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(15000) })
+      : await fetch(endpoint, { next: { revalidate: 300, tags: ['homepage-content'] }, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`Homepage content request failed: ${res.status}`);
     const data = await res.json();
-    if (!Array.isArray(data)) return [];
+    if (!Array.isArray(data)) throw new Error('Homepage content response is not an array');
     return data as HomepageContent[];
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timeoutId);
+  } catch (error) {
+    // The Docker build has no backend; a build-time render is replaced on the
+    // first request because the runtime cache (cache-handler.js) starts empty.
+    if (process.env.NEXT_PHASE === 'phase-production-build') return [];
+    throw error;
   }
 }
 

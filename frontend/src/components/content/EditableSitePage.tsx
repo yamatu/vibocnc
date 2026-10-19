@@ -11,9 +11,18 @@ import { getLocalizedMetadataPaths } from '@/lib/i18n/server';
 import { localizePublicPath, type PublicLocale } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 
+// The built-in default copy is only for pages the admin never customised (404).
+// Outages throw, otherwise the ISR page would cache the default text over the
+// admin's version.
 export async function getEditablePage(pageKey: string) {
   try { return await SitePageService.getPublicPage(pageKey); } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 410) return null;
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      if (status === 410) return null;
+      if (status === 404) return getSitePageDefault(pageKey);
+      if (process.env.NEXT_PHASE === 'phase-production-build') return getSitePageDefault(pageKey);
+      throw error;
+    }
     return getSitePageDefault(pageKey);
   }
 }

@@ -18,11 +18,15 @@ async function fetchPublicData<T>(path: string, tags: string[]): Promise<T | nul
       next: { revalidate: 300, tags },
       signal: controller.signal,
     });
+    // Outages throw so the ISR homepage keeps its last good section instead of
+    // caching an empty one; only a real "no data" answer resolves to null.
+    if (response.status >= 500) throw new Error(`Backend ${response.status} for ${path}`);
     if (!response.ok) return null;
     const payload = (await response.json()) as PublicApiPayload<T>;
     return payload.success !== false ? payload.data ?? null : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (process.env.NEXT_PHASE === 'phase-production-build') return null;
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }
