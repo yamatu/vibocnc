@@ -361,34 +361,36 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                           {product.description || ''}
                         </p>
 
-                        <div className="site-product-card-actions flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex min-h-[2.5rem] flex-1 items-center text-xl font-bold text-[#0b3e75]">
-                            {hasProductPrice(product) ? formatCurrency(product.price) : (
-                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                        {/* Price on its own row: a shared price/button row let the price shrink
+                            under the buttons on narrow cards (global .flex > * { min-width: 0 }). */}
+                        <div className="site-product-card-actions space-y-3">
+                          {hasProductPrice(product) && (
+                            <p className="whitespace-nowrap text-xl font-bold leading-none text-[#0b3e75]">{formatCurrency(product.price)}</p>
+                          )}
+                          <div className="flex items-stretch gap-2">
+                            {hasProductPrice(product) ? (
+                              <button
+                                type="button"
+                                onClick={() => handleAddToCart(product)}
+                                className="site-primary-action flex-1 whitespace-nowrap px-3 py-2 text-sm"
+                                title={t('common.addToCart')}
+                              >
+                                <ShoppingCartIcon className="mr-1 h-4 w-4 flex-shrink-0" />
+                                {t('common.addToCart')}
+                              </button>
+                            ) : (
+                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action flex-1 px-3 py-2 text-center text-sm font-semibold">
                                 {t('products.contactForQuote')}
                               </Link>
                             )}
-                          </div>
-
-                          <div className="flex flex-shrink-0 items-stretch gap-2">
                             <Link
                               href={href(`/products/${toProductPathId(product.sku)}`)}
-                              className="site-secondary-action w-9 flex-shrink-0"
+                              className="site-secondary-action w-10 flex-shrink-0"
                               title={`View ${product.name} details`}
                               aria-label={`View details for ${product.name}`}
                             >
                               <EyeIcon className="h-5 w-5" />
                             </Link>
-                            {hasProductPrice(product) && (
-                              <button
-                                onClick={() => handleAddToCart(product)}
-                                className="site-primary-action flex-1 px-3 py-2 text-sm"
-                                title={`Add ${product.name} to cart`}
-                              >
-                                <ShoppingCartIcon className="h-4 w-4 mr-1 flex-shrink-0" />
-                                {t('common.addToCart')}
-                              </button>
-                            )}
                           </div>
                         </div>
                       </div>
