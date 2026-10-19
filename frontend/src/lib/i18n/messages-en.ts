@@ -68,7 +68,7 @@ export const enMessages = {
   'filters.unknown': 'Unknown', 'filters.noMax': 'No maximum',
   'product.notFound': 'Product Not Found', 'product.notFoundDescription': "The product you're looking for doesn't exist.",
   'product.back': 'Back to Products', 'product.information': 'Product information', 'product.alternate': 'Alternate',
-  'product.whatsApp': 'WhatsApp Us', 'product.buyNow': 'Buy Now', 'product.contactForQuote': 'Contact us for price', 'product.quotePriceHint': 'Request current price and lead time by WhatsApp or email.', 'product.emailForQuote': 'Email for quote', 'product.brand': 'Brand',
+  'product.whatsApp': 'WhatsApp Us', 'product.buyNow': 'Buy Now', 'product.payWithPayPal': 'Pay with PayPal', 'product.contactForQuote': 'Contact us for price', 'product.quotePriceHint': 'Request current price and lead time by WhatsApp or email.', 'product.emailForQuote': 'Email for quote', 'product.brand': 'Brand',
   'product.partNumber': 'Part Number', 'product.warranty': 'Warranty', 'product.leadTime': 'Lead time',
   'product.inStock': 'In Stock', 'product.readyToShip': 'Ready to ship', 'product.availableToOrder': 'Available to Order',
   'product.worldwideShipping': 'Worldwide Shipping', 'product.qualityTested': 'Quality Tested',

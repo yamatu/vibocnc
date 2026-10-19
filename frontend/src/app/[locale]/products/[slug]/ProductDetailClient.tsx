@@ -18,6 +18,7 @@ import {
   EnvelopeIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { FaPaypal } from 'react-icons/fa6';
 import Layout from '@/components/layout/Layout';
 import ProductImageViewer from '@/components/product/ProductImageViewer';
 import ProductSEO from '@/components/seo/ProductSEO';
@@ -25,10 +26,9 @@ import { ProductService } from '@/services/product.service';
 import { CategoryService } from '@/services/category.service';
 import { ShippingRateService } from '@/services/shipping-rate.service';
 import type { ShippingRatePublic, ShippingQuote } from '@/services/shipping-rate.service';
-import type { PaginationResponse, Product, ProductFAQ, ProductImage, ProductReview, Category, CommercePolicySetting } from '@/types';
+import type { PaginationResponse, Product, ProductImage, ProductReview, Category, CommercePolicySetting } from '@/types';
 import {
   FALLBACK_COMMERCE_POLICY,
-  commercePolicyReturnShippingText,
   resolveLeadTime,
   resolveWarrantyPeriod,
 } from '@/lib/commerce-policy';
@@ -40,6 +40,13 @@ import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { hasTranslationForLocale, localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
 import { buildSemanticProductName, inferProductTypeLabel } from '@/lib/product-seo';
 import { stripDuplicateGeneratedSections } from '@/lib/product-description';
+import {
+  buildProductFaqs,
+  customCompatibilityInfo,
+  customInstallationGuide,
+  customMaintenanceTips,
+  extraSpecRows,
+} from '@/lib/product-content';
 
 interface ProductDetailClientProps {
   productSku: string;
@@ -91,11 +98,11 @@ function FAQAccordionItem({ question, answer }: { question: string; answer: stri
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-controls={answerId}
-        className="flex w-full items-center justify-between px-6 py-4 text-left text-sm font-semibold text-slate-950 hover:bg-slate-50"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left text-sm font-semibold text-slate-950 hover:bg-slate-50 sm:px-6 sm:py-4"
       >
         <span>{question}</span>
         <ChevronDownIcon
-          className={`h-5 w-5 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`h-5 w-5 shrink-0 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
       {/*
@@ -107,7 +114,7 @@ function FAQAccordionItem({ question, answer }: { question: string; answer: stri
       <div
         id={answerId}
         hidden={!open}
-        className="px-6 pb-4 text-sm text-slate-700 leading-relaxed"
+        className="px-4 pb-4 text-sm leading-relaxed text-slate-700 sm:px-6"
       >
         {answer}
       </div>
@@ -131,8 +138,6 @@ export default function ProductDetailClient({
   const policy = commercePolicy ? { ...FALLBACK_COMMERCE_POLICY, ...commercePolicy } : FALLBACK_COMMERCE_POLICY;
   const shownLeadTime = resolveLeadTime(initialProduct?.lead_time, policy);
   const shownWarranty = resolveWarrantyPeriod(initialProduct?.warranty_period, policy);
-  const shownReturnWindow = policy.return_window_text;
-  const shownReturnShipping = commercePolicyReturnShippingText(policy);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity] = useState(1);
 
@@ -433,88 +438,27 @@ export default function ProductDetailClient({
   // Legacy generated copy repeated facts that already have their own sections.
   // Strip those blocks here so an old product stops showing them twice; the
   // stored description is never modified.
+  // Generated spec/compatibility blocks inside old descriptions are always
+  // template copy: the details table covers the specs, the FAQ covers fitment.
   const descriptionToShow = stripDuplicateGeneratedSections(rawDescription, {
-    hasSpecifications: !!specs,
-    hasCompatibility: !!product.compatibility_info?.trim(),
+    hasSpecifications: true,
+    hasCompatibility: true,
   });
-  const introBrandPrefix = brandName ? `${brandName} ` : '';
-  const introParagraph = `${computedHeading} is a ${introBrandPrefix}${categoryName.toLowerCase()} supplied by Vibocnc for CNC maintenance, replacement, and industrial automation support. ${product.stock_quantity > 0 ? `This item is in stock and ready to ship worldwide with ${policy.shipping_transit_time_text} transit time.` : `This item is available to order with ${shownLeadTime} lead time.`}`.replace(/\s+/g, ' ').trim();
-  const normalizedIntro = normalizeComparisonText(introParagraph);
-  const normalizedDescription = normalizeComparisonText(descriptionToShow);
-  const shouldRenderIntroParagraph = normalizedIntro !== '' && !normalizedDescription.includes(normalizedIntro);
   const categoryHref = resolveCategoryHref();
-  const activeFaqs: Array<{ id?: number; question: string; answer: string }> =
-    product.faqs && product.faqs.filter((f: ProductFAQ) => f.is_active).length > 0
-      ? product.faqs.filter((f: ProductFAQ) => f.is_active)
-      : locale === 'zh'
-        ? [
-          {
-            question: `${product.sku} 主要用于什么场景？`,
-            answer: `${computedHeading} 用于数控机床和工业自动化系统，可满足稳定控制、备件更换或设备维护需求。`,
-          },
-          {
-            question: `${product.sku} 目前有库存吗？`,
-            answer: product.stock_quantity > 0
-              ? `${product.sku} 目前有库存，可安排发货。`
-              : `${product.sku} 可订购，预计交货期为 ${shownLeadTime}。`,
-          },
-          {
-            question: `${product.sku} 的保修和退换政策是什么？`,
-            answer: `我们提供 ${shownWarranty} 保修，支持 ${shownReturnWindow} 内退换（${shownReturnShipping}）。`,
-          },
-          {
-            question: `如何确认 ${product.sku} 是否兼容？`,
-            answer: product.compatibility_info
-              ? `${stripHtml(product.compatibility_info)} 下单前请联系 sales@vibocnc.com 进行最终兼容性确认。`
-              : `请将设备型号或原零件号发送至 sales@vibocnc.com，我们会在发货前协助确认兼容性。`,
-          },
-        ]
-        : [
-          {
-            question: `What is ${product.sku} used for?`,
-            answer: `${computedHeading} is used in CNC and industrial automation systems for stable control, replacement, or maintenance needs.`,
-          },
-          {
-            question: `Is ${product.sku} in stock?`,
-            answer: product.stock_quantity > 0
-              ? `${product.sku} is currently in stock and ready for shipment.`
-              : `${product.sku} is available to order with ${shownLeadTime} lead time.`,
-          },
-          {
-            question: `What warranty and return terms apply to ${product.sku}?`,
-            answer: `${shownWarranty} warranty with ${shownReturnWindow} returns (${shownReturnShipping}).`,
-          },
-          {
-            question: `How can I confirm compatibility for ${product.sku}?`,
-            answer: product.compatibility_info
-              ? `${stripHtml(product.compatibility_info)} Contact sales@vibocnc.com for final compatibility confirmation before ordering.`
-              : `Share your machine model or original part number with sales@vibocnc.com and we will verify compatibility before shipment.`,
-          },
-        ];
-  const partHighlights = [
-    product.part_number && product.part_number !== product.sku ? `Part number: ${product.part_number}` : '',
-    categoryName ? `Category: ${categoryName}` : '',
-    product.condition_type ? `Condition: ${product.condition_type}` : 'Condition: new',
-    product.warranty_period ? `Warranty: ${product.warranty_period}` : `Warranty: ${shownWarranty}`,
-    product.lead_time ? `Lead time: ${product.lead_time}` : `Lead time: ${shownLeadTime}`,
-    product.origin_country ? `Origin: ${product.origin_country}` : '',
-  ].filter(Boolean);
+  const activeFaqs = buildProductFaqs(product, {
+    locale,
+    policy,
+    warranty: shownWarranty,
+    leadTime: shownLeadTime,
+  });
+  const compatibilityText = customCompatibilityInfo(product);
+  const installationText = customInstallationGuide(product);
+  const maintenanceText = customMaintenanceTips(product);
+  const extraSpecs = extraSpecRows(specs, product);
   const resourceLinks = [
     product.datasheet_url ? { href: product.datasheet_url, label: 'Datasheet' } : null,
     product.manual_url ? { href: product.manual_url, label: 'Manual' } : null,
   ].filter(Boolean) as Array<{ href: string; label: string }>;
-  const productSummarySubject = brandName ? `${brandName} ${product.sku}` : product.sku;
-  const productSummaryPoints = [
-    `${productSummarySubject} is supplied for CNC maintenance, replacement, and industrial automation support.`,
-    product.stock_quantity > 0
-      ? 'Current status: in stock and ready for worldwide shipment.'
-      : `Current status: available to order with ${shownLeadTime} lead time.`,
-    `Standard supply terms: ${shownWarranty} warranty, ${shownReturnWindow} returns (${shownReturnShipping}) and technical confirmation on request.`,
-    product.compatibility_info
-      ? 'Compatibility information is available for this part. Share your machine model or original part number for final confirmation before ordering.'
-      : `Compatibility should be checked against your original part number, controller model, and machine configuration before ordering.`,
-  ].filter(Boolean);
-
   return (
     <Layout>
       {/* Enhanced SEO with structured data */}
@@ -529,32 +473,31 @@ export default function ProductDetailClient({
       <div className="site-page-shell min-h-screen">
         {/* Breadcrumb */}
         <div className="site-breadcrumb-bar">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <nav className="flex items-center space-x-2 text-sm text-slate-500">
-              <Link href={localizedHref('/')} className="site-link-accent">{t('common.home')}</Link>
-              <span>/</span>
-              <Link href={localizedHref('/products')} className="site-link-accent">{t('nav.products')}</Link>
-              <span>/</span>
+          <div className="max-w-7xl mx-auto px-3 py-2.5 sm:px-6 sm:py-4 lg:px-8">
+            {/* One line on phones: links keep their width, the product name truncates. */}
+            <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 sm:gap-2 sm:text-sm">
+              <Link href={localizedHref('/')} className="site-link-accent shrink-0">{t('common.home')}</Link>
+              <span aria-hidden="true" className="shrink-0 text-slate-300">/</span>
+              <Link href={localizedHref('/products')} className="site-link-accent shrink-0">{t('nav.products')}</Link>
+              <span aria-hidden="true" className="shrink-0 text-slate-300">/</span>
               {product.category && (
                 <>
-                  {(() => {
-                    const categoryUrl = resolveCategoryHref();
-                    if (!categoryUrl) return <span>{product.category.name}</span>;
-                    return (
-                      <Link href={localizedHref(categoryUrl)} className="site-link-accent">
-                        {product.category.name}
-                      </Link>
-                    );
-                  })()}
-                  <span>/</span>
+                  {categoryHref ? (
+                    <Link href={localizedHref(categoryHref)} className="site-link-accent max-w-[40vw] shrink-0 truncate sm:max-w-none">
+                      {product.category.name}
+                    </Link>
+                  ) : (
+                    <span className="max-w-[40vw] shrink-0 truncate sm:max-w-none">{product.category.name}</span>
+                  )}
+                  <span aria-hidden="true" className="shrink-0 text-slate-300">/</span>
                 </>
               )}
-              <span className="font-medium text-slate-900">{product.name}</span>
+              <span aria-current="page" className="min-w-0 truncate font-medium text-slate-900">{product.sku || product.name}</span>
             </nav>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
           <div className="lg:grid lg:grid-cols-2 lg:gap-x-8 lg:items-start">
             {/* Product Images */}
             <ProductImageViewer
@@ -568,16 +511,16 @@ export default function ProductDetailClient({
             />
 
             {/* Product Info */}
-            <div className="site-detail-panel mt-10 px-5 py-6 sm:px-6 sm:mt-16 lg:mt-0">
-              <div className="mb-3 inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0b3e75]">
-                {categoryName}
+            <div className="site-detail-panel mt-4 px-4 py-5 sm:mt-8 sm:px-6 sm:py-6 lg:mt-0">
+              <div className="mb-2.5 inline-flex max-w-full items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#0b3e75] sm:mb-3 sm:px-3 sm:py-1 sm:text-xs">
+                <span className="truncate">{categoryName}</span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-950">{computedHeading}</h1>
+              <h1 className="break-words text-xl font-bold leading-snug tracking-tight text-slate-950 sm:text-2xl lg:text-3xl">{computedHeading}</h1>
 
               <div className="mt-3">
                 <h2 className="sr-only">{t('product.information')}</h2>
                 {canPurchase ? (
-                  <p className="text-3xl font-bold tracking-tight text-[#0b3e75]">{formatCurrency(product.price)}</p>
+                  <p className="text-2xl font-bold tracking-tight text-[#0b3e75] sm:text-3xl">{formatCurrency(product.price)}</p>
                 ) : (
                   <div>
                     <p className="text-xl font-bold text-[#0b3e75]">{t('product.contactForQuote')}</p>
@@ -594,37 +537,43 @@ export default function ProductDetailClient({
                 )}
               </div>
 
-              {/* Actions — moved above specs */}
-              <div className="mt-6 flex flex-wrap gap-3">
+              {/* Actions: stacked full-width on phones, PayPal first. */}
+              <div className="mt-5 grid grid-cols-1 gap-2.5 sm:mt-6 sm:flex sm:flex-wrap sm:gap-3">
                 {canPurchase && (
                   <button
+                    type="button"
+                    onClick={handleBuyNow}
+                    aria-label={t('product.payWithPayPal')}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#FFC439] px-5 py-3 text-sm font-bold text-[#003087] shadow-sm transition-colors hover:bg-[#F2BA36] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003087] focus-visible:ring-offset-2 sm:w-auto"
+                  >
+                    <FaPaypal className="h-5 w-5" aria-hidden="true" />
+                    <span>{t('product.payWithPayPal')}</span>
+                  </button>
+                )}
+                {canPurchase && (
+                  <button
+                    type="button"
                     onClick={handleAddToCart}
-                    className="site-primary-action px-5 py-3 text-sm"
+                    className="site-primary-action w-full justify-center px-5 py-3 text-sm sm:w-auto"
                   >
                     <ShoppingCartIcon className="h-5 w-5 mr-2" />
                     {t('common.addToCart')}
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={handleWhatsAppInquiry}
-                  className="inline-flex items-center rounded-md border border-green-600 bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+                  className="inline-flex w-full items-center justify-center rounded-md border border-green-600 bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-green-700 sm:w-auto"
                 >
                   <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                   </svg>
                   {t('product.whatsApp')}
                 </button>
-                {canPurchase ? (
-                  <button
-                    onClick={handleBuyNow}
-                    className="inline-flex items-center rounded-md border border-[#0b3e75] bg-[#0b3e75] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#082f5a]"
-                  >
-                    {t('product.buyNow')}
-                  </button>
-                ) : (
+                {!canPurchase && (
                   <a
                     href={quoteEmailHref}
-                    className="inline-flex items-center rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+                    className="inline-flex w-full items-center justify-center rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50 sm:w-auto"
                   >
                     <EnvelopeIcon className="mr-2 h-5 w-5" />
                     {t('product.emailForQuote')}
@@ -633,14 +582,14 @@ export default function ProductDetailClient({
               </div>
 
               {/* Key specs */}
-              <div className="site-subtle-card mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
+              <div className="site-subtle-card mt-5 grid grid-cols-2 gap-x-3 gap-y-3 p-3.5 sm:mt-6 sm:p-4">
                 <div className="text-sm">
                   <div className="text-xs text-slate-500">{t('product.brand')}</div>
                   <div className="font-semibold text-slate-900">{brandName || '-'}</div>
                 </div>
                 <div className="text-sm">
                   <div className="text-xs text-slate-500">{t('product.partNumber')}</div>
-                  <div className="font-mono text-slate-900">{product.part_number || product.model || product.sku}</div>
+                  <div className="break-words font-mono text-[13px] text-slate-900 sm:text-sm">{product.part_number || product.model || product.sku}</div>
                 </div>
                 <div className="text-sm">
                   <div className="text-xs text-slate-500">{t('product.warranty')}</div>
@@ -654,7 +603,7 @@ export default function ProductDetailClient({
 
               {/* Shipping Calculator */}
               {shippingCountries.length > 0 && (
-                <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3.5 sm:mt-6 sm:p-4">
                   <h3 className="text-sm font-semibold text-slate-950 flex items-center mb-3">
                     <TruckIcon className="h-4 w-4 mr-2 text-[#0b3e75]" />
                     {t('product.worldwideShipping')}
@@ -748,8 +697,8 @@ export default function ProductDetailClient({
               )}
 
               {/* Stock & Availability */}
-              <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4 space-y-3">
-                <div className="flex items-center text-sm">
+              <div className="mt-5 space-y-2.5 rounded-lg border border-slate-200 bg-white p-3.5 sm:mt-6 sm:space-y-3 sm:p-4">
+                <div className="flex flex-wrap items-center text-sm">
                   {product.stock_quantity && product.stock_quantity > 0 ? (
                     <>
                       <CheckIcon className="h-4 w-4 text-green-600 mr-2 flex-shrink-0" />
@@ -771,158 +720,118 @@ export default function ProductDetailClient({
               </div>
 
               {/* Trust Badges */}
-              <div className="mt-6 grid grid-cols-3 gap-3">
-                <div className="site-subtle-card flex flex-col items-center text-center p-3">
-                  <ShieldCheckIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
-                  <span className="text-xs font-medium text-slate-700">{shownWarranty} Warranty</span>
+              <div className="mt-5 grid grid-cols-3 gap-2 sm:mt-6 sm:gap-3">
+                <div className="site-subtle-card flex flex-col items-center p-2 text-center sm:p-3">
+                  <ShieldCheckIcon className="mb-1 h-5 w-5 text-[#0b3e75] sm:h-6 sm:w-6" />
+                  <span className="text-[11px] font-medium leading-tight text-slate-700 sm:text-xs">{shownWarranty} Warranty</span>
                 </div>
-                <div className="site-subtle-card flex flex-col items-center text-center p-3">
-                  <GlobeAltIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
-                  <span className="text-xs font-medium text-slate-700">{t('product.worldwideShipping')}</span>
+                <div className="site-subtle-card flex flex-col items-center p-2 text-center sm:p-3">
+                  <GlobeAltIcon className="mb-1 h-5 w-5 text-[#0b3e75] sm:h-6 sm:w-6" />
+                  <span className="text-[11px] font-medium leading-tight text-slate-700 sm:text-xs">{t('product.worldwideShipping')}</span>
                 </div>
-                <div className="site-subtle-card flex flex-col items-center text-center p-3">
-                  <CheckIcon className="h-6 w-6 text-[#0b3e75] mb-1" />
-                  <span className="text-xs font-medium text-slate-700">{t('product.qualityTested')}</span>
+                <div className="site-subtle-card flex flex-col items-center p-2 text-center sm:p-3">
+                  <CheckIcon className="mb-1 h-5 w-5 text-[#0b3e75] sm:h-6 sm:w-6" />
+                  <span className="text-[11px] font-medium leading-tight text-slate-700 sm:text-xs">{t('product.qualityTested')}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Product Description — full width below the grid */}
-          <div className="mt-12 space-y-8">
-            <section>
-              <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.aboutPart')}</h2>
-              <div className="site-detail-panel p-6 space-y-4">
-                <div className="product-summary site-subtle-card p-4">
-                  <h3 className="text-sm font-semibold text-slate-950 mb-2">{t('product.quickAnswer')}</h3>
-                  <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
-                    {productSummaryPoints.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-                {shouldRenderIntroParagraph && (
-                  <p className="text-base text-slate-700 leading-relaxed">
-                    {introParagraph}
-                  </p>
-                )}
-                {partHighlights.length > 0 && (
-                  <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
-                    {partHighlights.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </section>
-
+          <div className="mt-6 space-y-6 sm:mt-12 sm:space-y-8">
             {/* Main Description */}
             <section>
-              <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.description')}</h2>
-              <div className="site-detail-panel p-6">
-                <div className="product-description text-base text-slate-700 whitespace-pre-line leading-relaxed max-w-none">
+              <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.description')}</h2>
+              <div className="site-detail-panel p-4 sm:p-6">
+                <div className="product-description max-w-none whitespace-pre-line break-words text-[15px] leading-relaxed text-slate-700 sm:text-base">
                   {descriptionToShow}
                 </div>
               </div>
             </section>
 
-            {/* Technical Specifications */}
-            {specs && (
-              <section>
-                <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.specifications')}</h2>
-                <div className="site-detail-panel overflow-hidden product-specs">
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {Object.entries(specs).map(([key, value], idx) => (
-                        <tr key={key} className={idx % 2 === 0 ? 'bg-slate-50' : 'bg-white'}>
-                          <td className="px-6 py-3 font-medium text-slate-950 w-1/3">{key}</td>
-                          <td className="px-6 py-3 text-slate-700">{String(value)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
-
+            {/* Part details + any specification rows they don't already cover */}
             <section>
-              <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.details')}</h2>
-              <div className="site-detail-panel p-6">
-                <dl className="grid gap-4 sm:grid-cols-2">
+              <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.specifications')}</h2>
+              <div className="site-detail-panel product-specs p-6">
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3.5 sm:gap-4">
                   <div>
-                    <dt className="text-sm text-slate-500">SKU</dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950">{product.sku}</dd>
+                    <dt className="text-xs text-slate-500 sm:text-sm">SKU</dt>
+                    <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{product.sku}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-slate-500">{t('product.brand')}</dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950">{brandName || '-'}</dd>
+                    <dt className="text-xs text-slate-500 sm:text-sm">{t('product.brand')}</dt>
+                    <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{brandName || '-'}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-slate-500">{t('product.partNumber')}</dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950">{product.part_number || product.sku}</dd>
+                    <dt className="text-xs text-slate-500 sm:text-sm">{t('product.partNumber')}</dt>
+                    <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{product.part_number || product.sku}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-slate-500">{t('product.category')}</dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950">{categoryName}</dd>
+                    <dt className="text-xs text-slate-500 sm:text-sm">{t('product.category')}</dt>
+                    <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{categoryName}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-slate-500">{t('product.condition')}</dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950 capitalize">{product.condition_type || 'new'}</dd>
+                    <dt className="text-xs text-slate-500 sm:text-sm">{t('product.condition')}</dt>
+                    <dd className="mt-0.5 break-words text-sm font-semibold capitalize text-slate-950 sm:mt-1">{product.condition_type || 'new'}</dd>
                   </div>
                   <div>
-                    <dt className="text-sm text-slate-500">{t('product.warranty')}</dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950">{shownWarranty}</dd>
+                    <dt className="text-xs text-slate-500 sm:text-sm">{t('product.warranty')}</dt>
+                    <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{shownWarranty}</dd>
                   </div>
                   {product.origin_country && (
                     <div>
-                      <dt className="text-sm text-slate-500">{t('product.origin')}</dt>
-                      <dd className="mt-1 text-sm font-semibold text-slate-950">{product.origin_country}</dd>
+                      <dt className="text-xs text-slate-500 sm:text-sm">{t('product.origin')}</dt>
+                      <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{product.origin_country}</dd>
                     </div>
                   )}
                   {product.certifications && (
                     <div>
-                      <dt className="text-sm text-slate-500">{t('product.certifications')}</dt>
-                      <dd className="mt-1 text-sm font-semibold text-slate-950">{product.certifications}</dd>
+                      <dt className="text-xs text-slate-500 sm:text-sm">{t('product.certifications')}</dt>
+                      <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{product.certifications}</dd>
                     </div>
                   )}
+                  {extraSpecs.map(([key, value]) => (
+                    <div key={key}>
+                      <dt className="text-xs text-slate-500 sm:text-sm">{key}</dt>
+                      <dd className="mt-0.5 break-words text-sm font-semibold text-slate-950 sm:mt-1">{value}</dd>
+                    </div>
+                  ))}
                 </dl>
               </div>
             </section>
 
-            {/* Compatibility Info */}
-            {product.compatibility_info && (
+            {/* Only operator-written guidance; generated template text is hidden. */}
+            {compatibilityText && (
               <section>
-                <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.compatibility')}</h2>
-                <div className="site-detail-panel p-6">
-                  <p className="text-base text-slate-700 whitespace-pre-line leading-relaxed">{product.compatibility_info}</p>
+                <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.compatibility')}</h2>
+                <div className="site-detail-panel p-4 sm:p-6">
+                  <p className="whitespace-pre-line break-words text-[15px] leading-relaxed text-slate-700 sm:text-base">{compatibilityText}</p>
                 </div>
               </section>
             )}
 
-            {/* Installation Guide */}
-            {product.installation_guide && (
+            {installationText && (
               <section>
-                <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.installation')}</h2>
-                <div className="site-detail-panel p-6">
-                  <p className="text-base text-slate-700 whitespace-pre-line leading-relaxed">{product.installation_guide}</p>
+                <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.installation')}</h2>
+                <div className="site-detail-panel p-4 sm:p-6">
+                  <p className="whitespace-pre-line break-words text-[15px] leading-relaxed text-slate-700 sm:text-base">{installationText}</p>
                 </div>
               </section>
             )}
 
-            {/* Maintenance Tips */}
-            {product.maintenance_tips && (
+            {maintenanceText && (
               <section>
-                <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.maintenance')}</h2>
-                <div className="site-detail-panel p-6">
-                  <p className="text-base text-slate-700 whitespace-pre-line leading-relaxed">{product.maintenance_tips}</p>
+                <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.maintenance')}</h2>
+                <div className="site-detail-panel p-4 sm:p-6">
+                  <p className="whitespace-pre-line break-words text-[15px] leading-relaxed text-slate-700 sm:text-base">{maintenanceText}</p>
                 </div>
               </section>
             )}
 
             {resourceLinks.length > 0 && (
               <section>
-                <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.downloads')}</h2>
-                <div className="site-detail-panel p-6">
+                <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.downloads')}</h2>
+                <div className="site-detail-panel p-4 sm:p-6">
                   <div className="flex flex-wrap gap-3">
                     {resourceLinks.map((resource) => (
                       <a
@@ -942,7 +851,7 @@ export default function ProductDetailClient({
 
             {/* Product FAQ */}
             <section>
-              <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.faq')}</h2>
+              <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.faq')}</h2>
               <div className="site-detail-panel divide-y divide-slate-200">
                 {activeFaqs.map((faq) => (
                   <FAQAccordionItem key={faq.id || faq.question} question={faq.question} answer={faq.answer} />
@@ -953,10 +862,10 @@ export default function ProductDetailClient({
             {/* Customer Reviews */}
             {product.reviews && product.reviews.filter((r: ProductReview) => r.is_approved).length > 0 && (
               <section>
-                <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.reviews')}</h2>
+                <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.reviews')}</h2>
                 <div className="space-y-4">
                   {product.reviews.filter((r: ProductReview) => r.is_approved).map((review: ProductReview) => (
-                    <div key={review.id} className="site-detail-panel p-6">
+                    <div key={review.id} className="site-detail-panel p-4 sm:p-6">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-slate-950">{review.customer_name}</span>
@@ -987,18 +896,18 @@ export default function ProductDetailClient({
             )}
 
             <section>
-              <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.explore')}</h2>
-              <div className="site-detail-panel p-6 flex flex-wrap gap-3 text-sm">
+              <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.explore')}</h2>
+              <div className="site-detail-panel p-4 sm:p-6 flex flex-wrap gap-2 text-[13px] sm:gap-3 sm:text-sm">
                 <Link
                   href={localizedHref('/products')}
-                  className="site-secondary-action px-4 py-2"
+                  className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2"
                 >
                   {t('product.browseAll')}
                 </Link>
                 {categoryHref && (
                   <Link
                     href={localizedHref(categoryHref)}
-                    className="site-secondary-action px-4 py-2"
+                    className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2"
                   >
                     {t('product.moreCategory', { category: categoryName })}
                   </Link>
@@ -1006,15 +915,15 @@ export default function ProductDetailClient({
                 {product.brand && (
                   <Link
                     href={localizedHref(`/products?brand=${encodeURIComponent(product.brand)}`)}
-                    className="site-secondary-action px-4 py-2"
+                    className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2"
                   >
                     {t('product.moreBrand', { brand: product.brand })}
                   </Link>
                 )}
-                <Link href={localizedHref('/repair-request')} className="site-secondary-action px-4 py-2">
+                <Link href={localizedHref('/repair-request')} className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2">
                   {t('nav.repair')}
                 </Link>
-                <Link href={localizedHref('/blog')} className="site-secondary-action px-4 py-2">
+                <Link href={localizedHref('/blog')} className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2">
                   {t('nav.blog')}
                 </Link>
               </div>
@@ -1023,11 +932,11 @@ export default function ProductDetailClient({
 
           {/* Related Products */}
           {relatedProducts?.data?.length > 0 && (
-            <div className="mt-12">
-              <h2 className="text-xl font-semibold text-slate-950 mb-4">{t('product.related')}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="mt-8 sm:mt-12">
+              <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.related')}</h2>
+              <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-4">
                 {relatedProducts.data.map((relatedProduct) => (
-                  <div key={relatedProduct.id} className="site-product-card p-4">
+                  <div key={relatedProduct.id} className="site-product-card min-w-0 p-3 sm:p-4">
                     <div className="site-product-media aspect-[4/3] w-full overflow-hidden rounded-md">
                       <Image
                         src={getProductImageUrl(
@@ -1045,11 +954,11 @@ export default function ProductDetailClient({
                         href={hasTranslationForLocale(relatedProduct.translations, locale)
                           ? localizedHref(`/products/${toProductPathId(relatedProduct.sku)}`)
                           : `/products/${toProductPathId(relatedProduct.sku)}`}
-                        className="site-product-title text-sm font-semibold"
+                        className="site-product-title line-clamp-2 break-words text-[13px] font-semibold sm:text-sm"
                       >
                         {relatedProduct.name}
                       </Link>
-                      <p className="text-sm text-slate-500">SKU: {relatedProduct.sku}</p>
+                      <p className="truncate text-xs text-slate-500 sm:text-sm">SKU: {relatedProduct.sku}</p>
                     </div>
                   </div>
                 ))}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CheckIcon, ChevronUpDownIcon, GlobeAltIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, GlobeAltIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { PUBLIC_LOCALES, type PublicLocale } from '@/lib/i18n/config';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { useLocaleNavigation } from '@/lib/i18n/useLocaleNavigation';
@@ -98,11 +98,11 @@ export default function MobileLanguageSwitcher() {
         aria-label={`${t('language.label')}: ${activeLocale.nativeName}`}
         aria-controls={panelId}
         aria-expanded={open}
-        className="flex h-12 items-center gap-2 rounded-full border border-white/70 bg-slate-950 px-3.5 text-white shadow-xl ring-1 ring-black/10 transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
+        className="flex h-10 items-center gap-1 rounded-full border border-white/70 bg-slate-950/90 px-2.5 text-white shadow-lg ring-1 ring-black/10 backdrop-blur transition-transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
       >
-        <GlobeAltIcon className="h-5 w-5 text-orange-300" aria-hidden="true" />
-        <span className="text-sm font-bold uppercase">{activeLocale.code}</span>
-        <ChevronUpDownIcon className="h-4 w-4 text-slate-300" aria-hidden="true" />
+        {/* Compact chip: it floats over page content (incl. purchase buttons). */}
+        <GlobeAltIcon className="h-4 w-4 text-orange-300" aria-hidden="true" />
+        <span className="text-xs font-bold uppercase">{activeLocale.code}</span>
       </button>
     </div>
   );

@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -150,7 +151,7 @@ func BuildProductContentSkeleton(in ContentSkeletonInput) EnrichedProduct {
 	if model == "" && in.Product != nil {
 		model = NormalizeProductModel(firstNonEmpty(in.Product.Model, in.Product.PartNumber, in.Product.SKU))
 	}
-	model = strings.TrimSpace(model)
+	model = stripModelAnnotation(model)
 
 	partType := strings.TrimSpace(in.PartType)
 	if partType == "" && in.Product != nil {
@@ -333,6 +334,8 @@ func buildSkeletonInstallation(subject, partType string) string {
 	switch {
 	case strings.Contains(lower, "motor"):
 		lines = append(lines, "Check shaft, flange and encoder coupling alignment before power-up, then verify the axis reference position.")
+	case isVariableFrequencyDrive(lower):
+		lines = append(lines, "Back up the drive parameters and confirm motor nameplate data and control wiring match before enabling the drive.")
 	case strings.Contains(lower, "amplifier"), strings.Contains(lower, "drive"), strings.Contains(lower, "inverter"), strings.Contains(lower, "servo"):
 		lines = append(lines, "Confirm the parameter set and axis assignment match the original drive before enabling the machine.")
 	case strings.Contains(lower, "board"), strings.Contains(lower, "pcb"), strings.Contains(lower, "module"), strings.Contains(lower, "i/o"):
@@ -395,6 +398,8 @@ func partTypeApplicationSentence(partType string) string {
 		return "It is used for axis motion and feed drive service, where torque, encoder feedback and mechanical fit determine a correct replacement."
 	case strings.Contains(lower, "spindle") && strings.Contains(lower, "motor"):
 		return "It is used for spindle drive service, where speed range, tool interface and winding data determine a correct replacement."
+	case isVariableFrequencyDrive(lower):
+		return "It is used for AC motor speed control on conveyors, pumps, fans and machinery, where supply voltage, power rating and control I/O determine a correct replacement."
 	case strings.Contains(lower, "servo"), strings.Contains(lower, "amplifier"), strings.Contains(lower, "drive"), strings.Contains(lower, "inverter"):
 		return "It is used to restore axis or spindle drive operation, where the amplifier rating, axis assignment and control series determine a correct replacement."
 	case strings.Contains(lower, "i/o"), strings.Contains(lower, "io module"):
@@ -427,6 +432,8 @@ func partTypeSelectionSentence(partType string) string {
 		return "Confirm motor series, encoder specification, shaft or flange detail and drive pairing before ordering."
 	case strings.Contains(lower, "spindle") && strings.Contains(lower, "motor"):
 		return "Confirm motor series, winding data, encoder and tool interface before ordering."
+	case isVariableFrequencyDrive(lower):
+		return "Confirm supply voltage, power and current rating, frame size and control I/O before ordering."
 	case strings.Contains(lower, "servo"), strings.Contains(lower, "amplifier"), strings.Contains(lower, "drive"), strings.Contains(lower, "inverter"):
 		return "Confirm amplifier rating, axis assignment, control series and connector layout before ordering."
 	case strings.Contains(lower, "i/o"), strings.Contains(lower, "io module"):
@@ -448,6 +455,30 @@ func partTypeSelectionSentence(partType string) string {
 	default:
 		return "Confirm the original part number, control series and machine configuration before ordering."
 	}
+}
+
+var modelAnnotationRe = regexp.MustCompile(`[-\s]*\([^)]*\)`)
+
+// stripModelAnnotation drops parenthesised notes such as "(ACS355 Series)" or
+// "(ABB Code: 3AU...)" that operators type into the model field. Once the model
+// is slugified they read as "MODEL-(ACS355-SERIES)" in every generated title.
+func stripModelAnnotation(model string) string {
+	cleaned := strings.Trim(strings.TrimSpace(modelAnnotationRe.ReplaceAllString(model, "")), "-")
+	if cleaned == "" {
+		return strings.TrimSpace(model)
+	}
+	return cleaned
+}
+
+// Variable frequency drives (VFD / AC drive / frequency inverter) control
+// general-purpose motors; servo-amplifier wording (axis assignment, amplifier
+// rating) does not apply to them.
+func isVariableFrequencyDrive(lower string) bool {
+	if strings.Contains(lower, "servo") || strings.Contains(lower, "spindle") {
+		return false
+	}
+	return strings.Contains(lower, "frequency") || strings.Contains(lower, "vfd") ||
+		strings.Contains(lower, "ac drive") || strings.Contains(lower, "inverter")
 }
 
 func conditionLabel(value string) string {

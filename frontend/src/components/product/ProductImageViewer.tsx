@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, MouseEvent } from 'react';
+import { useState, useRef, type PointerEvent } from 'react';
 import Image from 'next/image';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { getProductImageUrlByIndex } from '@/lib/utils';
@@ -46,8 +46,10 @@ export default function ProductImageViewer({
     ? getProductImageUrlByIndex(images, selectedImageIndex)
     : (fallbackImage || '/images/default-product.svg');
 
-  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!imageRef.current) return;
+  // Hover zoom is mouse-only: on touch screens a tap fired mouseenter and left
+  // the image stuck at 2x with nothing to move it.
+  const handleMouseMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || !imageRef.current) return;
 
     const rect = imageRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -56,8 +58,8 @@ export default function ProductImageViewer({
     setMousePosition({ x, y });
   };
 
-  const handleMouseEnter = () => {
-    setIsHovering(true);
+  const handleMouseEnter = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') setIsHovering(true);
   };
 
   const handleMouseLeave = () => {
@@ -80,13 +82,13 @@ export default function ProductImageViewer({
     <div className="flex flex-col-reverse">
       {/* Image Thumbnails */}
       {images.length > 1 && (
-        <div className="hidden mt-6 w-full max-w-2xl mx-auto sm:block lg:max-w-none">
-          <div className="grid grid-cols-4 gap-6">
+        <div className="mx-auto mt-3 w-full max-w-2xl sm:mt-6 lg:max-w-none">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-4 sm:gap-6 sm:overflow-visible sm:pb-0">
             {images.map((_image, index: number) => (
               <button
                 key={index}
                 onClick={() => onImageChange(index)}
-                className={`relative h-24 bg-white rounded-md flex items-center justify-center text-sm font-medium uppercase text-slate-900 cursor-pointer hover:bg-slate-50 focus:outline-none focus:ring focus:ring-offset-4 focus:ring-blue-700 ${
+                className={`relative h-16 w-16 shrink-0 bg-white rounded-md sm:h-24 sm:w-auto flex items-center justify-center text-sm font-medium uppercase text-slate-900 cursor-pointer hover:bg-slate-50 focus:outline-none focus:ring focus:ring-offset-4 focus:ring-blue-700 ${
                   index === selectedImageIndex ? 'ring-2 ring-blue-700' : ''
                 }`}
               >
@@ -111,10 +113,10 @@ export default function ProductImageViewer({
       <div className="w-full aspect-w-1 aspect-h-1">
         <div
           ref={imageRef}
-          className="site-detail-panel relative h-96 sm:h-[500px] overflow-hidden cursor-zoom-in"
-          onMouseMove={handleMouseMove}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          className="site-detail-panel relative h-72 overflow-hidden min-[400px]:h-80 sm:h-[500px] sm:cursor-zoom-in"
+          onPointerMove={handleMouseMove}
+          onPointerEnter={handleMouseEnter}
+          onPointerLeave={handleMouseLeave}
         >
           <Image
             src={currentImage}
@@ -134,13 +136,15 @@ export default function ProductImageViewer({
             <>
               <button
                 onClick={() => handleImageChange('prev')}
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 rounded-md border border-slate-200 bg-white/90 p-2 shadow-lg transition-opacity duration-200 hover:bg-white hover:opacity-100"
+                aria-label="Previous image"
+                className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 rounded-md border border-slate-200 bg-white/90 p-1.5 shadow-lg sm:p-2 transition-opacity duration-200 hover:bg-white hover:opacity-100"
               >
                 <ChevronLeftIcon className="h-5 w-5 text-slate-600" />
               </button>
               <button
                 onClick={() => handleImageChange('next')}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 rounded-md border border-slate-200 bg-white/90 p-2 shadow-lg transition-opacity duration-200 hover:bg-white hover:opacity-100"
+                aria-label="Next image"
+                className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 rounded-md border border-slate-200 bg-white/90 p-1.5 shadow-lg sm:p-2 transition-opacity duration-200 hover:bg-white hover:opacity-100"
               >
                 <ChevronRightIcon className="h-5 w-5 text-slate-600" />
               </button>

@@ -25,7 +25,8 @@ func NormalizeMetaTitle(input string) string {
 	if idx := strings.LastIndex(cut, " "); idx >= 24 {
 		cut = cut[:idx]
 	}
-	return strings.TrimSpace(cut)
+	// Clipping "Name | Vibocnc" must not leave a dangling separator ("Name |").
+	return strings.TrimRight(strings.TrimSpace(cut), " |:,-–—")
 }
 
 func NormalizeMetaDescription(input string) string {
@@ -52,6 +53,13 @@ func NormalizeMetaDescription(input string) string {
 }
 
 func BuildSafeMetaTitle(candidates ...string) string {
+	// Prefer a candidate that fits whole over clipping a longer one.
+	for _, candidate := range candidates {
+		title := normalizeWhitespace(candidate)
+		if len(title) >= MetaTitleMinLength && len(title) <= MetaTitleMaxLength {
+			return title
+		}
+	}
 	for _, candidate := range candidates {
 		title := NormalizeMetaTitle(candidate)
 		if len(title) >= MetaTitleMinLength {

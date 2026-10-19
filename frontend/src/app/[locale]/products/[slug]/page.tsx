@@ -6,6 +6,7 @@ import { withSiteName, withoutSiteNameSuffix } from '@/lib/seo';
 import { toProductPathId } from '@/lib/utils';
 import type { Category, Product, ProductImage } from '@/types';
 import { CategoryService } from '@/services/category.service';
+import { withoutGeneratedContent } from '@/lib/product-content';
 import { ProductService } from '@/services/product.service';
 import ProductDetailClient from './ProductDetailClient';
 import { permanentRedirect, redirect, notFound } from 'next/navigation';
@@ -54,13 +55,23 @@ function normalizeWhitespace(text?: string): string {
     .trim();
 }
 
+// Generated titles were built from a slugified model ("X-(ACS355-SERIES)") and
+// clipped mid-suffix ("... Drive |"); clean both before publishing.
+function cleanTitleArtifacts(text: string): string {
+  return normalizeWhitespace(
+    text
+      .replace(/-\((?:[A-Z0-9]+-?)+\)/g, '')
+      .replace(/[\s|:,\-–—]+$/, ''),
+  );
+}
+
 function trimMetaTitle(text: string, maxLength: number): string {
-  const value = normalizeWhitespace(text);
+  const value = cleanTitleArtifacts(text);
   if (!value) return '';
   if (value.length <= maxLength) return value;
   const cut = value.slice(0, maxLength);
   const idx = cut.lastIndexOf(' ');
-  return normalizeWhitespace(idx >= 24 ? cut.slice(0, idx) : cut);
+  return cleanTitleArtifacts(idx >= 24 ? cut.slice(0, idx) : cut);
 }
 
 function toAbsoluteUrl(url: string | undefined, baseUrl: string): string {
@@ -233,7 +244,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   }
 
   const hasRequestedTranslation = hasTranslationForLocale(initialProduct.translations, locale);
-  initialProduct = localizeProductContent(initialProduct, locale);
+  initialProduct = withoutGeneratedContent(localizeProductContent(initialProduct, locale));
 
   // The shipping / warranty / returns promise shown on the page and published in
   // structured data is admin-editable, not hard-coded.

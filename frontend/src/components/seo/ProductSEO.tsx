@@ -14,6 +14,7 @@ import {
   commercePolicyDestinationCountries,
   commercePolicyReturnShippingText,
 } from '@/lib/commerce-policy';
+import { buildProductFaqs } from '@/lib/product-content';
 
 const PUBLIC_SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://vibocnc.com').replace(/\/+$/, '');
 
@@ -96,19 +97,6 @@ function getProductImageFallback(product: Product, baseUrl: string): string {
 
 function normalizeText(value?: string): string {
   return String(value || '').trim();
-}
-
-function stripHtml(value?: string): string {
-  return normalizeText(value)
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function getBrandName(product: Product): string {
@@ -346,7 +334,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
   // Speakable for AI search engines
   structuredData.speakable = {
     "@type": "SpeakableSpecification",
-    "cssSelector": ["h1", ".product-summary", ".product-description", ".product-specs"]
+    "cssSelector": ["h1", ".product-description", ".product-specs"]
   };
 
   // Generate breadcrumb structured data
@@ -381,86 +369,15 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     ]
   };
 
-  // Generate FAQ structured data - prefer database FAQs, fall back to generic
-  const dbFaqs = product.faqs?.filter(f => f.is_active) || [];
-  const faqEntities = dbFaqs.length > 0
-    ? dbFaqs.map(f => ({
-        "@type": "Question",
-        "name": f.question,
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": f.answer
-        }
-      }))
-    : schemaLocale === 'zh'
-      ? [
-        {
-          "@type": "Question",
-          "name": `${product.sku} 主要用于什么场景？`,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": `${semanticName} 用于数控机床和工业自动化系统，可满足稳定控制、备件更换或设备维护需求。`
-          }
-        },
-        {
-          "@type": "Question",
-          "name": `${product.sku} 目前有库存吗？`,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": product.stock_quantity > 0
-              ? `${product.sku} 目前有库存，可安排发货。`
-              : `${product.sku} 可订购，预计交货期为 ${leadTime}。`
-          }
-        },
-        {
-          "@type": "Question",
-          "name": `如何确认 ${product.sku} 是否兼容？`,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": product.compatibility_info
-              ? `${stripHtml(product.compatibility_info)} 下单前请联系 sales@vibocnc.com 进行最终兼容性确认。`
-              : `请将设备型号或原零件号发送至 sales@vibocnc.com，我们会在发货前协助确认兼容性。`
-          }
-        }
-      ]
-      : [
-        {
-          "@type": "Question",
-          "name": `What is ${product.sku} used for?`,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": `${semanticName} is used in CNC and industrial automation systems for stable control, replacement, or maintenance needs.`
-          }
-        },
-        {
-          "@type": "Question",
-          "name": `Is ${product.sku} in stock?`,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": product.stock_quantity > 0
-              ? `${product.sku} is currently in stock and ready for shipment.`
-              : `${product.sku} is available to order with ${leadTime} lead time.`
-          }
-        },
-        {
-          "@type": "Question",
-          "name": `What warranty and return terms apply to ${product.sku}?`,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": `${warranty} warranty, ${policy.return_window_text} return window, and ${commercePolicyReturnShippingText(policy)}.`
-          }
-        },
-        {
-          "@type": "Question",
-          "name": `How can I confirm compatibility for ${product.sku}?`,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": product.compatibility_info
-              ? `${stripHtml(product.compatibility_info)} Contact sales@vibocnc.com for final compatibility confirmation before ordering.`
-              : `Share your machine model or original part number with sales@vibocnc.com and we will verify compatibility before shipment.`
-          }
-        }
-      ];
+  // Same FAQ set as the visible accordion (structured data must match the page).
+  const faqEntities = buildProductFaqs(product, { locale: schemaLocale, policy, warranty, leadTime }).map((faq) => ({
+    "@type": "Question",
+    "name": faq.question,
+    "acceptedAnswer": {
+      "@type": "Answer",
+      "text": faq.answer
+    }
+  }));
 
   const faqData = {
     "@context": "https://schema.org",
@@ -486,7 +403,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     "about": { "@id": productId },
     "speakable": {
       "@type": "SpeakableSpecification",
-      "cssSelector": ["h1", ".product-summary", ".product-description", ".product-specs"]
+      "cssSelector": ["h1", ".product-description", ".product-specs"]
     }
   };
 

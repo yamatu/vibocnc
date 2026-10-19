@@ -114,7 +114,8 @@ export function buildProductSeoDescription(
   maxLength = 160,
   commercePolicy?: CommercePolicySetting,
 ): string {
-  const explicit = stripProductMarkup(product.meta_description);
+  // Generated copy embedded a slugified model note ("MODEL-(ACS355-SERIES)").
+  const explicit = stripProductMarkup(product.meta_description).replace(/-\((?:[A-Z0-9]+-?)+\)/g, '');
   const brand = normalizeWhitespace(product.brand);
   const brandPattern = brand ? escapeRegExp(brand) : '';
   const brokenEnding = /(?:\band\s+(?:fast|global|worldwide)|[,;:]|\bwith)[.!?]?$/i.test(explicit);
