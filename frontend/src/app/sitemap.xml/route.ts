@@ -24,11 +24,17 @@ ${sitemapPaths.map((path) => `  <sitemap>
 
 export async function GET() {
   const baseUrl = await getRequestBaseUrl()
-  let productSitemapPaths: string[] = []
+  let productSitemapPaths: string[]
   try {
     productSitemapPaths = await getActiveProductSitemapPaths()
   } catch (error) {
+    // Publishing an index without the product shards (cached for an hour)
+    // tells crawlers the whole catalogue left the sitemap. Ask them to retry.
     console.error('Error resolving product sitemaps for the primary index:', error)
+    return new NextResponse('Sitemap temporarily unavailable', {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store', 'Retry-After': '300' },
+    })
   }
   const sitemapIndex = buildSitemapIndex(baseUrl, productSitemapPaths)
 

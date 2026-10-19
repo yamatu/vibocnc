@@ -93,6 +93,8 @@ func SetupRoutes(r *gin.Engine) {
 
 			// Products (public read access) - cached
 			public.GET("/products", middleware.CachePublicGET(middleware.CacheTTLProducts(), "cache:public:products:"), productController.GetProducts)
+			// Key prefix sits under "cache:public:products:" so product mutations clear it too.
+			public.GET("/products/sitemap", middleware.CachePublicGET(middleware.CacheTTLProducts(), "cache:public:products:sitemap:"), productController.GetProductSitemapEntries)
 			public.GET("/products/default-image", watermarkController.DefaultProductImage)
 			public.GET("/products/default-image/:sku", watermarkController.DefaultProductImage)
 			// Media validators and crawlers may probe image URLs with HEAD before
