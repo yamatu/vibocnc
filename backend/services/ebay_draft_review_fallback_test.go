@@ -30,11 +30,11 @@ func TestInferPartTypeFromListingText(t *testing.T) {
 
 func TestEnrichEbayReviewProfileUsesListingWhenAITypeIsEmpty(t *testing.T) {
 	draft := models.EbayImportDraft{
-		SourceSite:       DraftSourceSiteEbay,
-		TitleRaw:         "OMRON E3S-CL2 Photoelectric Sensor Switch E3SCL2 New In Box",
-		NormalizedModel:  "E3S-CL2",
-		NormalizedBrand:  "",
-		RawPayload:       `{"category_breadcrumb":"Business & Industrial > Sensors > Photoelectric Sensors"}`,
+		SourceSite:      DraftSourceSiteEbay,
+		TitleRaw:        "OMRON E3S-CL2 Photoelectric Sensor Switch E3SCL2 New In Box",
+		NormalizedModel: "E3S-CL2",
+		NormalizedBrand: "",
+		RawPayload:      `{"category_breadcrumb":"Business & Industrial > Sensors > Photoelectric Sensors"}`,
 	}
 	profile := ProductProfile{Model: "E3S-CL2", Confidence: 0.2}
 	enrichEbayReviewProfile(&profile, draft, "E3S-CL2")

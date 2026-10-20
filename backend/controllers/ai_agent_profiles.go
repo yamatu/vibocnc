@@ -36,7 +36,6 @@ var errAIProfileLimitReached = errors.New("AI profile limit reached")
 var errAIProfileKeyUnavailable = errors.New("active AI profile key is unavailable")
 var errAIProfileCrossProviderKeyReuse = errors.New("active AI profile key belongs to another provider")
 
-
 type aiAgentProfileMutationRequest struct {
 	Name              *string `json:"name"`
 	BaseURL           *string `json:"base_url"`

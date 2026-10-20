@@ -53,8 +53,8 @@ type Product struct {
 	DisableAutoSEO  bool   `json:"disable_auto_seo" gorm:"default:false;index"`
 	// PriceLocked exempts a product from market price suggestions. The
 	// administrator sets it when a price is contractual or manually curated.
-	PriceLocked     bool   `json:"price_locked" gorm:"default:false;index"`
-	ImageURLs       string `json:"image_urls" gorm:"type:json"`
+	PriceLocked bool   `json:"price_locked" gorm:"default:false;index"`
+	ImageURLs   string `json:"image_urls" gorm:"type:json"`
 
 	// Enhanced fields for fanucworld.com compatibility
 	WarrantyPeriod          string     `json:"warranty_period" gorm:"size:50;default:'12 months'"`

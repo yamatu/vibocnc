@@ -85,11 +85,11 @@ func TestSuggestPriceFromQuoteRespectsPolicy(t *testing.T) {
 
 func TestIsMarketConditionPriceable(t *testing.T) {
 	cases := map[string]bool{
-		"":                      true,
-		"New":                   true,
-		"Used":                  true,
+		"":                         true,
+		"New":                      true,
+		"Used":                     true,
 		"For parts or not working": false,
-		"Not working":           false,
+		"Not working":              false,
 	}
 	for input, expected := range cases {
 		if got := IsMarketConditionPriceable(input); got != expected {

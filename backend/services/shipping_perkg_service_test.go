@@ -9,21 +9,21 @@ import (
 
 func TestResolveCountryCode(t *testing.T) {
 	cases := map[string]string{
-		"US":                "US",
-		"us":                "US",
-		"United States":     "US",
-		"美国":                "US",
-		"USA":               "US",
-		"美国(US)":            "US",
-		"DE Germany":        "DE",
-		"UK":                "GB",
-		"South Korea":       "KR",
-		"香港":                "HK",
-		"中国香港":              "HK",
-		"Czechia":           "CZ",
-		"unknown land":      "",
-		"重量(kg)":            "",
-		"":                  "",
+		"US":            "US",
+		"us":            "US",
+		"United States": "US",
+		"美国":            "US",
+		"USA":           "US",
+		"美国(US)":        "US",
+		"DE Germany":    "DE",
+		"UK":            "GB",
+		"South Korea":   "KR",
+		"香港":            "HK",
+		"中国香港":          "HK",
+		"Czechia":       "CZ",
+		"unknown land":  "",
+		"重量(kg)":        "",
+		"":              "",
 	}
 	for in, want := range cases {
 		if got := ResolveCountryCode(in); got != want {
