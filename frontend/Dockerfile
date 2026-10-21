@@ -6,7 +6,9 @@
 # - docker.m.daocloud.io
 ARG BASE_REGISTRY=docker.io
 
-FROM ${BASE_REGISTRY}/library/node:24-alpine AS base
+# 固定到 2026-10-21 安全版本的 Node 24 LTS（修复 Brotli RCE / TLS·DNS 高危等 10 个漏洞）
+# 旧值 node:24-alpine 拉到的 24.22.0 受影响
+FROM ${BASE_REGISTRY}/library/node:24.22.1-alpine AS base
 
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
