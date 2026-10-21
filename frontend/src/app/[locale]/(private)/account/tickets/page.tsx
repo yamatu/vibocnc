@@ -23,16 +23,16 @@ export default function ContactPage() {
     {
       icon: EnvelopeIcon,
       label: 'Email',
-      value: 'sales@vibocnc.com',
-      link: 'mailto:sales@vibocnc.com',
+      value: 'flora@vibocnc.com',
+      link: 'mailto:flora@vibocnc.com',
 
       description: 'Send us an email anytime',
     },
     {
       icon: PhoneIcon,
       label: 'Phone',
-      value: '+86 13348028050',
-      link: 'tel:+8613348028050',
+      value: '+86 13301553506',
+      link: 'tel:+8613301553506',
 
       description: 'Monday to Friday, 9:00 AM - 6:00 PM (China Time)',
     },

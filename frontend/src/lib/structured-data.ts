@@ -47,8 +47,8 @@ export function generateOrganizationSchema(sameAs: string[] = []) {
     "contactPoint": {
       "@type": "ContactPoint",
       "contactType": "sales",
-      "telephone": "+86-13348028050",
-      "email": "sales@vibocnc.com",
+      "telephone": "+86-13301553506",
+      "email": "flora@vibocnc.com",
       "availableLanguage": ["en", "zh", "es", "de", "fr", "it", "pt", "ja", "ko", "ru", "ar"]
     },
     ...(socialProfiles.length > 0 ? { "sameAs": socialProfiles } : {})

@@ -154,7 +154,7 @@ function buildCategoryFaqEntries(
     },
     {
       question: `How do I confirm the right part number for my machine?`,
-      answer: `Send the machine builder, controller model, amplifier or drive reference and the alarm code to sales@vibocnc.com, or use the product enquiry form. Our team verifies interchangeability before dispatch so a compatible ${categoryName} is shipped the first time.`,
+      answer: `Send the machine builder, controller model, amplifier or drive reference and the alarm code to flora@vibocnc.com, or use the product enquiry form. Our team verifies interchangeability before dispatch so a compatible ${categoryName} is shipped the first time.`,
     },
   ];
 }

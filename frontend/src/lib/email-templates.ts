@@ -45,8 +45,8 @@ export function baseTwoColumnTemplate(opts: {
     primaryLabel = 'Browse Products',
     secondaryUrl = `${DEFAULT_SITE_URL}/contact`,
     secondaryLabel = 'Contact Us',
-    footerEmail = 'sales@vibocnc.com',
-    footerPhone = '+86 13348028050',
+    footerEmail = 'flora@vibocnc.com',
+    footerPhone = '+86 13301553506',
   } = opts;
 
   const rightList = rightLines
@@ -239,7 +239,7 @@ export function buildEmailHtml(subject: string, modules: EmailModule[]): { html:
     textLines.push(m.ctaLabel + ': ' + m.ctaUrl);
     textLines.push('');
   }
-  textLines.push('Contact: sales@vibocnc.com');
+  textLines.push('Contact: flora@vibocnc.com');
 
   return { html, text: textLines.join('\n') };
 }

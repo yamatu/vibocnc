@@ -143,12 +143,12 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
 
               <div className="flex items-center space-x-3">
                 <PhoneIcon className="h-5 w-5 text-orange-300 flex-shrink-0" />
-                <span className="text-slate-300">+86 13348028050</span>
+                <span className="text-slate-300">+86 13301553506</span>
               </div>
 
               <div className="flex items-center space-x-3">
                 <EnvelopeIcon className="h-5 w-5 text-orange-300 flex-shrink-0" />
-                <span className="text-slate-300">sales@vibocnc.com</span>
+                <span className="text-slate-300">flora@vibocnc.com</span>
               </div>
 
               <div className="flex items-center space-x-3">

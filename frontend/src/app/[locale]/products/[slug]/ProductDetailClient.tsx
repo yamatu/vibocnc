@@ -317,7 +317,7 @@ export default function ProductDetailClient({
       ``,
       `Please send me a quote. Thank you!`,
     ].join('\n');
-    window.open(`https://wa.me/8613348028050?text=${encodeURIComponent(text)}`, '_blank');
+    window.open(`https://wa.me/8613301553506?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const handleBuyNow = () => {
@@ -414,7 +414,7 @@ export default function ProductDetailClient({
   const canPurchase = hasProductPrice(product);
   // Keep this href identical during SSR and hydration. The SKU/model is enough
   // for the sales team to identify the quote request without leaking a runtime URL.
-  const quoteEmailHref = `mailto:sales@vibocnc.com?subject=${encodeURIComponent(`Quote request: ${product.sku}`)}&body=${encodeURIComponent(`Hello, please provide price and lead time for ${computedHeading} (${product.sku}).`)}`;
+  const quoteEmailHref = `mailto:flora@vibocnc.com?subject=${encodeURIComponent(`Quote request: ${product.sku}`)}&body=${encodeURIComponent(`Hello, please provide price and lead time for ${computedHeading} (${product.sku}).`)}`;
 
   const getFallbackDescription = () => {
     const sku = product.sku || '';

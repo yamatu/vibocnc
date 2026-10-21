@@ -176,13 +176,13 @@ export function Header() {
         <div className="max-w-7xl mx-auto px-2.5 min-[360px]:px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center text-xs sm:text-sm">
             <div className="flex min-w-0 flex-1 items-center justify-between gap-1.5 min-[360px]:gap-2.5 sm:justify-start sm:gap-6">
-              <a href="tel:+8613348028050" className="flex min-w-0 items-center gap-1.5 hover:text-orange-200 sm:gap-2">
+              <a href="tel:+8613301553506" className="flex min-w-0 items-center gap-1.5 hover:text-orange-200 sm:gap-2">
                 <PhoneIcon className="h-3.5 w-3.5 shrink-0 text-orange-300 sm:h-4 sm:w-4" />
-                <span className="whitespace-nowrap text-[10px] min-[360px]:text-xs sm:text-sm" suppressHydrationWarning>+86 13348028050</span>
+                <span className="whitespace-nowrap text-[10px] min-[360px]:text-xs sm:text-sm" suppressHydrationWarning>+86 13301553506</span>
               </a>
-              <a href="mailto:sales@vibocnc.com" className="flex min-w-0 items-center gap-1.5 hover:text-orange-200 sm:gap-2">
+              <a href="mailto:flora@vibocnc.com" className="flex min-w-0 items-center gap-1.5 hover:text-orange-200 sm:gap-2">
                 <EnvelopeIcon className="h-3.5 w-3.5 shrink-0 text-orange-300 sm:h-4 sm:w-4" />
-                <span className="whitespace-nowrap text-[10px] min-[360px]:text-xs sm:text-sm" suppressHydrationWarning>sales@vibocnc.com</span>
+                <span className="whitespace-nowrap text-[10px] min-[360px]:text-xs sm:text-sm" suppressHydrationWarning>flora@vibocnc.com</span>
               </a>
             </div>
             <div className="hidden min-w-0 items-center gap-3 md:flex">

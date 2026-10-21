@@ -28,8 +28,8 @@ const contactPageSchema = {
   "mainEntity": {
     "@type": "Organization",
     "name": "Vibocnc",
-    "telephone": "+86-13348028050",
-    "email": "sales@vibocnc.com",
+    "telephone": "+86-13301553506",
+    "email": "flora@vibocnc.com",
     "address": {
       "@type": "PostalAddress",
       "addressLocality": "Kunshan",
@@ -167,7 +167,7 @@ function ContactContent() {
                   <PhoneIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.phone')}</h3>
-                    <p className="text-gray-600">+86 13348028050</p>
+                    <p className="text-gray-600">+86 13301553506</p>
                   </div>
                 </div>
 
@@ -175,7 +175,7 @@ function ContactContent() {
                   <EnvelopeIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.email')}</h3>
-                    <p className="text-gray-600">sales@vibocnc.com</p>
+                    <p className="text-gray-600">flora@vibocnc.com</p>
                   </div>
                 </div>
 

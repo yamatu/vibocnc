@@ -313,7 +313,7 @@ export default function AdminEmailPage() {
                   value={form.from_email || ''}
                   onChange={(e) => setForm((p: any) => ({ ...p, from_email: e.target.value }))}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="sales@vibocnc.com"
+                  placeholder="flora@vibocnc.com"
                 />
               </div>
               <div>
@@ -322,7 +322,7 @@ export default function AdminEmailPage() {
                   value={form.reply_to || ''}
                   onChange={(e) => setForm((p: any) => ({ ...p, reply_to: e.target.value }))}
                   className="block w-full rounded-md border border-gray-300 px-3 py-2"
-                  placeholder="sales@vibocnc.com"
+                  placeholder="flora@vibocnc.com"
                 />
               </div>
             </div>
@@ -419,7 +419,7 @@ export default function AdminEmailPage() {
                       value={form.alimail_account_email || ''}
                       onChange={(e) => setForm((p: any) => ({ ...p, alimail_account_email: e.target.value }))}
                       className="block w-full rounded-md border border-gray-300 px-3 py-2"
-                      placeholder={form.from_email || 'sales@vibocnc.com'}
+                      placeholder={form.from_email || 'flora@vibocnc.com'}
                     />
                     <p className="mt-1 text-xs text-gray-500">
                       {t(

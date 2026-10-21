@@ -93,7 +93,7 @@ export default async function FAQPage({ params }: { params: LocaleRouteParams })
                   {translatePublicMessage(locale, 'common.contactUs')}
                 </a>
                 <a
-                  href="mailto:sales@vibocnc.com"
+                  href="mailto:flora@vibocnc.com"
                   className="site-secondary-action px-6 py-3"
                 >
                   {translatePublicMessage(locale, 'faq.email')}

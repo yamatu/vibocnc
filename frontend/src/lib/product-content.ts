@@ -98,7 +98,7 @@ export function buildProductFaqs(
         question: `如何确认 ${sku} 适用于我的设备？`,
         answer: compatibility
           ? stripHtml(compatibility)
-          : '请将原件铭牌照片或设备型号发送至 sales@vibocnc.com，我们会在发货前确认兼容性。',
+          : '请将原件铭牌照片或设备型号发送至 flora@vibocnc.com，我们会在发货前确认兼容性。',
       },
     ];
   }
@@ -118,7 +118,7 @@ export function buildProductFaqs(
       question: `How do I confirm ${sku} fits my machine?`,
       answer: compatibility
         ? stripHtml(compatibility)
-        : 'Send a photo of the original part label or your machine model to sales@vibocnc.com and we will confirm compatibility before shipment.',
+        : 'Send a photo of the original part label or your machine model to flora@vibocnc.com and we will confirm compatibility before shipment.',
     },
   ];
 }

@@ -33,7 +33,7 @@ You may request access, correction, or deletion of personal information where ap
 
 ## Contact
 
-For privacy questions, contact [sales@vibocnc.com](mailto:sales@vibocnc.com).` },
+For privacy questions, contact [flora@vibocnc.com](mailto:flora@vibocnc.com).` },
   { pageKey: 'terms', title: 'Terms of Service', summary: 'Terms that apply when using the Vibocnc website and purchasing products.', metaDescription: 'Read Vibocnc terms for orders, payment, shipping, returns, warranties, website use, and industrial automation parts purchases.', metaKeywords: 'terms of service, CNC parts terms, Vibocnc purchase policy', content: `## Acceptance of Terms
 
 By using this website or purchasing from Vibocnc, you agree to these terms. Product quotations, invoices, and separately agreed written terms may also apply.
@@ -60,7 +60,7 @@ To the extent permitted by law, liability is limited to the amount paid for the 
 
 ## Contact
 
-Questions may be sent to [sales@vibocnc.com](mailto:sales@vibocnc.com).` },
+Questions may be sent to [flora@vibocnc.com](mailto:flora@vibocnc.com).` },
   { pageKey: 'warranty-policy', title: 'Warranty Policy', summary: 'Coverage, exclusions, and claims process for products supplied by Vibocnc.', metaDescription: 'Review warranty coverage, exclusions, and the claims process for Vibocnc industrial automation and CNC parts.', metaKeywords: 'warranty policy, FANUC parts warranty, CNC repair claim', content: `## Coverage
 
 - Standard coverage is 12 months (1 year) unless the quotation or product page states otherwise
@@ -87,7 +87,7 @@ Do not return an item until return instructions are issued. See our [Returns & R
 
 ## Contact
 
-Email [sales@vibocnc.com](mailto:sales@vibocnc.com) for warranty support.` },
+Email [flora@vibocnc.com](mailto:flora@vibocnc.com) for warranty support.` },
   { pageKey: 'shipping-policy', title: 'Shipping Policy', summary: 'Shipping destinations, handling times, carriers, tracking, and customs information.', metaDescription: 'Shipping policy for Vibocnc orders, including handling, worldwide delivery, tracking, packaging, duties, and customs.', metaKeywords: 'shipping policy, CNC parts delivery, worldwide industrial parts shipping', content: `## Handling Times
 
 In-stock items are normally dispatched within 1-2 days after payment and order verification, with an estimated transit time of 4-5 DAYS. Lead times for backordered or special-order products are confirmed separately.
@@ -131,7 +131,7 @@ Prepare the product SKU, machine model, control model, alarm code, serial number
 
 ## Contact
 
-Email [sales@vibocnc.com](mailto:sales@vibocnc.com) or call [+86 13348028050](tel:+8613348028050).` },
+Email [flora@vibocnc.com](mailto:flora@vibocnc.com) or call [+86 13301553506](tel:+8613301553506).` },
 ];
 
 export function getSitePageDefault(pageKey: string) {

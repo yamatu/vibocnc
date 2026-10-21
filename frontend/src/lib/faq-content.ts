@@ -61,7 +61,7 @@ export function buildHomeFaqEntries(
       {
         question: '如何获得技术支持？',
         answer:
-          '您可通过 sales@vibocnc.com 或电话联系我们。团队可协助安装指导、故障排查、兼容性确认和替换建议。',
+          '您可通过 flora@vibocnc.com 或电话联系我们。团队可协助安装指导、故障排查、兼容性确认和替换建议。',
       },
       {
         question: '如何下单？',
@@ -117,7 +117,7 @@ export function buildHomeFaqEntries(
     {
       question: 'How can I get technical support?',
       answer:
-        'Our technical support team is available via email at sales@vibocnc.com or phone. We provide installation guidance, troubleshooting, compatibility assistance, and replacement recommendations.',
+        'Our technical support team is available via email at flora@vibocnc.com or phone. We provide installation guidance, troubleshooting, compatibility assistance, and replacement recommendations.',
     },
     {
       question: 'How do I place an order?',

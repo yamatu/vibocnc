@@ -487,7 +487,7 @@ func sanitizeLegacyBrandReferences() {
 	legacySpareHost := legacyCompact + "spare.com"
 	legacyShopHost := legacyCompact + ".shop"
 	replacements := [][2]string{
-		{"sales@" + legacySpareHost, "sales@vibocnc.com"},
+		{"sales@" + legacySpareHost, "flora@vibocnc.com"},
 		{"admin@" + legacyShopHost, "admin@vibocnc.com"},
 		{"VIBO CNC", "Vibocnc"},
 		{"Vibo CNC", "Vibocnc"},
