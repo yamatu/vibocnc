@@ -29,6 +29,7 @@ var aiAgentReasoningEffortPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31
 
 const aiAgentAPIModeStandard = "standard_chat"
 const aiAgentAPIModeReasoning = "reasoning_chat"
+const aiAgentAPIModeAnthropic = "anthropic_messages"
 
 var errActiveAIProfile = errors.New("active AI profile cannot be deleted")
 var errAIProfileNeedsAPIKey = errors.New("active AI profile needs an API key while the assistant is enabled")
@@ -128,8 +129,8 @@ func normalizeAIAgentReasoningEffort(value string) (string, error) {
 
 func normalizeAIAgentAPIMode(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
-	if value != aiAgentAPIModeStandard && value != aiAgentAPIModeReasoning {
-		return "", errors.New("API mode must be standard_chat or reasoning_chat")
+	if value != aiAgentAPIModeStandard && value != aiAgentAPIModeReasoning && value != aiAgentAPIModeAnthropic {
+		return "", errors.New("API mode must be standard_chat, reasoning_chat or anthropic_messages")
 	}
 	return value, nil
 }

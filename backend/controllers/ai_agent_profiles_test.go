@@ -51,7 +51,7 @@ func TestNormalizeAIAgentReasoningEffortAllowsSafeCustomValues(t *testing.T) {
 }
 
 func TestNormalizeAIAgentAPIMode(t *testing.T) {
-	for _, value := range []string{aiAgentAPIModeStandard, aiAgentAPIModeReasoning} {
+	for _, value := range []string{aiAgentAPIModeStandard, aiAgentAPIModeReasoning, aiAgentAPIModeAnthropic} {
 		if normalized, err := normalizeAIAgentAPIMode(value); err != nil || normalized != value {
 			t.Fatalf("normalize API mode %q = %q, %v", value, normalized, err)
 		}

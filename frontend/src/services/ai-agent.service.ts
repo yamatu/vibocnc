@@ -29,7 +29,7 @@ export interface AIAgentStatus {
   configured: boolean;
   model: string;
   provider: string;
-  api_mode: 'standard_chat' | 'reasoning_chat';
+  api_mode: 'standard_chat' | 'reasoning_chat' | 'anthropic_messages';
   reasoning_effort: string;
   active_profile_id?: number;
   active_profile_name?: string;
@@ -50,7 +50,7 @@ export interface AIAgentSettings {
   base_url: string;
   has_api_key: boolean;
   model: string;
-  api_mode: 'standard_chat' | 'reasoning_chat';
+  api_mode: 'standard_chat' | 'reasoning_chat' | 'anthropic_messages';
   reasoning_effort: string;
   timeout_seconds: number;
   seo_job_concurrency: number;
@@ -110,7 +110,7 @@ export interface AIAgentProfile {
   base_url: string;
   has_api_key: boolean;
   model: string;
-  api_mode: 'standard_chat' | 'reasoning_chat';
+  api_mode: 'standard_chat' | 'reasoning_chat' | 'anthropic_messages';
   reasoning_effort: string;
   timeout_seconds: number;
   is_active: boolean;
@@ -128,7 +128,7 @@ export interface AIAgentProfileWrite {
   clear_api_key?: boolean;
   reuse_active_api_key?: boolean;
   model: string;
-  api_mode: 'standard_chat' | 'reasoning_chat';
+  api_mode: 'standard_chat' | 'reasoning_chat' | 'anthropic_messages';
   reasoning_effort: string;
   timeout_seconds: number;
 }
@@ -138,7 +138,7 @@ export interface AIAgentConnectionTestRequest {
   base_url: string;
   api_key?: string;
   model: string;
-  api_mode: 'standard_chat' | 'reasoning_chat';
+  api_mode: 'standard_chat' | 'reasoning_chat' | 'anthropic_messages';
   reasoning_effort?: string;
   timeout_seconds?: number;
 }
@@ -181,7 +181,7 @@ export interface AIAgentSettingsUpdate {
   api_key?: string;
   clear_api_key?: boolean;
   model?: string;
-  api_mode?: 'standard_chat' | 'reasoning_chat';
+  api_mode?: 'standard_chat' | 'reasoning_chat' | 'anthropic_messages';
   reasoning_effort?: string;
   timeout_seconds?: number;
   seo_job_concurrency?: number;
@@ -332,7 +332,7 @@ export interface AIAgentSEOJob {
   ai_profile_id?: number;
   ai_profile_name?: string;
   ai_model?: string;
-  ai_api_mode?: 'standard_chat' | 'reasoning_chat';
+  ai_api_mode?: 'standard_chat' | 'reasoning_chat' | 'anthropic_messages';
   total: number;
   processed: number;
   succeeded: number;

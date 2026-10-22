@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -45,6 +46,9 @@ type aiChatMessage struct {
 	// answers. OpenAI-compatible providers reject the pair if it is missing.
 	ToolCallID string `json:"tool_call_id,omitempty"`
 	Name       string `json:"name,omitempty"`
+	// anthropicContent keeps a Claude assistant turn verbatim (thinking blocks and
+	// their signatures) so a tool-use continuation can replay it as required.
+	anthropicContent []anthropic.ContentBlockParamUnion
 }
 
 type aiAction struct {
@@ -1003,6 +1007,9 @@ func requestAIAgentCompletionWithClient(ctx context.Context, setting *models.AIA
 // assistant message, including any tool calls. Reasoning models occasionally
 // answer with only reasoning_content, which the callers fall back to.
 func requestAIAgentMessage(ctx context.Context, setting *models.AIAgentSetting, apiKey string, request openAIChatRequest, client *http.Client) (aiChatMessage, error) {
+	if isAnthropicAPIMode(setting) {
+		return requestAnthropicMessage(ctx, setting, apiKey, request, client)
+	}
 	// The plain (non streamed) twin of doRequestAIAgentMessageStream: the global
 	// AI slot is taken at the leaf, so retries inside this function reuse the one
 	// slot instead of queueing behind themselves. See ai_task_limiter.go.

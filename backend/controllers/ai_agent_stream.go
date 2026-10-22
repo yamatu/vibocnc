@@ -531,6 +531,9 @@ type openAIStreamChunk struct {
 // back into the conversation loop exactly like a non-streamed message. The
 // onContent callback receives raw content fragments as they arrive.
 func requestAIAgentMessageStream(ctx context.Context, setting *models.AIAgentSetting, apiKey string, request openAIChatRequest, client *http.Client, onContent func(string)) (aiChatMessage, error) {
+	if isAnthropicAPIMode(setting) {
+		return requestAnthropicMessageStream(ctx, setting, apiKey, request, client, onContent)
+	}
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return aiChatMessage{}, err

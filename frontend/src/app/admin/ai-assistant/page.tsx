@@ -54,7 +54,7 @@ type ProfileFormState = {
   clear_api_key: boolean;
   reuse_active_api_key: boolean;
   model: string;
-  api_mode: 'standard_chat' | 'reasoning_chat';
+  api_mode: AIAgentProfile['api_mode'];
   reasoning_effort: string;
   timeout_seconds: number;
   has_api_key: boolean;
@@ -93,11 +93,16 @@ type ProviderPreset = {
   baseURL: string;
   models: string[];
   reasoningModels?: string[];
+  /** Presets that are not OpenAI-compatible force their own request mode. */
+  apiMode?: AIAgentProfile['api_mode'];
+  defaultReasoningEffort?: string;
 };
 
-// Every preset is an OpenAI-compatible chat endpoint; selecting one only
-// pre-fills the form — administrators can still type any URL or model.
+// Selecting a preset only pre-fills the form — administrators can still type
+// any URL or model. All presets are OpenAI-compatible except Claude, which uses
+// the native Anthropic Messages API.
 const providerPresets: ProviderPreset[] = [
+  { key: 'anthropic', label: 'Claude', labelZh: 'Claude (Anthropic)', baseURL: 'https://api.anthropic.com', models: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'], apiMode: 'anthropic_messages', defaultReasoningEffort: 'high' },
   { key: 'openai', label: 'OpenAI', baseURL: 'https://api.openai.com/v1', models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5', 'gpt-4.1'], reasoningModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5', 'o3'] },
   { key: 'deepseek', label: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', models: ['deepseek-chat'], reasoningModels: ['deepseek-reasoner'] },
   { key: 'moonshot', label: 'Kimi', labelZh: 'Kimi 月之暗面', baseURL: 'https://api.moonshot.cn/v1', models: ['kimi-k2-0905-preview', 'moonshot-v1-32k'] },
@@ -330,10 +335,15 @@ export default function AIAssistantSettingsPage() {
       const defaultModel = current.api_mode === 'reasoning_chat' && preset.reasoningModels?.length
         ? preset.reasoningModels[0]
         : preset.models[0];
+      const leavingNativeMode = !preset.apiMode && current.api_mode === 'anthropic_messages';
       return {
         ...current,
         base_url: preset.baseURL,
         model: keepModel ? current.model : defaultModel,
+        api_mode: preset.apiMode ?? (leavingNativeMode ? 'standard_chat' : current.api_mode),
+        reasoning_effort: preset.defaultReasoningEffort && !current.reasoning_effort.trim()
+          ? preset.defaultReasoningEffort
+          : current.reasoning_effort,
       };
     });
   };
@@ -525,7 +535,7 @@ export default function AIAssistantSettingsPage() {
             <div>
               <h1 className="text-2xl font-bold text-gray-950">{t('nav.aiAssistant', zh ? 'AI 助手' : 'AI Assistant')}</h1>
               <p className="mt-1 text-sm text-gray-600">
-                {zh ? '管理 OpenAI-compatible AI 配置、模型和推理强度。' : 'Manage OpenAI-compatible providers, models, and reasoning effort.'}
+                {zh ? '管理 OpenAI 兼容接口与 Claude 的 AI 配置、模型和推理强度。' : 'Manage OpenAI-compatible and Claude providers, models, and reasoning effort.'}
               </p>
             </div>
           </div>
@@ -622,7 +632,7 @@ export default function AIAssistantSettingsPage() {
                       })}
                     </div>
                     <p className="mt-1.5 text-xs text-gray-500">
-                      {zh ? '任何 OpenAI 兼容接口都可以接入；也可以直接手动填写 Base URL 和模型。' : 'Any OpenAI-compatible endpoint works; you can also type a base URL and model manually.'}
+                      {zh ? '任何 OpenAI 兼容接口都可以接入；Claude 使用 Anthropic 原生接口。也可以直接手动填写 Base URL 和模型。' : 'Any OpenAI-compatible endpoint works; Claude uses the native Anthropic API. You can also type a base URL and model manually.'}
                     </p>
                   </div>
                   <label className="block text-sm font-medium text-gray-700">
@@ -649,6 +659,7 @@ export default function AIAssistantSettingsPage() {
                       {([
                         ['standard_chat', zh ? '标准聊天模型' : 'Standard chat'],
                         ['reasoning_chat', zh ? '推理模型' : 'Reasoning model'],
+                        ['anthropic_messages', zh ? 'Claude 原生接口' : 'Claude (Messages API)'],
                       ] as const).map(([value, label]) => (
                         <button
                           key={value}
@@ -661,6 +672,13 @@ export default function AIAssistantSettingsPage() {
                         </button>
                       ))}
                     </div>
+                    {profileForm.api_mode === 'anthropic_messages' && (
+                      <p className="mt-1.5 text-xs text-gray-500">
+                        {zh
+                          ? 'Base URL 填 https://api.anthropic.com（或兼容 Anthropic 接口的中转地址）。推理强度：留空 = 不开启思考；none = 关闭思考；low / medium / high / xhigh / max = 开启自适应思考并使用对应强度（xhigh 仅 Opus 4.7，max 仅 Opus；Haiku 4.5 请留空）。'
+                          : 'Base URL: https://api.anthropic.com (or an Anthropic-compatible relay). Reasoning effort: blank = no thinking; none = thinking off; low / medium / high / xhigh / max = adaptive thinking at that effort (xhigh is Opus 4.7 only, max is Opus only; leave blank for Haiku 4.5).'}
+                      </p>
+                    )}
                   </fieldset>
                   <label className="block text-sm font-medium text-gray-700">
                     {zh ? '请求超时（秒）' : 'Request timeout (seconds)'}
