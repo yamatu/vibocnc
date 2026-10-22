@@ -23,6 +23,7 @@ type aiAgentSchemaColumn struct {
 func requiredAIAgentSchemaColumns() []aiAgentSchemaColumn {
 	return []aiAgentSchemaColumn{
 		{model: &models.AIAgentProfile{}, field: "APIMode", column: "api_mode", table: "ai_agent_profiles"},
+		{model: &models.AIAgentProfile{}, field: "WebSearchEnabled", column: "web_search_enabled", table: "ai_agent_profiles"},
 		{model: &models.AIAgentSetting{}, field: "ActiveProfileID", column: "active_profile_id", table: "ai_agent_settings"},
 		{model: &models.AIAgentSetting{}, field: "APIMode", column: "api_mode", table: "ai_agent_settings"},
 		{model: &models.AIAgentSetting{}, field: "MaxConcurrentJobs", column: "max_concurrent_jobs", table: "ai_agent_settings"},

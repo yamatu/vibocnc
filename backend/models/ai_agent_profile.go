@@ -15,23 +15,27 @@ type AIAgentProfile struct {
 	APIMode         string `json:"api_mode" gorm:"size:32;not null;default:'standard_chat'"`
 	ReasoningEffort string `json:"reasoning_effort" gorm:"size:32"`
 	TimeoutSeconds  int    `json:"timeout_seconds" gorm:"default:75"`
+	// WebSearchEnabled routes product web research through the DeepSeek Search
+	// API with this profile's key. Only honoured for api.deepseek.com profiles.
+	WebSearchEnabled bool `json:"web_search_enabled" gorm:"default:false"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type AIAgentProfileResponse struct {
-	ID              uint      `json:"id"`
-	Name            string    `json:"name"`
-	BaseURL         string    `json:"base_url"`
-	HasAPIKey       bool      `json:"has_api_key"`
-	Model           string    `json:"model"`
-	APIMode         string    `json:"api_mode"`
-	ReasoningEffort string    `json:"reasoning_effort"`
-	TimeoutSeconds  int       `json:"timeout_seconds"`
-	IsActive        bool      `json:"is_active"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID               uint      `json:"id"`
+	Name             string    `json:"name"`
+	BaseURL          string    `json:"base_url"`
+	HasAPIKey        bool      `json:"has_api_key"`
+	Model            string    `json:"model"`
+	APIMode          string    `json:"api_mode"`
+	ReasoningEffort  string    `json:"reasoning_effort"`
+	TimeoutSeconds   int       `json:"timeout_seconds"`
+	WebSearchEnabled bool      `json:"web_search_enabled"`
+	IsActive         bool      `json:"is_active"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 func (p *AIAgentProfile) ToResponse(activeProfileID *uint) AIAgentProfileResponse {
@@ -40,16 +44,17 @@ func (p *AIAgentProfile) ToResponse(activeProfileID *uint) AIAgentProfileRespons
 		apiMode = "standard_chat"
 	}
 	return AIAgentProfileResponse{
-		ID:              p.ID,
-		Name:            p.Name,
-		BaseURL:         p.BaseURL,
-		HasAPIKey:       p.APIKeyEnc != "",
-		Model:           p.Model,
-		APIMode:         apiMode,
-		ReasoningEffort: p.ReasoningEffort,
-		TimeoutSeconds:  p.TimeoutSeconds,
-		IsActive:        activeProfileID != nil && *activeProfileID == p.ID,
-		CreatedAt:       p.CreatedAt,
-		UpdatedAt:       p.UpdatedAt,
+		ID:               p.ID,
+		Name:             p.Name,
+		BaseURL:          p.BaseURL,
+		HasAPIKey:        p.APIKeyEnc != "",
+		Model:            p.Model,
+		APIMode:          apiMode,
+		ReasoningEffort:  p.ReasoningEffort,
+		TimeoutSeconds:   p.TimeoutSeconds,
+		WebSearchEnabled: p.WebSearchEnabled,
+		IsActive:         activeProfileID != nil && *activeProfileID == p.ID,
+		CreatedAt:        p.CreatedAt,
+		UpdatedAt:        p.UpdatedAt,
 	}
 }

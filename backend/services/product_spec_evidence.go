@@ -76,11 +76,14 @@ func EnrichEvidenceWithSpecWindows(ctx context.Context, evidence []ProductWebEvi
 			enriched = append(enriched, item)
 			continue
 		}
-		if !evidencePageIsFetchable(item) || replaced[item.URL] {
+		if (item.PageContent == "" && !evidencePageIsFetchable(item)) || replaced[item.URL] {
 			enriched = append(enriched, item)
 			continue
 		}
-		text, ok := fetchPublicPageText(ctx, item.URL, specEvidenceMaxPageBytes)
+		text, ok := item.PageContent, item.PageContent != ""
+		if !ok {
+			text, ok = fetchPublicPageText(ctx, item.URL, specEvidenceMaxPageBytes)
+		}
 		if !ok || !containsExactProductIdentifier(text, model) {
 			enriched = append(enriched, item)
 			continue

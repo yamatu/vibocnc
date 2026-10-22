@@ -36,6 +36,9 @@ type ProductWebEvidence struct {
 	// search-engine summaries so callers can require stronger evidence.
 	SourceType    string `json:"source_type,omitempty"`
 	EvidenceLevel string `json:"evidence_level,omitempty"`
+	// PageContent is the page body returned by a search provider. It lets
+	// specification research read pages the server itself cannot fetch.
+	PageContent string `json:"-"`
 }
 
 type productWebSearchCacheEntry struct {
@@ -204,6 +207,14 @@ func (manager *productWebSearchManager) search(ctx context.Context, brand, model
 	return cloneProductWebEvidence(call.results), call.err
 }
 
+// InvalidateProductWebSearchCache drops cached lookups so a change of search
+// provider takes effect immediately instead of after the cache TTL.
+func InvalidateProductWebSearchCache() {
+	defaultProductWebSearchManager.mu.Lock()
+	defaultProductWebSearchManager.cache = make(map[string]productWebSearchCacheEntry)
+	defaultProductWebSearchManager.mu.Unlock()
+}
+
 func (manager *productWebSearchManager) pruneExpiredCacheLocked(now time.Time) {
 	for key, cached := range manager.cache {
 		if !now.Before(cached.expiresAt) {
@@ -247,6 +258,14 @@ func cloneProductWebEvidence(results []ProductWebEvidence) []ProductWebEvidence 
 }
 
 func searchProductEvidenceUncached(ctx context.Context, brand, model string) ([]ProductWebEvidence, error) {
+	if apiKey, ok := deepSeekSearchKey(ctx); ok {
+		results, err := searchDeepSeekProductEvidence(ctx, apiKey, brand, model)
+		if len(results) > 0 {
+			results = append(results, deepSeekManufacturerEvidence(ctx, results, model)...)
+			return rankProductEvidence(results), nil
+		}
+		logDeepSeekSearchFailure(err)
+	}
 	endpoints := productEvidenceEndpoints(brand, model)
 
 	searchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

@@ -59,6 +59,7 @@ type ProfileFormState = {
   timeout_seconds: number;
   has_api_key: boolean;
   is_active: boolean;
+  web_search_enabled: boolean;
 };
 
 const blankGlobalForm: GlobalFormState = {
@@ -156,6 +157,7 @@ function profileFormFromProfile(profile: AIAgentProfile): ProfileFormState {
     timeout_seconds: profile.timeout_seconds || 75,
     has_api_key: profile.has_api_key,
     is_active: profile.is_active,
+    web_search_enabled: Boolean(profile.web_search_enabled),
   };
 }
 
@@ -173,6 +175,7 @@ function newProfileForm(source?: AIAgentProfile): ProfileFormState {
     timeout_seconds: source?.timeout_seconds || 75,
     has_api_key: false,
     is_active: false,
+    web_search_enabled: false,
   };
 }
 
@@ -189,6 +192,7 @@ function profileFingerprint(profile: ProfileFormState | null) {
     api_mode: profile.api_mode,
     reasoning_effort: profile.reasoning_effort,
     timeout_seconds: profile.timeout_seconds,
+    web_search_enabled: profile.web_search_enabled,
   });
 }
 
@@ -197,6 +201,16 @@ function providerHost(baseURL: string) {
     return new URL(baseURL).hostname;
   } catch {
     return baseURL;
+  }
+}
+
+// Mirrors the backend rule: the search key is only sent to the official host.
+function isDeepSeekBaseURL(baseURL: string) {
+  try {
+    const parsed = new URL(baseURL.trim());
+    return parsed.protocol === 'https:' && parsed.hostname.toLowerCase() === 'api.deepseek.com';
+  } catch {
+    return false;
   }
 }
 
@@ -418,6 +432,7 @@ export default function AIAssistantSettingsPage() {
         api_mode: profileForm.api_mode,
         reasoning_effort: profileForm.reasoning_effort.trim(),
         timeout_seconds: Number(profileForm.timeout_seconds),
+        web_search_enabled: isDeepSeekBaseURL(profileForm.base_url) && profileForm.web_search_enabled,
       };
       const saved = profileForm.id === null
         ? await AIAgentService.createProfile(payload)
@@ -651,6 +666,19 @@ export default function AIAssistantSettingsPage() {
                     {zh ? '请求超时（秒）' : 'Request timeout (seconds)'}
                     <input required min="15" max="180" type="number" value={profileForm.timeout_seconds} onChange={(event) => setProfileForm((current) => current ? { ...current, timeout_seconds: Number(event.target.value) } : current)} className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
                   </label>
+                  {isDeepSeekBaseURL(profileForm.base_url) && (
+                    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 md:col-span-2">
+                      <label className="inline-flex items-center gap-2 text-sm font-semibold text-sky-900">
+                        <input type="checkbox" checked={profileForm.web_search_enabled} onChange={(event) => setProfileForm((current) => current ? { ...current, web_search_enabled: event.target.checked } : current)} className="rounded border-gray-300 text-sky-600 focus:ring-sky-500" />
+                        {zh ? '启用 DeepSeek 联网搜索' : 'Enable DeepSeek web search'}
+                      </label>
+                      <p className="mt-1.5 text-xs leading-5 text-sky-800">
+                        {zh
+                          ? 'AI 智能优化、参数检索和自动归类的「联网检索」改用 DeepSeek 搜索接口（返回网页摘要和正文），用此配置的 Key 计费：每 1000 次成功请求 5 元，每个型号约 1～2 次。失败或无结果时自动回退到原来的公开搜索。当前启用的 AI 不是 DeepSeek 时也会用这里的 Key 搜索；需要先打开上方的 AI 助手总开关。'
+                          : 'Web research in AI optimization, spec research and auto-classification uses the DeepSeek Search API (page summaries and bodies), billed to this profile key at ¥5 per 1,000 successful requests, about 1–2 per model. Falls back to public search pages on failure or no results. Works even when the active AI is not DeepSeek; the AI assistant master switch must be on.'}
+                      </p>
+                    </div>
+                  )}
                   <label className="block text-sm font-medium text-gray-700 md:col-span-2">
                     API Key
                     <input type="password" maxLength={4096} value={profileForm.api_key} onChange={(event) => setProfileForm((current) => current ? { ...current, api_key: event.target.value, clear_api_key: false, reuse_active_api_key: false } : current)} placeholder={profileForm.has_api_key ? (zh ? '留空保留当前 Key' : 'Leave blank to keep the saved key') : 'sk-...'} autoComplete="new-password" className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-normal outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />

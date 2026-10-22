@@ -567,6 +567,7 @@ func (ac *AIAgentController) UpdateSettings(c *gin.Context) {
 		// are already waiting for a free slot.
 		setGlobalAITaskLimit(setting.MaxConcurrentJobs)
 	}
+	services.InvalidateProductWebSearchCache()
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "AI settings saved", Data: response})
 }
 

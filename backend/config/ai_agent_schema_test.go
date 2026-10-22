@@ -8,6 +8,7 @@ import (
 func TestRequiredAIAgentSchemaIncludesSEOJobProfileColumn(t *testing.T) {
 	want := map[string]bool{
 		"ai_agent_profiles.api_mode":                  false,
+		"ai_agent_profiles.web_search_enabled":        false,
 		"ai_agent_settings.active_profile_id":         false,
 		"ai_agent_settings.api_mode":                  false,
 		"ai_agent_settings.max_concurrent_jobs":       false,

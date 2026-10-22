@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fanuc-backend/config"
 	"fanuc-backend/models"
+	"fanuc-backend/services"
 	"fanuc-backend/utils"
 	"fmt"
 	"net"
@@ -46,6 +47,7 @@ type aiAgentProfileMutationRequest struct {
 	APIMode           *string `json:"api_mode"`
 	ReasoningEffort   *string `json:"reasoning_effort"`
 	TimeoutSeconds    *int    `json:"timeout_seconds"`
+	WebSearchEnabled  *bool   `json:"web_search_enabled"`
 }
 
 func isMissingAIAgentProfileIDError(err error) bool {
@@ -289,6 +291,13 @@ func applyAIAgentProfileMutation(profile *models.AIAgentProfile, req aiAgentProf
 		profile.TimeoutSeconds = 75
 	}
 
+	if req.WebSearchEnabled != nil {
+		profile.WebSearchEnabled = *req.WebSearchEnabled
+	}
+	if !isDeepSeekBaseURL(profile.BaseURL) {
+		profile.WebSearchEnabled = false
+	}
+
 	if req.ClearAPIKey {
 		profile.APIKeyEnc = ""
 	}
@@ -428,6 +437,7 @@ func (ac *AIAgentController) CreateProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to create AI profile", Error: err.Error()})
 		return
 	}
+	services.InvalidateProductWebSearchCache()
 	c.JSON(http.StatusCreated, models.APIResponse{Success: true, Message: "AI profile created", Data: profile.ToResponse(activeProfileID)})
 }
 
@@ -501,6 +511,7 @@ func (ac *AIAgentController) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to update AI profile", Error: err.Error()})
 		return
 	}
+	services.InvalidateProductWebSearchCache()
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "AI profile updated", Data: profile.ToResponse(setting.ActiveProfileID)})
 }
 
@@ -543,6 +554,7 @@ func (ac *AIAgentController) DeleteProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to delete AI profile", Error: err.Error()})
 		return
 	}
+	services.InvalidateProductWebSearchCache()
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "AI profile deleted"})
 }
 
@@ -582,6 +594,7 @@ func (ac *AIAgentController) ActivateProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to activate AI profile", Error: err.Error()})
 		return
 	}
+	services.InvalidateProductWebSearchCache()
 	response := setting.ToResponse()
 	response.ActiveProfileName = profile.Name
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "AI profile activated", Data: response})

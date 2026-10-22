@@ -114,6 +114,8 @@ export interface AIAgentProfile {
   reasoning_effort: string;
   timeout_seconds: number;
   is_active: boolean;
+  /** DeepSeek Search API powers product web research (DeepSeek profiles only). */
+  web_search_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -122,6 +124,7 @@ export interface AIAgentProfileWrite {
   name: string;
   base_url: string;
   api_key?: string;
+  web_search_enabled?: boolean;
   clear_api_key?: boolean;
   reuse_active_api_key?: boolean;
   model: string;
