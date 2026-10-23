@@ -55,6 +55,8 @@ type BulkSelectionPayload = {
   featured?: 'true' | 'false' | '';
   brand?: string;
   ai_seo_status?: Exclude<AISEOFilter, 'all'>;
+  seo_noindex?: 'true' | 'false';
+  price_status?: 'priced' | 'inquiry';
   batch_size?: number;
 };
 
@@ -71,6 +73,21 @@ type BulkProgress = {
 };
 
 type AISEOFilter = 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed';
+type IndexFilter = 'all' | 'indexed' | 'noindex';
+type PriceFilter = 'all' | 'priced' | 'inquiry';
+
+const INDEX_FILTERS: IndexFilter[] = ['all', 'indexed', 'noindex'];
+const PRICE_FILTERS: PriceFilter[] = ['all', 'priced', 'inquiry'];
+
+function indexFilterParam(filter: IndexFilter): 'true' | 'false' | undefined {
+  if (filter === 'noindex') return 'true';
+  if (filter === 'indexed') return 'false';
+  return undefined;
+}
+
+function priceFilterParam(filter: PriceFilter): 'priced' | 'inquiry' | undefined {
+  return filter === 'all' ? undefined : filter;
+}
 
 const BULK_UPDATE_BATCH_SIZE = 100;
 
@@ -89,6 +106,8 @@ function AdminProductsContent() {
   const [selectedBrand, setSelectedBrand] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [aiSEOFilter, setAISEOFilter] = useState<AISEOFilter>('all');
+  const [indexFilter, setIndexFilter] = useState<IndexFilter>('all');
+  const [priceFilter, setPriceFilter] = useState<PriceFilter>('all');
   const [sortBy, setSortBy] = useState<'created_at' | 'updated_at' | 'price' | 'name'>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -191,6 +210,8 @@ function AdminProductsContent() {
     brand: string;
     status: string;
     aiSeoStatus: AISEOFilter;
+    index: IndexFilter;
+    price: PriceFilter;
     sortBy: 'created_at' | 'updated_at' | 'price' | 'name';
     sortDir: 'asc' | 'desc';
     page: number;
@@ -203,6 +224,8 @@ function AdminProductsContent() {
     const finalBrand = updates.brand !== undefined ? updates.brand : selectedBrand;
     const finalStatus = updates.status !== undefined ? updates.status : statusFilter;
     const finalAISEOStatus = updates.aiSeoStatus !== undefined ? updates.aiSeoStatus : aiSEOFilter;
+    const finalIndex = updates.index !== undefined ? updates.index : indexFilter;
+    const finalPrice = updates.price !== undefined ? updates.price : priceFilter;
     const finalSortBy = updates.sortBy !== undefined ? updates.sortBy : sortBy;
     const finalSortDir = updates.sortDir !== undefined ? updates.sortDir : sortDir;
     const finalPage = updates.page !== undefined ? updates.page : currentPage;
@@ -213,6 +236,8 @@ function AdminProductsContent() {
     if (finalBrand) params.set('brand', finalBrand);
     if (finalStatus && finalStatus !== 'all') params.set('status', finalStatus);
     if (finalAISEOStatus !== 'all') params.set('aiSeoStatus', finalAISEOStatus);
+    if (finalIndex !== 'all') params.set('index', finalIndex);
+    if (finalPrice !== 'all') params.set('price', finalPrice);
     if (finalSortBy !== 'created_at') params.set('sortBy', finalSortBy);
     if (finalSortDir !== 'desc') params.set('sortDir', finalSortDir);
     if (finalPage && finalPage > 1) params.set('page', String(finalPage));
@@ -233,6 +258,8 @@ function AdminProductsContent() {
     if (selectedBrand) params.set('brand', selectedBrand);
     if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
     if (aiSEOFilter !== 'all') params.set('aiSeoStatus', aiSEOFilter);
+    if (indexFilter !== 'all') params.set('index', indexFilter);
+    if (priceFilter !== 'all') params.set('price', priceFilter);
     if (sortBy !== 'created_at') params.set('sortBy', sortBy);
     if (sortDir !== 'desc') params.set('sortDir', sortDir);
     if (currentPage && currentPage > 1) params.set('page', String(currentPage));
@@ -249,6 +276,8 @@ function AdminProductsContent() {
     const b = searchParams.get('brand') || '';
     const st = (searchParams.get('status') as 'all' | 'active' | 'inactive' | 'featured') || 'all';
     const seo = (searchParams.get('aiSeoStatus') as AISEOFilter) || 'all';
+    const idx = (searchParams.get('index') as IndexFilter) || 'all';
+    const pr = (searchParams.get('price') as PriceFilter) || 'all';
     const sb = (searchParams.get('sortBy') as 'created_at' | 'updated_at' | 'price' | 'name') || 'created_at';
     const sd = (searchParams.get('sortDir') as 'asc' | 'desc') || 'desc';
     const p = parseInt(searchParams.get('page') || '1', 10);
@@ -259,6 +288,8 @@ function AdminProductsContent() {
     setSelectedBrand(b);
     setStatusFilter(st);
     setAISEOFilter(['all', 'optimized', 'not_optimized', 'running', 'failed'].includes(seo) ? seo : 'all');
+    setIndexFilter(INDEX_FILTERS.includes(idx) ? idx : 'all');
+    setPriceFilter(PRICE_FILTERS.includes(pr) ? pr : 'all');
     setSortBy(['created_at', 'updated_at', 'price', 'name'].includes(sb) ? sb : 'created_at');
     setSortDir(sd === 'asc' ? 'asc' : 'desc');
     setCurrentPage(Number.isFinite(p) && p > 0 ? p : 1);
@@ -273,6 +304,8 @@ function AdminProductsContent() {
       brand: selectedBrand,
       status: statusFilter,
       aiSEOStatus: aiSEOFilter,
+      index: indexFilter,
+      price: priceFilter,
       sortBy,
       sortDir,
       page: currentPage,
@@ -286,11 +319,19 @@ function AdminProductsContent() {
       is_active: statusFilter === 'active' ? 'true' : statusFilter === 'inactive' ? 'false' : undefined,
       is_featured: statusFilter === 'featured' ? 'true' : undefined,
       ai_seo_status: aiSEOFilter === 'all' ? undefined : aiSEOFilter,
+      seo_noindex: indexFilterParam(indexFilter),
+      price_status: priceFilterParam(priceFilter),
       sort_by: sortBy,
       sort_dir: sortDir,
       page: currentPage,
       page_size: pageSize
     }),
+  });
+
+  const { data: brandOptions = [] } = useQuery({
+    queryKey: ['admin', 'products', 'brand-options'],
+    queryFn: () => ProductService.listProductImageAutofillBrands(),
+    staleTime: 10 * 60 * 1000,
   });
 
   const products = productsData?.data || []; // Use empty array if no data
@@ -480,6 +521,8 @@ function AdminProductsContent() {
     include_descendants: Boolean(selectedCategory),
     brand: selectedBrand || undefined,
     ai_seo_status: aiSEOFilter === 'all' ? undefined : aiSEOFilter,
+    seo_noindex: indexFilterParam(indexFilter),
+    price_status: priceFilterParam(priceFilter),
     status: (statusFilter === 'all' || statusFilter === 'featured') ? 'all' : (statusFilter as 'active' | 'inactive'),
     featured: (statusFilter === 'featured') ? 'true' : undefined,
   });
@@ -696,6 +739,22 @@ function AdminProductsContent() {
     updateURL({ aiSeoStatus: value, page: 1 });
   };
 
+  const handleIndexFilterChange = (value: IndexFilter) => {
+    setIndexFilter(value);
+    setCurrentPage(1);
+    setSelectedIds([]);
+    setSelectAllResults(false);
+    updateURL({ index: value, page: 1 });
+  };
+
+  const handlePriceFilterChange = (value: PriceFilter) => {
+    setPriceFilter(value);
+    setCurrentPage(1);
+    setSelectedIds([]);
+    setSelectAllResults(false);
+    updateURL({ price: value, page: 1 });
+  };
+
   const handleSortChange = (value: string) => {
     const [nextSortByRaw, nextSortDirRaw] = value.split(':');
     const nextSortBy = (['created_at', 'updated_at', 'price', 'name'].includes(nextSortByRaw)
@@ -728,10 +787,12 @@ function AdminProductsContent() {
     setSelectedBrand('');
     setStatusFilter('all');
     setAISEOFilter('all');
+    setIndexFilter('all');
+    setPriceFilter('all');
     setSortBy('created_at');
     setSortDir('desc');
     setCurrentPage(1);
-    updateURL({ search: '', category: '', brand: '', status: 'all', aiSeoStatus: 'all', sortBy: 'created_at', sortDir: 'desc', page: 1 });
+    updateURL({ search: '', category: '', brand: '', status: 'all', aiSeoStatus: 'all', index: 'all', price: 'all', sortBy: 'created_at', sortDir: 'desc', page: 1 });
   };
 
   const toggleSelectAllOnPage = (checked: boolean, current: Product[]) => {
@@ -1075,6 +1136,8 @@ function AdminProductsContent() {
     status: (statusFilter === 'active' || statusFilter === 'inactive') ? statusFilter : 'all',
     featured: statusFilter === 'featured' ? 'true' : undefined,
     ai_seo_status: aiSEOFilter === 'all' ? undefined : aiSEOFilter,
+    seo_noindex: indexFilterParam(indexFilter),
+    price_status: priceFilterParam(priceFilter),
   } as const;
 
   return (
@@ -1861,7 +1924,7 @@ function AdminProductsContent() {
 
         {/* Filters */}
         <div className="bg-white shadow rounded-lg p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {/* Search */}
             <div>
                 <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
@@ -1913,10 +1976,14 @@ function AdminProductsContent() {
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               >
 				<option value="">{locale === 'zh' ? '全部品牌' : 'All Brands'}</option>
-				<option value="fanuc">FANUC</option>
-				<option value="mitsubishi">Mitsubishi</option>
-				<option value="siemens">Siemens</option>
-				<option value="abb">ABB</option>
+                {selectedBrand && !brandOptions.some((b) => b.name.toLowerCase() === selectedBrand.toLowerCase()) && (
+                  <option value={selectedBrand}>{selectedBrand}</option>
+                )}
+                {brandOptions.map((b) => (
+                  <option key={b.name} value={b.name}>
+                    {b.name} ({b.count.toLocaleString()})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1953,6 +2020,38 @@ function AdminProductsContent() {
                 <option value="optimized">{locale === 'zh' ? 'AI 已优化' : 'AI optimized'}</option>
                 <option value="running">{locale === 'zh' ? 'AI 处理中' : 'AI processing'}</option>
                 <option value="failed">{locale === 'zh' ? 'AI 优化失败' : 'AI failed'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="index-status" className="block text-sm font-medium text-gray-700 mb-1">
+                {locale === 'zh' ? '收录状态' : 'Indexing'}
+              </label>
+              <select
+                id="index-status"
+                value={indexFilter}
+                onChange={(e) => handleIndexFilterChange(e.target.value as IndexFilter)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">{locale === 'zh' ? '全部收录状态' : 'All indexing states'}</option>
+                <option value="indexed">{locale === 'zh' ? '已开放收录' : 'Indexable'}</option>
+                <option value="noindex">{locale === 'zh' ? '暂不收录（noindex）' : 'Held (noindex)'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="price-status" className="block text-sm font-medium text-gray-700 mb-1">
+                {locale === 'zh' ? '价格' : 'Price'}
+              </label>
+              <select
+                id="price-status"
+                value={priceFilter}
+                onChange={(e) => handlePriceFilterChange(e.target.value as PriceFilter)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">{locale === 'zh' ? '全部价格' : 'All prices'}</option>
+                <option value="priced">{locale === 'zh' ? '有价格' : 'Priced'}</option>
+                <option value="inquiry">{locale === 'zh' ? '询价（价格为 0）' : 'Inquiry (price 0)'}</option>
               </select>
             </div>
 
@@ -1999,7 +2098,7 @@ function AdminProductsContent() {
               {t(
                 'products.page.tableTitle',
                 locale === 'zh' ? '产品（{count}）' : 'Products ({count})',
-                { count: isLoading ? '...' : filteredProducts.length }
+                { count: isLoading ? '...' : totalProducts.toLocaleString() }
               )}
             </h3>
           </div>

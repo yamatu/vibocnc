@@ -15,6 +15,8 @@ export interface AIListingJobFilters {
   status?: 'active' | 'inactive' | 'all';
   featured?: 'true' | 'false';
   ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed';
+  seo_noindex?: 'true' | 'false';
+  price_status?: 'priced' | 'inquiry';
 }
 
 interface AIListingJobModalProps {

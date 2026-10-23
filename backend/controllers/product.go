@@ -225,6 +225,8 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	isActive := c.Query("is_active")
 	isFeatured := c.Query("is_featured")
 	aiSEOStatus := strings.TrimSpace(c.Query("ai_seo_status"))
+	seoNoIndex := strings.TrimSpace(c.Query("seo_noindex"))
+	priceStatus := strings.TrimSpace(c.Query("price_status"))
 	sortBy := strings.TrimSpace(strings.ToLower(c.Query("sort_by")))
 	sortDir := strings.TrimSpace(strings.ToLower(c.Query("sort_dir")))
 	if sortDir != "asc" {
@@ -294,6 +296,8 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	case "not_optimized":
 		query = query.Where("ai_seo_status IS NULL OR ai_seo_status = ''")
 	}
+
+	query = applyIndexingAndPriceFilters(query, seoNoIndex, priceStatus)
 
 	orderColumn := "id"
 	if isPublic && categoryID != "" {

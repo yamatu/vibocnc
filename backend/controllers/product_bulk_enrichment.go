@@ -24,6 +24,8 @@ type bulkProductScopeReq struct {
 	Featured           string   `json:"featured"`
 	Brand              string   `json:"brand"`
 	AISEOStatus        string   `json:"ai_seo_status"`
+	SEONoIndex         string   `json:"seo_noindex"`  // "true" | "false" | ""
+	PriceStatus        string   `json:"price_status"` // "priced" | "inquiry" | ""
 	BatchSize          int      `json:"batch_size"`
 }
 
@@ -65,7 +67,25 @@ func buildBulkProductSelector(db *gorm.DB, req bulkProductScopeReq) *gorm.DB {
 	case "not_optimized":
 		selector = selector.Where("ai_seo_status IS NULL OR ai_seo_status = ''")
 	}
-	return selector
+	return applyIndexingAndPriceFilters(selector, req.SEONoIndex, req.PriceStatus)
+}
+
+// applyIndexingAndPriceFilters narrows admin product queries by search-indexing
+// state (seo_noindex "true"/"false") and price state ("priced"/"inquiry").
+func applyIndexingAndPriceFilters(query *gorm.DB, seoNoIndex, priceStatus string) *gorm.DB {
+	switch strings.TrimSpace(seoNoIndex) {
+	case "true":
+		query = query.Where("seo_noindex = ?", true)
+	case "false":
+		query = query.Where("seo_noindex = ?", false)
+	}
+	switch strings.TrimSpace(priceStatus) {
+	case "priced":
+		query = query.Where("price > ?", 0)
+	case "inquiry":
+		query = query.Where("price <= ?", 0)
+	}
+	return query
 }
 
 func ensureProductFAQ(db *gorm.DB, productID uint, question string, answer string, sortOrder int) error {

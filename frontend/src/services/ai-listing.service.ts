@@ -126,6 +126,8 @@ export interface AIListingJobOptions {
   status?: 'active' | 'inactive' | 'all';
   featured?: 'true' | 'false';
   ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed';
+  seo_noindex?: 'true' | 'false';
+  price_status?: 'priced' | 'inquiry';
   failed_only?: boolean;
   /** Rewrite even listings that already pass the quality check. */
   force?: boolean;

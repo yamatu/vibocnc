@@ -17,6 +17,8 @@ export interface ProductFilters {
   is_active?: string;
   is_featured?: string;
   ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed';
+  seo_noindex?: 'true' | 'false';
+  price_status?: 'priced' | 'inquiry';
   sort_by?: 'created_at' | 'updated_at' | 'price' | 'name';
   sort_dir?: 'asc' | 'desc';
 }
@@ -910,6 +912,8 @@ export class ProductService {
     featured?: 'true' | 'false' | '';
     brand?: string;
     ai_seo_status?: 'optimized' | 'not_optimized' | 'running' | 'failed';
+    seo_noindex?: 'true' | 'false';
+    price_status?: 'priced' | 'inquiry';
     batch_size?: number;
   }): Promise<BulkSelectionIdsResult> {
     const response = await apiClient.post<APIResponse<BulkSelectionIdsResult>>('/admin/products/selection-ids', payload);

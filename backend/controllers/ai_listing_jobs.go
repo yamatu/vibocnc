@@ -32,6 +32,8 @@ type aiListingJobRequest struct {
 	Status             string `json:"status"`
 	Featured           string `json:"featured"`
 	AISEOStatus        string `json:"ai_seo_status"`
+	SEONoIndex         string `json:"seo_noindex"`
+	PriceStatus        string `json:"price_status"`
 	FailedOnly         bool   `json:"failed_only"`
 	Force              bool   `json:"force"`
 	CreateCategories   *bool  `json:"create_categories"`
@@ -146,8 +148,9 @@ func findListingJobCandidates(db *gorm.DB, req aiListingJobRequest) ([]aiSEOProd
 		case "failed":
 			query = query.Where("products.ai_seo_status = ?", "failed")
 		}
+		query = applyIndexingAndPriceFilters(query, req.SEONoIndex, req.PriceStatus)
 	}
-	pendingIDs := db.Model(&models.AIAgentSEOJobItem{}).Select("product_id").Where("status IN ?", []string{"queued", "running"})
+	pendingIDs :=db.Model(&models.AIAgentSEOJobItem{}).Select("product_id").Where("status IN ?", []string{"queued", "running"})
 	limit := req.Limit
 	if limit == 0 {
 		limit = -1

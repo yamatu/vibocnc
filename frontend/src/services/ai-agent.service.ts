@@ -383,6 +383,8 @@ export interface AIAgentCategoryOptimizationOptions {
   featured?: 'true' | 'false' | 'all';
   include_inactive?: boolean;
   ai_seo_status?: 'all' | 'optimized' | 'not_optimized' | 'running' | 'failed';
+  seo_noindex?: 'true' | 'false';
+  price_status?: 'priced' | 'inquiry';
   use_web_search?: boolean;
   create_missing_categories?: boolean;
   activate_resolved?: boolean;
