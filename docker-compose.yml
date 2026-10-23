@@ -97,6 +97,10 @@ services:
       # FULLTEXT index from backend/migrations/20260910_add_product_search_fulltext.sql)
       PRODUCT_SEARCH_MODE: ${PRODUCT_SEARCH_MODE:-like}
 
+      # The startup legacy brand/domain sanitizer scans every product text column
+      # (~120 full table scans). Set true on large catalogues that are already clean.
+      DISABLE_LEGACY_BRAND_SANITIZE: ${DISABLE_LEGACY_BRAND_SANITIZE:-false}
+
       # Admin AI assistant tool calling. On by default: the assistant inspects
       # the catalogue with read-only tools instead of a pre-guessed context
       # blob. A provider that rejects the tools field is downgraded automatically;
