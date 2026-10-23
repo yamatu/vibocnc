@@ -671,6 +671,7 @@ export class ProductService {
     skus?: string[];
     is_active?: boolean;
     is_featured?: boolean;
+    seo_noindex?: boolean;
     // optional commerce fields (omit to leave the column untouched)
     warranty_period?: string;
     lead_time?: string;

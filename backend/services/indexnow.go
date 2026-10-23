@@ -427,7 +427,7 @@ func SubmitProductURLBestEffort(ctx context.Context, db *gorm.DB, sku string) {
 		return
 	}
 	var product models.Product
-	if err := db.Preload("Translations").Where("sku = ?", sku).First(&product).Error; err != nil {
+	if err := db.Preload("Translations").Where("sku = ?", sku).First(&product).Error; err != nil || product.SEONoIndex {
 		return
 	}
 	result, err := service.SubmitURLs(ctx, BuildProductIndexNowURLs(setting.SiteURL, product))
@@ -459,7 +459,7 @@ func SubmitProductBatchURLsBestEffort(ctx context.Context, db *gorm.DB, productI
 		return
 	}
 	var products []models.Product
-	if err := db.Preload("Translations").Where("id IN ? AND is_active = ?", productIDs, true).Find(&products).Error; err != nil || len(products) == 0 {
+	if err := db.Preload("Translations").Where("id IN ? AND is_active = ? AND seo_noindex = ?", productIDs, true, false).Find(&products).Error; err != nil || len(products) == 0 {
 		return
 	}
 	urls := make([]string, 0, minInt(len(products)*2+2, maxIndexNowURLsPerRequest))

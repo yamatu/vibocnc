@@ -852,6 +852,7 @@ func processAIAgentSEOItem(ctx context.Context, setting *models.AIAgentSetting, 
 			"ai_seo_optimized_at":        &now,
 			"ai_seo_optimization_job_id": jobID,
 			"last_optimized_at":          &now,
+			"seo_noindex":                false,
 		}
 		if strings.TrimSpace(product.Brand) != "" && strings.TrimSpace(product.Brand) != originalBrand {
 			updates["brand"] = product.Brand

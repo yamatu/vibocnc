@@ -314,13 +314,15 @@ func CategoryPathMatchScore(path string, inference ProductCategoryInference) int
 // taxonomyNormalize converts display names, slugs and paths into comparable
 // words. It handles the punctuation variants commonly found in spreadsheet
 // exports (ASCII hyphen, en/em dash, slash, ampersand and full-width forms).
+var taxonomyPunctuationReplacer = strings.NewReplacer(
+	"–", " ", "—", " ", "‑", " ", "－", " ",
+	"/", " ", "&", " ", "_", " ", "-", " ",
+	"(", " ", ")", " ", ",", " ", ".", " ", ":", " ",
+)
+
 func taxonomyNormalize(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.NewReplacer(
-		"–", " ", "—", " ", "‑", " ", "－", " ",
-		"/", " ", "&", " ", "_", " ", "-", " ",
-		"(", " ", ")", " ", ",", " ", ".", " ", ":", " ",
-	).Replace(value)
+	value = taxonomyPunctuationReplacer.Replace(value)
 	return strings.Join(strings.Fields(value), " ")
 }
 
@@ -740,10 +742,15 @@ func NormalizeProductModel(model string) string {
 	return model
 }
 
+var (
+	brandKeyPunctuationReplacer = strings.NewReplacer("–", "-", "—", "-", "‑", "-", "＆", "&", ".", "", ",", "")
+	brandKeySeparatorReplacer   = strings.NewReplacer(" ", "", "-", "", "_", "", "/", "")
+)
+
 func NormalizeBrandKey(brand string) string {
 	key := strings.ToLower(strings.TrimSpace(brand))
-	key = strings.NewReplacer("–", "-", "—", "-", "‑", "-", "＆", "&", ".", "", ",", "").Replace(key)
-	key = strings.NewReplacer(" ", "", "-", "", "_", "", "/", "").Replace(key)
+	key = brandKeyPunctuationReplacer.Replace(key)
+	key = brandKeySeparatorReplacer.Replace(key)
 	switch key {
 	case "", "unknown", "unk", "n/a", "na", "none", "null", "未识别", "未知":
 		return ""

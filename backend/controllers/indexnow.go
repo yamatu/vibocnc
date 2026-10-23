@@ -214,9 +214,9 @@ func (ic *IndexNowController) GetProductStatus(c *gin.Context) {
 	var submittedProducts int64
 	var unsubmittedProducts int64
 
-	db.Model(&models.Product{}).Where("is_active = ?", true).Count(&totalProducts)
-	db.Model(&models.Product{}).Where("is_active = ? AND index_now_last_submitted_at IS NOT NULL", true).Count(&submittedProducts)
-	db.Model(&models.Product{}).Where("is_active = ? AND index_now_last_submitted_at IS NULL", true).Count(&unsubmittedProducts)
+	db.Model(&models.Product{}).Where("is_active = ? AND seo_noindex = ?", true, false).Count(&totalProducts)
+	db.Model(&models.Product{}).Where("is_active = ? AND seo_noindex = ? AND index_now_last_submitted_at IS NOT NULL", true, false).Count(&submittedProducts)
+	db.Model(&models.Product{}).Where("is_active = ? AND seo_noindex = ? AND index_now_last_submitted_at IS NULL", true, false).Count(&unsubmittedProducts)
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -284,7 +284,7 @@ func (ic *IndexNowController) SubmitProducts(c *gin.Context) {
 
 		query := db.Model(&models.Product{}).
 			Select("id", "sku").
-			Where("is_active = ? AND id > ?", true, lastID)
+			Where("is_active = ? AND seo_noindex = ? AND id > ?", true, false, lastID)
 
 		if mode == "unsubmitted" {
 			query = query.Where("index_now_last_submitted_at IS NULL")
@@ -401,12 +401,12 @@ func (ic *IndexNowController) SubmitSampleProduct(c *gin.Context) {
 
 	var product models.Product
 	err := db.Select("id", "sku").
-		Where("is_active = ? AND index_now_last_submitted_at IS NULL", true).
+		Where("is_active = ? AND seo_noindex = ? AND index_now_last_submitted_at IS NULL", true, false).
 		Order("id ASC").
 		First(&product).Error
 	if err != nil {
 		err = db.Select("id", "sku").
-			Where("is_active = ?", true).
+			Where("is_active = ? AND seo_noindex = ?", true, false).
 			Order("id ASC").
 			First(&product).Error
 	}

@@ -746,6 +746,7 @@ type BulkUpdateReq struct {
 	SKUs       []string `json:"skus"`
 	IsActive   *bool    `json:"is_active"`
 	IsFeatured *bool    `json:"is_featured"`
+	SEONoIndex *bool    `json:"seo_noindex"`
 	// Optional filters to select all matching records
 	Search             string `json:"search"`
 	CategoryID         string `json:"category_id"`
@@ -895,6 +896,9 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	}
 	if req.IsFeatured != nil {
 		updates["is_featured"] = *req.IsFeatured
+	}
+	if req.SEONoIndex != nil {
+		updates["seo_noindex"] = *req.SEONoIndex
 	}
 	commerceFields := req.commerceBulkFields()
 	if len(updates) == 0 && len(commerceFields) == 0 {

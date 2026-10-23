@@ -49,7 +49,7 @@ func parseSitemapPagination(c *gin.Context) (page int, pageSize int, ok bool) {
 }
 
 // GetProductSitemapEntries returns only the fields the XML sitemaps need for
-// every active product. Ordering by id keeps shard membership stable as new
+// every active, indexable product. Ordering by id keeps shard membership stable as new
 // products are appended.
 // GET /api/v1/public/products/sitemap?page=1&page_size=1000
 func (pc *ProductController) GetProductSitemapEntries(c *gin.Context) {
@@ -61,7 +61,7 @@ func (pc *ProductController) GetProductSitemapEntries(c *gin.Context) {
 
 	db := config.GetDB()
 	var total int64
-	if err := db.Model(&models.Product{}).Where("is_active = ?", true).Count(&total).Error; err != nil {
+	if err := db.Model(&models.Product{}).Where("is_active = ? AND seo_noindex = ?", true, false).Count(&total).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Database error", Error: err.Error()})
 		return
 	}
@@ -75,7 +75,7 @@ func (pc *ProductController) GetProductSitemapEntries(c *gin.Context) {
 	}
 	if err := db.Model(&models.Product{}).
 		Select("id, sku, updated_at, stock_quantity, is_featured").
-		Where("is_active = ?", true).
+		Where("is_active = ? AND seo_noindex = ?", true, false).
 		Order("id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).

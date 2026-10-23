@@ -171,6 +171,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     const socialTitle = withSiteName(title);
     const semanticCategory = inferProductTypeLabel(product);
     const semanticKeywords = buildProductSeoKeywords(product);
+    const indexable = hasRequestedTranslation && !product.seo_noindex;
 
     return {
       title,
@@ -180,10 +181,10 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
         : (metaKeywords || semanticKeywords),
       category: semanticCategory,
       robots: {
-        index: hasRequestedTranslation,
+        index: indexable,
         follow: true,
         googleBot: {
-          index: hasRequestedTranslation,
+          index: indexable,
           follow: true,
           'max-image-preview': 'large',
           'max-snippet': -1,

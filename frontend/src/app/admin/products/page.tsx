@@ -875,7 +875,11 @@ function AdminProductsContent() {
     void runBulkFlagUpdate('is_featured', value);
   };
 
-  const runBulkFlagUpdate = async (field: 'is_active' | 'is_featured', value: boolean) => {
+  const bulkSetNoIndex = (value: boolean) => {
+    void runBulkFlagUpdate('seo_noindex', value);
+  };
+
+  const runBulkFlagUpdate = async (field: 'is_active' | 'is_featured' | 'seo_noindex', value: boolean) => {
     if (!selectAllResults && selectedIds.length === 0) {
       toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
       return;
@@ -1551,6 +1555,24 @@ function AdminProductsContent() {
               </button>
 
               <button
+                onClick={() => bulkSetNoIndex(false)}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={(bulkUpdateMutation.isPending || bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running') || (!selectAllResults && selectedIds.length === 0)}
+                title={locale === 'zh' ? '允许搜索引擎收录：进入 sitemap、提交 IndexNow、页面不再输出 noindex' : 'Allow search indexing: include in sitemap and IndexNow, drop the noindex tag'}
+              >
+                {locale === 'zh' ? '允许收录' : 'Allow Indexing'}
+              </button>
+
+              <button
+                onClick={() => bulkSetNoIndex(true)}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-stone-600 hover:bg-stone-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={(bulkUpdateMutation.isPending || bulkUpdateProgress.status === 'preparing' || bulkUpdateProgress.status === 'running') || (!selectAllResults && selectedIds.length === 0)}
+                title={locale === 'zh' ? '暂不收录：页面输出 noindex，并从 sitemap 和 IndexNow 中排除' : 'Hold from indexing: noindex tag, excluded from sitemap and IndexNow'}
+              >
+                {locale === 'zh' ? '暂不收录' : 'Hold Indexing'}
+              </button>
+
+              <button
                 type="button"
                 onClick={() => setShowCommerceFill((prev) => !prev)}
                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-teal-700 hover:bg-teal-800 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2090,6 +2112,11 @@ function AdminProductsContent() {
                         {product.is_featured && (
                           <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                             {t('products.status.featured', locale === 'zh' ? '推荐' : 'Featured')}
+                          </span>
+                        )}
+                        {product.seo_noindex && (
+                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-stone-100 text-stone-700">
+                            {locale === 'zh' ? '暂不收录' : 'Noindex'}
                           </span>
                         )}
                       </div>

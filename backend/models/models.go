@@ -24,7 +24,7 @@ type Category struct {
 
 // Product represents the main product entity with enhanced SEO fields
 type Product struct {
-	ID               uint     `json:"id" gorm:"primaryKey;index:idx_products_active_id,priority:2"`
+	ID               uint     `json:"id" gorm:"primaryKey;index:idx_products_active_id,priority:2;index:idx_products_active_noindex_id,priority:3"`
 	SKU              string   `json:"sku" gorm:"size:100;uniqueIndex;not null"`
 	Name             string   `json:"name" gorm:"size:255;not null"`
 	Slug             string   `json:"slug" gorm:"size:255;uniqueIndex;not null"`
@@ -45,7 +45,7 @@ type Product struct {
 	// Composite indexes below back the public catalogue query shapes
 	// (filter on is_active plus category/featured, ordered by id/created_at/price).
 	// Without them MySQL filesorts the whole table for the first page.
-	IsActive        bool   `json:"is_active" gorm:"default:true;index;index:idx_products_active_id,priority:1;index:idx_products_category_active,priority:2;index:idx_products_active_created,priority:1;index:idx_products_featured_active,priority:2;index:idx_products_active_price,priority:1"`
+	IsActive        bool   `json:"is_active" gorm:"default:true;index;index:idx_products_active_id,priority:1;index:idx_products_category_active,priority:2;index:idx_products_active_created,priority:1;index:idx_products_featured_active,priority:2;index:idx_products_active_price,priority:1;index:idx_products_active_noindex_id,priority:1"`
 	IsFeatured      bool   `json:"is_featured" gorm:"default:false;index;index:idx_products_featured_active,priority:1"`
 	MetaTitle       string `json:"meta_title" gorm:"size:255"`
 	MetaDescription string `json:"meta_description" gorm:"type:text"`
@@ -53,8 +53,10 @@ type Product struct {
 	DisableAutoSEO  bool   `json:"disable_auto_seo" gorm:"default:false;index"`
 	// PriceLocked exempts a product from market price suggestions. The
 	// administrator sets it when a price is contractual or manually curated.
-	PriceLocked bool   `json:"price_locked" gorm:"default:false;index"`
-	ImageURLs   string `json:"image_urls" gorm:"type:json"`
+	PriceLocked bool `json:"price_locked" gorm:"default:false;index"`
+	// SEONoIndex keeps a public product out of robots indexing, sitemaps and IndexNow.
+	SEONoIndex bool   `json:"seo_noindex" gorm:"column:seo_noindex;default:false;index:idx_products_active_noindex_id,priority:2"`
+	ImageURLs  string `json:"image_urls" gorm:"type:json"`
 
 	// Enhanced fields for fanucworld.com compatibility
 	WarrantyPeriod          string     `json:"warranty_period" gorm:"size:50;default:'12 months'"`
