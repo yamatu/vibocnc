@@ -150,7 +150,7 @@ func findListingJobCandidates(db *gorm.DB, req aiListingJobRequest) ([]aiSEOProd
 		}
 		query = applyIndexingAndPriceFilters(query, req.SEONoIndex, req.PriceStatus)
 	}
-	pendingIDs :=db.Model(&models.AIAgentSEOJobItem{}).Select("product_id").Where("status IN ?", []string{"queued", "running"})
+	pendingIDs := db.Model(&models.AIAgentSEOJobItem{}).Select("product_id").Where("status IN ?", []string{"queued", "running"})
 	limit := req.Limit
 	if limit == 0 {
 		limit = -1
