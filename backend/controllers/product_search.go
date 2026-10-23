@@ -3,6 +3,7 @@ package controllers
 import (
 	"os"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"gorm.io/gorm"
@@ -50,34 +51,27 @@ func productSearchLikeFilter(search string) (string, []interface{}) {
 }
 
 // buildBooleanFulltextQuery converts a user query into a MySQL BOOLEAN MODE
-// expression. Each term is required (+) and prefix-matched (*) so typing a
-// partial part number still finds products.
+// expression. The input is split on the same delimiters InnoDB's tokenizer uses
+// (anything but letters, digits and '_'), so "A06B-6079" becomes the indexed
+// words "+A06B* +6079*". Every term is required and prefix-matched. Splitting on
+// non-word characters also strips every boolean operator from user input.
 //
-// It returns "" when any term is too short for the FULLTEXT index, signalling
-// that the caller must fall back to LIKE.
+// Words shorter than the index minimum are not indexed and are skipped; the
+// exact-identifier branches still match a full SKU. It returns "" only when no
+// indexable word remains, signalling that the caller must fall back to LIKE.
 func buildBooleanFulltextQuery(search string) string {
-	// Boolean operators must not be interpreted when they come from user input.
-	const booleanOperators = `+-<>()~*"@`
-
-	terms := make([]string, 0, 4)
-	for _, field := range strings.Fields(search) {
-		cleaned := strings.Map(func(r rune) rune {
-			if strings.ContainsRune(booleanOperators, r) {
-				return -1
-			}
-			return r
-		}, field)
-		if cleaned == "" {
+	words := strings.FieldsFunc(search, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+	})
+	terms := make([]string, 0, len(words))
+	seen := make(map[string]bool, len(words))
+	for _, word := range words {
+		key := strings.ToLower(word)
+		if utf8.RuneCountInString(word) < fulltextMinTokenRunes || seen[key] {
 			continue
 		}
-		if utf8.RuneCountInString(cleaned) < fulltextMinTokenRunes {
-			// Not indexed by InnoDB's tokenizer; LIKE is the only correct answer.
-			return ""
-		}
-		terms = append(terms, "+"+cleaned+"*")
-	}
-	if len(terms) == 0 {
-		return ""
+		seen[key] = true
+		terms = append(terms, "+"+word+"*")
 	}
 	return strings.Join(terms, " ")
 }
@@ -93,11 +87,16 @@ func applyProductSearchFilter(query *gorm.DB, search string) *gorm.DB {
 
 	if productSearchMode() == productSearchModeFulltext {
 		if expr := buildBooleanFulltextQuery(search); expr != "" {
-			// MATCH uses the FULLTEXT index. The OR exact-equality branches keep
-			// authoritative identifiers (SKU / part number) findable even when
-			// the tokenizer splits or drops them.
+			// The exact-equality branches keep authoritative identifiers findable
+			// even when the tokenizer splits or drops them. They are UNIONed in a
+			// derived table: OR-ing them with MATCH makes MySQL scan every row.
 			return query.Where(
-				"MATCH(sku, name, part_number, model) AGAINST (? IN BOOLEAN MODE) OR sku = ? OR part_number = ? OR model = ?",
+				"id IN (SELECT id FROM ("+
+					"SELECT id FROM products WHERE MATCH(sku, name, part_number, model) AGAINST (? IN BOOLEAN MODE)"+
+					" UNION SELECT id FROM products WHERE sku = ?"+
+					" UNION SELECT id FROM products WHERE part_number = ?"+
+					" UNION SELECT id FROM products WHERE model = ?"+
+					") AS product_search_ids)",
 				expr, search, search, search,
 			)
 		}

@@ -43,10 +43,12 @@ func TestBuildBooleanFulltextQuery(t *testing.T) {
 		want  string
 	}{
 		{"prefix per term", "fanuc servo", "+fanuc* +servo*"},
-		{"part number with dash", "A06B-6079", "+A06B6079*"},
+		{"part number splits like the tokenizer", "A06B-6079-H105", "+A06B* +6079* +H105*"},
+		{"slash and dot delimiters", "6ES7 214/1AG40.0XB0", "+6ES7* +214* +1AG40* +0XB0*"},
 		{"strips boolean operators", "+fanuc -broken*", "+fanuc* +broken*"},
 		{"too short falls back", "ab", ""},
-		{"one short term falls back", "fanuc ab", ""},
+		{"short words are skipped", "fanuc ab", "+fanuc*"},
+		{"duplicate words collapse", "servo SERVO", "+servo*"},
 		{"only operators", "+++", ""},
 		{"empty", "   ", ""},
 	}
