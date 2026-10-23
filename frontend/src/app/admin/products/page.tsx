@@ -89,7 +89,27 @@ function priceFilterParam(filter: PriceFilter): 'priced' | 'inquiry' | undefined
   return filter === 'all' ? undefined : filter;
 }
 
-const BULK_UPDATE_BATCH_SIZE = 100;
+const BULK_UPDATE_BATCH_SIZE = 1000;
+// nginx limits /api to 120 requests/minute per IP (burst 60); stay under it.
+const BULK_REQUEST_INTERVAL_MS = 600;
+const THROTTLED_STATUSES = [429, 503];
+const MAX_THROTTLE_RETRIES = 6;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function withThrottleRetry<T>(request: () => Promise<T>, onWait: (attempt: number, delayMs: number) => void): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await request();
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (!status || !THROTTLED_STATUSES.includes(status) || attempt > MAX_THROTTLE_RETRIES) throw error;
+      const delayMs = Math.min(30000, 2000 * 2 ** (attempt - 1));
+      onWait(attempt, delayMs);
+      await sleep(delayMs);
+    }
+  }
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -814,6 +834,25 @@ function AdminProductsContent() {
    * the current selection in batches. Blank-only mode is the default so an
    * indexed page is never rewritten by a batch action.
    */
+  // Sends one bulk-update batch, paced under the nginx API rate limit and retried
+  // with backoff when the limit (or a busy upstream) answers 429/503.
+  const sendBulkBatch = async (
+    payload: Parameters<typeof ProductService.bulkUpdateProducts>[0],
+    batchIndex: number,
+    totalBatches: number,
+  ) => {
+    if (batchIndex > 1) await sleep(BULK_REQUEST_INTERVAL_MS);
+    await withThrottleRetry(
+      () => ProductService.bulkUpdateProducts(payload, { silentStatuses: THROTTLED_STATUSES }),
+      (attempt, delayMs) => setBulkUpdateProgress((prev) => ({
+        ...prev,
+        message: locale === 'zh'
+          ? `服务器限流，${Math.round(delayMs / 1000)} 秒后重试第 ${batchIndex}/${totalBatches} 批（第 ${attempt} 次重试）`
+          : `Rate limited; retrying batch ${batchIndex}/${totalBatches} in ${Math.round(delayMs / 1000)}s (retry ${attempt})`,
+      })),
+    );
+  };
+
   const runCommerceFill = async () => {
     if (!selectAllResults && selectedIds.length === 0) {
       toast.error(t('products.toast.selectOne', locale === 'zh' ? '请至少选择一个产品' : 'Select at least one product'));
@@ -887,7 +926,7 @@ function AdminProductsContent() {
             : `Processing batch ${batchIndex}/${totalBatches} (${batchIds.length} products)`,
         }));
 
-        await ProductService.bulkUpdateProducts({ ids: batchIds, ...(basePayload as any) });
+        await sendBulkBatch({ ids: batchIds, ...(basePayload as any) }, batchIndex, totalBatches);
 
         const processed = Math.min(start + batchIds.length, total);
         setBulkUpdateProgress({
@@ -1012,10 +1051,7 @@ function AdminProductsContent() {
             : `Processing batch ${batchIndex}/${totalBatches} (${batchIds.length} products)`,
         }));
 
-        await ProductService.bulkUpdateProducts({
-          ids: batchIds,
-          [field]: value,
-        });
+        await sendBulkBatch({ ids: batchIds, [field]: value }, batchIndex, totalBatches);
 
         const processed = Math.min(start + batchIds.length, total);
         setBulkUpdateProgress({

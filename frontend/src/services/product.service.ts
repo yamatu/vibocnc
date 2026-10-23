@@ -695,10 +695,11 @@ export class ProductService {
     status?: 'active' | 'inactive' | 'all';
     featured?: 'true' | 'false' | '';
     batch_size?: number;
-  }): Promise<void> {
+  }, options: { silentStatuses?: number[] } = {}): Promise<void> {
     const response = await apiClient.put<APIResponse<void>>(
       `/admin/products/bulk-update`,
-      payload
+      payload,
+      { silentStatuses: options.silentStatuses }
     );
     if (!response.data.success) {
       throw new Error(response.data.message || 'Failed to bulk update products');

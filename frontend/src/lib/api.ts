@@ -1,4 +1,11 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /** HTTP statuses the caller handles itself (e.g. retried 429/503); no global error toast. */
+    silentStatuses?: number[];
+  }
+}
 import Cookies from 'js-cookie';
 import { toast } from 'react-hot-toast';
 
@@ -157,6 +164,11 @@ api.interceptors.response.use(
     // Only log if we have meaningful error information
     if (!isEmptyError) {
       console.error('🚨 API Error:', errorInfo);
+    }
+
+    const silentStatuses: number[] = error?.config?.silentStatuses || [];
+    if (error?.response?.status && silentStatuses.includes(error.response.status)) {
+      return Promise.reject(error);
     }
 
     // Handle specific error cases

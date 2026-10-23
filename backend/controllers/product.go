@@ -890,6 +890,34 @@ func normalizeBulkConditionType(value string) string {
 	}
 }
 
+// bulkUpdateCacheFlush coalesces cache invalidation: the admin UI sends a
+// select-all update as hundreds of batches, and purging Redis/Cloudflare after
+// every batch only thrashed the cache.
+var bulkUpdateCacheFlush = newTrailingDebouncer(5*time.Second, func() {
+	services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
+})
+
+type trailingDebouncer struct {
+	mu    sync.Mutex
+	timer *time.Timer
+	delay time.Duration
+	fn    func()
+}
+
+func newTrailingDebouncer(delay time.Duration, fn func()) *trailingDebouncer {
+	return &trailingDebouncer{delay: delay, fn: fn}
+}
+
+// Trigger runs fn once, delay after the most recent call.
+func (d *trailingDebouncer) Trigger() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.timer != nil {
+		d.timer.Stop()
+	}
+	d.timer = time.AfterFunc(d.delay, d.fn)
+}
+
 // BulkUpdateProducts allows updating is_active / is_featured for multiple products
 func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	var req BulkUpdateReq
@@ -1005,7 +1033,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 			updated += count
 		}
 		// Keep the user-facing request fast; cache invalidation is best-effort.
-		go services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
+		bulkUpdateCacheFlush.Trigger()
 
 		c.JSON(http.StatusOK, models.APIResponse{
 			Success: true,
@@ -1058,7 +1086,7 @@ func (pc *ProductController) BulkUpdateProducts(c *gin.Context) {
 	}
 
 	// Keep the user-facing request fast; cache invalidation is best-effort.
-	go services.InvalidatePublicCaches(context.Background(), "product:bulk-update", nil)
+	bulkUpdateCacheFlush.Trigger()
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
