@@ -311,7 +311,9 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	case "name":
 		orderColumn = "name"
 	}
-	query = query.Order(orderColumn + " " + sortDir).Order("id DESC")
+	// The id tie-breaker follows sortDir so (is_active, <column>) indexes can serve
+	// the ORDER BY; a mixed direction forced a filesort of the whole catalogue.
+	query = query.Order(orderColumn + " " + sortDir).Order("id " + sortDir)
 
 	// Get total count
 	var total int64
