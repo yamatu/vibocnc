@@ -40,12 +40,12 @@ type Product struct {
 	Brand            string   `json:"brand" gorm:"size:100;index"`
 	Model            string   `json:"model" gorm:"size:100;index"`
 	PartNumber       string   `json:"part_number" gorm:"size:100;index"`
-	CategoryID       uint     `json:"category_id" gorm:"not null;index;index:idx_products_category_active,priority:1"`
+	CategoryID       uint     `json:"category_id" gorm:"not null;index;index:idx_products_category_active,priority:1;index:idx_products_category_active_created,priority:1;index:idx_products_active_category,priority:2"`
 	Category         Category `json:"category" gorm:"foreignKey:CategoryID"`
 	// Composite indexes below back the public catalogue query shapes
 	// (filter on is_active plus category/featured, ordered by id/created_at/price).
 	// Without them MySQL filesorts the whole table for the first page.
-	IsActive        bool   `json:"is_active" gorm:"default:true;index;index:idx_products_active_id,priority:1;index:idx_products_category_active,priority:2;index:idx_products_active_created,priority:1;index:idx_products_featured_active,priority:2;index:idx_products_active_price,priority:1;index:idx_products_active_noindex_id,priority:1"`
+	IsActive        bool   `json:"is_active" gorm:"default:true;index;index:idx_products_active_id,priority:1;index:idx_products_category_active,priority:2;index:idx_products_active_created,priority:1;index:idx_products_featured_active,priority:2;index:idx_products_active_price,priority:1;index:idx_products_active_noindex_id,priority:1;index:idx_products_category_active_created,priority:2;index:idx_products_active_category,priority:1"`
 	IsFeatured      bool   `json:"is_featured" gorm:"default:false;index;index:idx_products_featured_active,priority:1"`
 	MetaTitle       string `json:"meta_title" gorm:"size:255"`
 	MetaDescription string `json:"meta_description" gorm:"type:text"`
@@ -86,7 +86,7 @@ type Product struct {
 	IndexNowSubmitCount     int        `json:"indexnow_submit_count" gorm:"default:0"`
 	IndexNowLastSubmitCode  int        `json:"indexnow_last_submit_code" gorm:"default:0"`
 
-	CreatedAt     time.Time            `json:"created_at" gorm:"index:idx_products_active_created,priority:2"`
+	CreatedAt     time.Time            `json:"created_at" gorm:"index:idx_products_active_created,priority:2;index:idx_products_category_active_created,priority:3"`
 	UpdatedAt     time.Time            `json:"updated_at"`
 	Images        []ProductImage       `json:"images,omitempty" gorm:"foreignKey:ProductID"`
 	Attributes    []ProductAttribute   `json:"attributes,omitempty" gorm:"foreignKey:ProductID"`

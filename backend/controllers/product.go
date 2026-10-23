@@ -276,7 +276,11 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 		query = applyProductSearchFilter(query, search)
 	}
 
-	if isActive != "" {
+	if isPublic {
+		// Storefront listings never expose inactive products; the filter also lets
+		// category queries use idx_products_category_active_created.
+		query = query.Where("is_active = ?", true)
+	} else if isActive != "" {
 		query = query.Where("is_active = ?", isActive == "true")
 	}
 
@@ -292,6 +296,11 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	}
 
 	orderColumn := "id"
+	if isPublic && categoryID != "" {
+		// MySQL otherwise walks idx_products_active_id backwards looking for the
+		// category (~1s for large, old categories); created_at follows id order.
+		orderColumn = "created_at"
+	}
 	switch sortBy {
 	case "created_at":
 		orderColumn = "created_at"
