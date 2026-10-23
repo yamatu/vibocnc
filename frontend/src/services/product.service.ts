@@ -916,6 +916,9 @@ export class ProductService {
     seo_noindex?: 'true' | 'false';
     price_status?: 'priced' | 'inquiry';
     batch_size?: number;
+    sort_by?: 'created_at' | 'updated_at' | 'price' | 'name';
+    sort_dir?: 'asc' | 'desc';
+    limit?: number;
   }): Promise<BulkSelectionIdsResult> {
     const response = await apiClient.post<APIResponse<BulkSelectionIdsResult>>('/admin/products/selection-ids', payload);
     if (response.data.success && response.data.data) return response.data.data;

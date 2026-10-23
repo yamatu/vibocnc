@@ -44,3 +44,19 @@ func TestApplyIndexingAndPriceFilters(t *testing.T) {
 		}
 	}
 }
+
+func TestSelectionOrderMirrorsAdminList(t *testing.T) {
+	cases := map[[2]string]string{
+		{"", ""}:                    "id ASC",
+		{"created_at", "desc"}:      "created_at DESC, id DESC",
+		{"price", "asc"}:            "price ASC, id ASC",
+		{"name", ""}:                "name DESC, id DESC",
+		{"id; DROP TABLE x", "asc"}: "id ASC",
+		{"updated_at", "ASC"}:       "updated_at ASC, id ASC",
+	}
+	for in, want := range cases {
+		if got := selectionOrder(in[0], in[1]); got != want {
+			t.Errorf("selectionOrder(%q,%q) = %q, want %q", in[0], in[1], got, want)
+		}
+	}
+}

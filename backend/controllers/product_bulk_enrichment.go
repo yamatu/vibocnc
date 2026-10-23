@@ -27,6 +27,10 @@ type bulkProductScopeReq struct {
 	SEONoIndex         string   `json:"seo_noindex"`  // "true" | "false" | ""
 	PriceStatus        string   `json:"price_status"` // "priced" | "inquiry" | ""
 	BatchSize          int      `json:"batch_size"`
+	// Optional ordering/limit for selection-ids so "first N" matches the admin list.
+	SortBy  string `json:"sort_by"`
+	SortDir string `json:"sort_dir"`
+	Limit   int    `json:"limit"`
 }
 
 type bulkSelectionIDsResp struct {
@@ -59,7 +63,8 @@ func buildBulkProductSelector(db *gorm.DB, req bulkProductScopeReq) *gorm.DB {
 	}
 
 	if brand := services.CanonicalBrandName(req.Brand); strings.TrimSpace(req.Brand) != "" {
-		selector = selector.Where("LOWER(brand) = LOWER(?)", brand)
+		// brand's collation is case-insensitive; LOWER() would bypass the index.
+		selector = selector.Where("brand = ?", brand)
 	}
 	switch strings.ToLower(strings.TrimSpace(req.AISEOStatus)) {
 	case "optimized", "failed", "running":
@@ -184,6 +189,24 @@ func defaultString(value string, fallback string) string {
 	return trimmed
 }
 
+// selectionOrder mirrors the admin list ordering (GetProducts) for a whitelisted
+// sort column; without one the historical id ASC order is kept.
+func selectionOrder(sortBy, sortDir string) string {
+	column := ""
+	switch strings.ToLower(strings.TrimSpace(sortBy)) {
+	case "created_at", "updated_at", "price", "name":
+		column = strings.ToLower(strings.TrimSpace(sortBy))
+	}
+	if column == "" {
+		return "id ASC"
+	}
+	dir := "DESC"
+	if strings.EqualFold(strings.TrimSpace(sortDir), "asc") {
+		dir = "ASC"
+	}
+	return column + " " + dir + ", id " + dir
+}
+
 // Admin: POST /api/v1/admin/products/selection-ids
 func (pc *ProductController) GetBulkProductSelectionIDs(c *gin.Context) {
 	var req bulkProductScopeReq
@@ -198,7 +221,11 @@ func (pc *ProductController) GetBulkProductSelectionIDs(c *gin.Context) {
 	var rows []struct {
 		ID uint `json:"id"`
 	}
-	if err := selector.Select("id").Order("id ASC").Find(&rows).Error; err != nil {
+	query := selector.Select("id").Order(selectionOrder(req.SortBy, req.SortDir))
+	if req.Limit > 0 {
+		query = query.Limit(req.Limit)
+	}
+	if err := query.Find(&rows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to fetch product selection", Error: err.Error()})
 		return
 	}
