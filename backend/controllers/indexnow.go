@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,9 +36,17 @@ type submitIndexNowProductsRequest struct {
 }
 
 type indexNowProductStatusResponse struct {
+	// TotalProducts counts active, indexable products: the only ones submitted.
 	TotalProducts       int64 `json:"total_products"`
 	SubmittedProducts   int64 `json:"submitted_products"`
 	UnsubmittedProducts int64 `json:"unsubmitted_products"`
+	ActiveProducts      int64 `json:"active_products"`
+	NoIndexProducts     int64 `json:"noindex_products"`
+}
+
+type startIndexNowProductJobRequest struct {
+	Mode  string `json:"mode"`
+	Limit int    `json:"limit"`
 }
 
 func indexNowHTTPStatus(result *services.IndexNowSubmitResult, fallback int) int {
@@ -210,23 +219,62 @@ func (ic *IndexNowController) GetProductStatus(c *gin.Context) {
 		return
 	}
 
-	var totalProducts int64
-	var submittedProducts int64
-	var unsubmittedProducts int64
-
-	db.Model(&models.Product{}).Where("is_active = ? AND seo_noindex = ?", true, false).Count(&totalProducts)
-	db.Model(&models.Product{}).Where("is_active = ? AND seo_noindex = ? AND index_now_last_submitted_at IS NOT NULL", true, false).Count(&submittedProducts)
-	db.Model(&models.Product{}).Where("is_active = ? AND seo_noindex = ? AND index_now_last_submitted_at IS NULL", true, false).Count(&unsubmittedProducts)
+	var counts struct {
+		Active    int64
+		Indexable int64
+		Submitted int64
+	}
+	if err := db.Model(&models.Product{}).
+		Select("COUNT(*) AS active, COALESCE(SUM(seo_noindex = 0), 0) AS indexable, COALESCE(SUM(seo_noindex = 0 AND index_now_last_submitted_at IS NOT NULL), 0) AS submitted").
+		Where("is_active = ?", true).
+		Scan(&counts).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to count products", Error: err.Error()})
+		return
+	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "OK",
 		Data: indexNowProductStatusResponse{
-			TotalProducts:       totalProducts,
-			SubmittedProducts:   submittedProducts,
-			UnsubmittedProducts: unsubmittedProducts,
+			TotalProducts:       counts.Indexable,
+			SubmittedProducts:   counts.Submitted,
+			UnsubmittedProducts: counts.Indexable - counts.Submitted,
+			ActiveProducts:      counts.Active,
+			NoIndexProducts:     counts.Active - counts.Indexable,
 		},
 	})
+}
+
+// StartProductJob submits the whole indexable catalogue in the background.
+func (ic *IndexNowController) StartProductJob(c *gin.Context) {
+	var req startIndexNowProductJobRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "unsubmitted"
+	}
+	job, err := services.StartIndexNowProductJob(config.GetDB(), mode, req.Limit)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, services.ErrIndexNowJobRunning) {
+			status = http.StatusConflict
+		}
+		c.JSON(status, models.APIResponse{Success: false, Message: err.Error(), Data: services.CurrentIndexNowProductJob()})
+		return
+	}
+	c.JSON(http.StatusAccepted, models.APIResponse{Success: true, Message: "IndexNow product submission started", Data: job})
+}
+
+func (ic *IndexNowController) GetProductJob(c *gin.Context) {
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: services.CurrentIndexNowProductJob()})
+}
+
+func (ic *IndexNowController) StopProductJob(c *gin.Context) {
+	stopped := services.StopIndexNowProductJob()
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: gin.H{"stopping": stopped, "job": services.CurrentIndexNowProductJob()}})
 }
 
 func (ic *IndexNowController) SubmitProducts(c *gin.Context) {

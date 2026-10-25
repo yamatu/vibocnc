@@ -4,7 +4,7 @@ import AdminLayout from '@/components/admin/AdminLayout';
 import { useAdminI18n } from '@/lib/admin-i18n';
 import { IndexNowService } from '@/services/indexnow.service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-hot-toast';
 
 function splitLines(input: string): string[] {
@@ -144,62 +144,52 @@ export default function AdminIndexNowPage() {
     },
   });
 
-  const submitAllProductsMutation = useMutation({
-    mutationFn: async () =>
-      IndexNowService.submitProducts({
-        mode: 'all',
-        limit: Math.max(0, Number(batchLimit) || 0),
-        batch_size: 100,
-      }),
-    onSuccess: async (result) => {
-      setLastActionMessage(JSON.stringify(result, null, 2));
+  const { data: productJob, refetch: refetchProductJob } = useQuery({
+    queryKey: ['indexnow', 'product-job'],
+    queryFn: () => IndexNowService.getProductJob(),
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return state === 'running' || state === 'stopping' ? 3000 : false;
+    },
+  });
+  const jobActive = productJob?.state === 'running' || productJob?.state === 'stopping';
+
+  const previousJobState = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const state = productJob?.state;
+    if (previousJobState.current && previousJobState.current !== state && !jobActive) {
+      refetchProductStatus();
+      refetch();
+    }
+    previousJobState.current = state;
+  }, [productJob?.state, jobActive, refetch, refetchProductStatus]);
+
+  const startProductJobMutation = useMutation({
+    mutationFn: async (mode: 'all' | 'unsubmitted') =>
+      IndexNowService.startProductJob({ mode, limit: Math.max(0, Number(batchLimit) || 0) }),
+    onSuccess: async (job) => {
+      setLastActionMessage('');
       toast.success(
         locale === 'zh'
-          ? `已批量提交 ${result.submitted_products} 个产品`
-          : `Submitted ${result.submitted_products} products`
+          ? `已在后台开始提交 ${job.total.toLocaleString()} 个产品，可离开本页`
+          : `Started submitting ${job.total.toLocaleString()} products in the background`
       );
-      await qc.invalidateQueries({ queryKey: ['indexnow'] });
-      refetch();
-      refetchProductStatus();
+      await refetchProductJob();
     },
     onError: (e: any) => {
-      const message = isOwnershipVerificationError(e) ? buildOwnershipVerificationMessage(locale) : formatMutationError(e);
+      const message = formatMutationError(e);
       setLastActionMessage(message);
-      toast.error(
-        isOwnershipVerificationError(e)
-          ? (locale === 'zh' ? 'Bing 站点验证尚未生效，批量提交已阻止' : 'Bing site verification is not ready, batch submission blocked')
-          : (e?.message || (locale === 'zh' ? '批量提交失败' : 'Batch submission failed'))
-      );
+      toast.error(e?.message || (locale === 'zh' ? '启动批量提交失败' : 'Failed to start batch submission'));
     },
   });
 
-  const submitUnsubmittedProductsMutation = useMutation({
-    mutationFn: async () =>
-      IndexNowService.submitProducts({
-        mode: 'unsubmitted',
-        limit: Math.max(0, Number(batchLimit) || 0),
-        batch_size: 100,
-      }),
-    onSuccess: async (result) => {
-      setLastActionMessage(JSON.stringify(result, null, 2));
-      toast.success(
-        locale === 'zh'
-          ? `已提交 ${result.submitted_products} 个未提交产品`
-          : `Submitted ${result.submitted_products} unsubmitted products`
-      );
-      await qc.invalidateQueries({ queryKey: ['indexnow'] });
-      refetch();
-      refetchProductStatus();
+  const stopProductJobMutation = useMutation({
+    mutationFn: () => IndexNowService.stopProductJob(),
+    onSuccess: async () => {
+      toast.success(locale === 'zh' ? '正在停止，当前这一批提交完后结束' : 'Stopping after the current request');
+      await refetchProductJob();
     },
-    onError: (e: any) => {
-      const message = isOwnershipVerificationError(e) ? buildOwnershipVerificationMessage(locale) : formatMutationError(e);
-      setLastActionMessage(message);
-      toast.error(
-        isOwnershipVerificationError(e)
-          ? (locale === 'zh' ? 'Bing 站点验证尚未生效，批量提交已阻止' : 'Bing site verification is not ready, batch submission blocked')
-          : (e?.message || (locale === 'zh' ? '未提交产品批量提交失败' : 'Unsubmitted batch submission failed'))
-      );
-    },
+    onError: (e: any) => toast.error(e?.message || (locale === 'zh' ? '停止失败' : 'Failed to stop')),
   });
 
   const verifyKeyMutation = useMutation({
@@ -259,20 +249,35 @@ export default function AdminIndexNowPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="bg-white rounded-lg shadow p-5">
-                <div className="text-sm text-gray-500">{locale === 'zh' ? '产品总数' : 'Total Products'}</div>
-                <div className="mt-2 text-2xl font-bold text-gray-900">{productStatus?.total_products ?? 0}</div>
+                <div className="text-sm text-gray-500">{locale === 'zh' ? '上架产品' : 'Active Products'}</div>
+                <div className="mt-2 text-2xl font-bold text-gray-900">{(productStatus?.active_products ?? 0).toLocaleString()}</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-5">
+                <div className="text-sm text-gray-500">{locale === 'zh' ? '可收录（提交范围）' : 'Indexable (scope)'}</div>
+                <div className="mt-2 text-2xl font-bold text-blue-700">{(productStatus?.total_products ?? 0).toLocaleString()}</div>
+              </div>
+              <div className="bg-white rounded-lg shadow p-5">
+                <div className="text-sm text-gray-500">{locale === 'zh' ? '暂不收录（不提交）' : 'Noindex (skipped)'}</div>
+                <div className="mt-2 text-2xl font-bold text-stone-600">{(productStatus?.noindex_products ?? 0).toLocaleString()}</div>
               </div>
               <div className="bg-white rounded-lg shadow p-5">
                 <div className="text-sm text-gray-500">{locale === 'zh' ? '已提交产品' : 'Submitted Products'}</div>
-                <div className="mt-2 text-2xl font-bold text-green-700">{productStatus?.submitted_products ?? 0}</div>
+                <div className="mt-2 text-2xl font-bold text-green-700">{(productStatus?.submitted_products ?? 0).toLocaleString()}</div>
               </div>
               <div className="bg-white rounded-lg shadow p-5">
                 <div className="text-sm text-gray-500">{locale === 'zh' ? '未提交产品' : 'Unsubmitted Products'}</div>
-                <div className="mt-2 text-2xl font-bold text-amber-700">{productStatus?.unsubmitted_products ?? 0}</div>
+                <div className="mt-2 text-2xl font-bold text-amber-700">{(productStatus?.unsubmitted_products ?? 0).toLocaleString()}</div>
               </div>
             </div>
+            {(productStatus?.noindex_products ?? 0) > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {locale === 'zh'
+                  ? `有 ${(productStatus?.noindex_products ?? 0).toLocaleString()} 个产品处于“暂不收录”（页面输出 noindex），提交给搜索引擎也不会被收录，所以不在提交范围内。要提交它们，请先在产品管理按“收录状态”筛选后点“允许收录”，再回到这里提交未提交产品。`
+                  : `${(productStatus?.noindex_products ?? 0).toLocaleString()} products are held from indexing (noindex) and are not submitted. Allow indexing for them in Products first, then submit unsubmitted products here.`}
+              </div>
+            )}
 
             <div className="bg-white rounded-lg shadow p-6 space-y-5">
               <div className="flex items-center justify-between">
@@ -400,8 +405,8 @@ export default function AdminIndexNowPage() {
                   <div>{locale === 'zh' ? '说明' : 'Notes'}</div>
                   <div className="mt-2">
                     {locale === 'zh'
-                      ? '“提交全部产品”会批量提交当前所有已启用产品；“只提交未提交产品”只处理还没有 IndexNow 提交记录的产品。'
-                      : '"Submit all products" sends all active products; "Submit unsubmitted products" only sends products without an IndexNow submission record.'}
+                      ? '提交在服务器后台运行，每次最多 8000 条 URL，遇到限流会自动等待重试，可以关闭本页。“提交全部产品”会重新提交所有可收录产品；“只提交未提交产品”只处理还没有提交记录的产品，中断后再点一次即可接着提交。'
+                      : 'Runs in the background (up to 8,000 URLs per request, throttling is retried automatically). "Submit all" resubmits every indexable product; "Submit unsubmitted" only sends products without a submission record and resumes after an interruption.'}
                   </div>
                 </div>
               </div>
@@ -419,25 +424,62 @@ export default function AdminIndexNowPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={submitAllProductsMutation.isPending}
-                  onClick={() => submitAllProductsMutation.mutate()}
+                  disabled={jobActive || startProductJobMutation.isPending}
+                  onClick={() => startProductJobMutation.mutate('all')}
                   className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {submitAllProductsMutation.isPending
-                    ? (locale === 'zh' ? '全部提交中...' : 'Submitting all...')
-                    : (locale === 'zh' ? '提交全部产品' : 'Submit All Products')}
+                  {locale === 'zh' ? '提交全部产品' : 'Submit All Products'}
                 </button>
                 <button
                   type="button"
-                  disabled={submitUnsubmittedProductsMutation.isPending}
-                  onClick={() => submitUnsubmittedProductsMutation.mutate()}
+                  disabled={jobActive || startProductJobMutation.isPending}
+                  onClick={() => startProductJobMutation.mutate('unsubmitted')}
                   className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                 >
-                  {submitUnsubmittedProductsMutation.isPending
-                    ? (locale === 'zh' ? '未提交产品提交中...' : 'Submitting unsubmitted...')
-                    : (locale === 'zh' ? '只提交未提交产品' : 'Submit Unsubmitted Products')}
+                  {locale === 'zh' ? '只提交未提交产品' : 'Submit Unsubmitted Products'}
                 </button>
+                {jobActive && (
+                  <button
+                    type="button"
+                    disabled={productJob?.state === 'stopping' || stopProductJobMutation.isPending}
+                    onClick={() => stopProductJobMutation.mutate()}
+                    className="inline-flex items-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {productJob?.state === 'stopping' ? (locale === 'zh' ? '停止中...' : 'Stopping...') : (locale === 'zh' ? '停止提交' : 'Stop')}
+                  </button>
+                )}
               </div>
+
+              {productJob && (
+                <div className="rounded-md border border-gray-200 p-4 space-y-2 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-medium text-gray-900">
+                      {locale === 'zh' ? '后台提交任务' : 'Background submission'}
+                      {' · '}
+                      {productJob.mode === 'all' ? (locale === 'zh' ? '全部产品' : 'all products') : (locale === 'zh' ? '未提交产品' : 'unsubmitted products')}
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      productJob.state === 'completed' ? 'bg-green-100 text-green-800'
+                        : productJob.state === 'failed' ? 'bg-red-100 text-red-800'
+                        : jobActive ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {({ running: locale === 'zh' ? '提交中' : 'Running', stopping: locale === 'zh' ? '停止中' : 'Stopping', stopped: locale === 'zh' ? '已停止' : 'Stopped', completed: locale === 'zh' ? '已完成' : 'Completed', failed: locale === 'zh' ? '失败' : 'Failed' } as Record<string, string>)[productJob.state] || productJob.state}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className="h-2 bg-blue-600 transition-all"
+                      style={{ width: `${productJob.total > 0 ? Math.min(100, (productJob.processed / productJob.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                  <div className="text-gray-700">
+                    {locale === 'zh'
+                      ? `已提交 ${productJob.processed.toLocaleString()} / ${productJob.total.toLocaleString()} 个产品，${productJob.submitted_urls.toLocaleString()} 条 URL，${productJob.requests} 次请求，最近状态码 ${productJob.last_status_code || '-'}`
+                      : `${productJob.processed.toLocaleString()} / ${productJob.total.toLocaleString()} products, ${productJob.submitted_urls.toLocaleString()} URLs, ${productJob.requests} requests, last HTTP ${productJob.last_status_code || '-'}`}
+                  </div>
+                  {productJob.message && <div className="text-gray-500 break-all">{productJob.message}</div>}
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-lg shadow p-6 space-y-5">

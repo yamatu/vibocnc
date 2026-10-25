@@ -62,9 +62,28 @@ export interface IndexNowSubmitResponse {
 }
 
 export interface IndexNowProductStatusResponse {
+  /** Active products that may be indexed (seo_noindex off): the submission scope. */
   total_products: number;
   submitted_products: number;
   unsubmitted_products: number;
+  active_products?: number;
+  noindex_products?: number;
+}
+
+export interface IndexNowProductJob {
+  id: string;
+  mode: 'all' | 'unsubmitted';
+  state: 'running' | 'stopping' | 'stopped' | 'completed' | 'failed';
+  total: number;
+  limit: number;
+  processed: number;
+  submitted_urls: number;
+  requests: number;
+  last_status_code: number;
+  message: string;
+  started_at: string;
+  updated_at: string;
+  finished_at?: string;
 }
 
 export interface IndexNowSubmitProductsRequest {
@@ -146,6 +165,33 @@ export class IndexNowService {
       throw new Error(res.data.message || res.data.error || 'Failed to submit product batch');
     } catch (error) {
       throw extractApiError(error, 'Failed to submit product batch');
+    }
+  }
+
+  static async startProductJob(payload: { mode: 'all' | 'unsubmitted'; limit?: number }): Promise<IndexNowProductJob> {
+    try {
+      const res = await apiClient.post<APIResponse<IndexNowProductJob>>('/admin/indexnow/product-job', payload);
+      if (res.data.success && res.data.data) return res.data.data;
+      throw new Error(res.data.message || res.data.error || 'Failed to start IndexNow submission');
+    } catch (error) {
+      throw extractApiError(error, 'Failed to start IndexNow submission');
+    }
+  }
+
+  static async getProductJob(): Promise<IndexNowProductJob | null> {
+    try {
+      const res = await apiClient.get<APIResponse<IndexNowProductJob | null>>('/admin/indexnow/product-job');
+      return res.data.data ?? null;
+    } catch (error) {
+      throw extractApiError(error, 'Failed to load IndexNow submission status');
+    }
+  }
+
+  static async stopProductJob(): Promise<void> {
+    try {
+      await apiClient.post('/admin/indexnow/product-job/stop', {});
+    } catch (error) {
+      throw extractApiError(error, 'Failed to stop IndexNow submission');
     }
   }
 

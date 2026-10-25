@@ -573,6 +573,9 @@ func SetupRoutes(r *gin.Engine) {
 				indexnow.PUT("/settings", indexNowController.UpdateSettings)
 				indexnow.POST("/submit", indexNowController.Submit)
 				indexnow.POST("/submit-products", indexNowController.SubmitProducts)
+				indexnow.POST("/product-job", indexNowController.StartProductJob)
+				indexnow.GET("/product-job", indexNowController.GetProductJob)
+				indexnow.POST("/product-job/stop", indexNowController.StopProductJob)
 				indexnow.POST("/submit-sample", indexNowController.SubmitSampleProduct)
 				indexnow.POST("/products/:id/submit", indexNowController.SubmitProductByID)
 			}
