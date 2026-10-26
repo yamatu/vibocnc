@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import { PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
+import { queryKeys } from '@/lib/react-query';
 import { cn } from '@/lib/utils';
 import {
   ShippingRateService,
@@ -73,7 +74,8 @@ export default function ShippingPriceTableEditor(props: {
 }) {
   const { L, countryCode } = props;
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'shipping-rates', 'table', countryCode],
+    // Under the page's admin key so its invalidation after a save refreshes this table too.
+    queryKey: [...queryKeys.shippingRates.admin(), 'table', countryCode],
     queryFn: () => ShippingRateService.getCountryTable(countryCode),
   });
 
@@ -94,7 +96,7 @@ export default function ShippingPriceTableEditor(props: {
   }, [data, original]);
 
   const dirty = JSON.stringify({ fixed, bands }) !== JSON.stringify(original) || (data && currency !== data.table.currency);
-  const surcharges = data?.table.surcharges || [];
+  const surcharges = useMemo(() => data?.table.surcharges || [], [data]);
   const preview = useMemo(() => previewQuote(fixed, bands, surcharges, Number(previewKg)), [fixed, bands, surcharges, previewKg]);
   const sameTable = data?.same_table || [];
 
