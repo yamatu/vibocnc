@@ -424,6 +424,8 @@ func SetupRoutes(r *gin.Engine) {
 				shippingRates.GET("", shippingRateController.AdminList)
 				shippingRates.GET("/world-countries", shippingRateController.WorldCountries)
 				shippingRates.PUT("/country/:code", shippingRateController.UpsertCountryRate)
+				shippingRates.GET("/country/:code/table", shippingRateController.GetCountryPriceTable)
+				shippingRates.PUT("/country/:code/table", shippingRateController.SaveCountryPriceTable)
 				shippingRates.GET("/import/template", shippingRateController.DownloadTemplate)
 				shippingRates.POST("/import/xlsx", shippingRateController.ImportXLSX)
 				shippingRates.POST("/bulk-delete", middleware.AdminOnly(), shippingRateController.BulkDelete)

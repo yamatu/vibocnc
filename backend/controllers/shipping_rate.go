@@ -284,6 +284,7 @@ func (sc *ShippingRateController) AdminList(c *gin.Context) {
 			item["pricing_mode"] = "per_kg"
 			item["rate_per_kg"] = rate
 		}
+		item["price_summary"] = services.BuildShippingPriceTable(t.Currency, t.WeightBrackets, t.QuoteSurcharges).Summary()
 		out = append(out, item)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -733,4 +734,71 @@ func (sc *ShippingRateController) PublicFreeShippingCountries(c *gin.Context) {
 		out = append(out, publicEntry{CountryCode: s.CountryCode, CountryName: services.EnglishCountryName(s.CountryCode, s.CountryName)})
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: out})
+}
+
+type saveCountryPriceTableReq struct {
+	services.ShippingPriceTable
+	// ApplyTo copies the same table to more countries (e.g. the rest of a carrier zone).
+	ApplyTo []string `json:"apply_to"`
+	// Surcharges are replaced only when explicitly sent.
+	ReplaceSurcharges bool `json:"replace_surcharges"`
+}
+
+// Admin: GET /api/v1/admin/shipping-rates/country/:code/table
+func (sc *ShippingRateController) GetCountryPriceTable(c *gin.Context) {
+	db := config.GetDB()
+	tpl, table, err := services.LoadCountryPriceTable(db, c.Param("code"))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, models.APIResponse{Success: false, Message: "Shipping template not found", Error: "not_found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load template", Error: err.Error()})
+		return
+	}
+	summary := table.Summary()
+
+	// Countries sharing the identical table (same carrier zone after an import).
+	var others []models.ShippingTemplate
+	if err := db.Preload("WeightBrackets").Preload("QuoteSurcharges").Where("id <> ?", tpl.ID).Find(&others).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load templates", Error: err.Error()})
+		return
+	}
+	sameTable := []gin.H{}
+	for _, o := range others {
+		if services.BuildShippingPriceTable(o.Currency, o.WeightBrackets, o.QuoteSurcharges).Summary().PriceSignature == summary.PriceSignature {
+			sameTable = append(sameTable, gin.H{"country_code": o.CountryCode, "country_name": services.EnglishCountryName(o.CountryCode, o.CountryName)})
+		}
+	}
+	sort.Slice(sameTable, func(i, j int) bool {
+		return sameTable[i]["country_code"].(string) < sameTable[j]["country_code"].(string)
+	})
+
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "OK", Data: gin.H{
+		"country_code":  tpl.CountryCode,
+		"country_name":  services.EnglishCountryName(tpl.CountryCode, tpl.CountryName),
+		"is_active":     tpl.IsActive,
+		"table":         table,
+		"summary":       summary,
+		"same_table":    sameTable,
+		"free_shipping": services.IsFreeShippingCountry(db, tpl.CountryCode),
+		"updated_at":    tpl.UpdatedAt,
+	}})
+}
+
+// Admin: PUT /api/v1/admin/shipping-rates/country/:code/table
+func (sc *ShippingRateController) SaveCountryPriceTable(c *gin.Context) {
+	var req saveCountryPriceTableReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+	codes := append([]string{c.Param("code")}, req.ApplyTo...)
+	saved, err := services.ReplaceCountryPriceTables(config.GetDB(), codes, req.ShippingPriceTable, !req.ReplaceSurcharges)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: err.Error(), Error: err.Error()})
+		return
+	}
+	_ = services.ClearRedisByPrefixes(c.Request.Context(), "cache:public:shipping_countries:")
+	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Saved", Data: gin.H{"countries": saved}})
 }

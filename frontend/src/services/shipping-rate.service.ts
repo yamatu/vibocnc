@@ -13,7 +13,41 @@ export interface ShippingRate {
   quote_surcharges?: number;
   pricing_mode?: 'per_kg' | 'brackets';
   rate_per_kg?: number;
+  price_summary?: ShippingPriceSummary;
   created_at: string;
+  updated_at: string;
+}
+
+export interface ShippingPriceSummary {
+  fixed_count: number;
+  fixed_min_kg: number;
+  fixed_max_kg: number;
+  fee_from: number;
+  fee_to: number;
+  over_rate_per_kg: number;
+  per_kg_bands: number;
+  price_signature: string;
+}
+
+export interface ShippingFixedFee { weight_kg: number; fee: number }
+export interface ShippingPerKgBand { min_kg: number; max_kg: number; rate_per_kg: number }
+export interface ShippingSurchargeRule { quote_amount: number; additional_fee: number }
+
+export interface ShippingPriceTable {
+  currency: string;
+  fixed: ShippingFixedFee[];
+  per_kg: ShippingPerKgBand[];
+  surcharges: ShippingSurchargeRule[];
+}
+
+export interface ShippingCountryPriceTable {
+  country_code: string;
+  country_name: string;
+  is_active: boolean;
+  table: ShippingPriceTable;
+  summary: ShippingPriceSummary;
+  same_table: Array<{ country_code: string; country_name: string }>;
+  free_shipping: boolean;
   updated_at: string;
 }
 
@@ -139,6 +173,26 @@ export class ShippingRateService {
     const res = await apiClient.get<APIResponse<WorldCountry[]>>('/admin/shipping-rates/world-countries');
     if (res.data.success && res.data.data) return res.data.data;
     throw new Error(res.data.message || 'Failed to fetch countries');
+  }
+
+  static async getCountryTable(code: string): Promise<ShippingCountryPriceTable> {
+    const res = await apiClient.get<APIResponse<ShippingCountryPriceTable>>(`/admin/shipping-rates/country/${encodeURIComponent(code)}/table`);
+    if (res.data.success && res.data.data) return res.data.data;
+    throw new Error(res.data.message || 'Failed to load price table');
+  }
+
+  static async saveCountryTable(
+    code: string,
+    table: ShippingPriceTable,
+    opts: { applyTo?: string[]; replaceSurcharges?: boolean } = {},
+  ): Promise<{ countries: string[] }> {
+    const res = await apiClient.put<APIResponse<{ countries: string[] }>>(`/admin/shipping-rates/country/${encodeURIComponent(code)}/table`, {
+      ...table,
+      apply_to: opts.applyTo || [],
+      replace_surcharges: Boolean(opts.replaceSurcharges),
+    });
+    if (res.data.success && res.data.data) return res.data.data;
+    throw new Error(res.data.message || 'Failed to save price table');
   }
 
   static async upsertCountryRate(code: string, ratePerKg: number, currency = 'USD'): Promise<void> {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import {
@@ -12,12 +12,14 @@ import {
   MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
+  TableCellsIcon,
   TrashIcon,
   TruckIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 import AdminLayout from '@/components/admin/AdminLayout';
+import ShippingPriceTableEditor from '@/components/admin/ShippingPriceTableEditor';
 import { queryKeys } from '@/lib/react-query';
 import { cn } from '@/lib/utils';
 import { useAdminI18n } from '@/lib/admin-i18n';
@@ -138,8 +140,8 @@ export default function AdminShippingRatesPage() {
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-gray-500">
               {L(
-                '按国家设置每公斤运费，支持全球国家。不足 21kg 按整公斤向上取整计费，21kg 及以上按实际重量。',
-                'Set a per-kg shipping rate for any country worldwide. Below 21kg the weight is rounded up to a whole kg.',
+                '每个国家可以是统一每公斤运费，也可以是导入的承运商价格表（如 DHL：21kg 以下按 0.5kg 档固定价，21kg 及以上按每公斤单价）。点国家名可查看和编辑完整价格表。',
+                'Each country uses a flat per-kg rate or an imported carrier price table (fixed fees per weight step below 21kg, per-kg above). Click a country to view and edit its full table.',
               )}
             </p>
           </div>
@@ -344,15 +346,33 @@ function RatesTab(props: {
   const [editRate, setEditRate] = useState('');
   const [editCurrency, setEditCurrency] = useState('USD');
   const [adding, setAdding] = useState(false);
+  const [openTable, setOpenTable] = useState<string | null>(null);
+  const [groupFilter, setGroupFilter] = useState('all');
+
+  // Countries with an identical price table (one carrier zone after an import) form a group.
+  const groups = useMemo(() => {
+    const bySig = new Map<string, ShippingRate[]>();
+    for (const r of rates) {
+      const sig = r.price_summary?.price_signature;
+      if (!sig || r.pricing_mode === 'per_kg') continue;
+      bySig.set(sig, [...(bySig.get(sig) || []), r]);
+    }
+    const sorted = [...bySig.entries()].sort(
+      (a, b) => (a[1][0].price_summary?.fee_from || 0) - (b[1][0].price_summary?.fee_from || 0),
+    );
+    return new Map(sorted.map(([sig, members], i) => [sig, { index: i + 1, members }]));
+  }, [rates]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return rates;
     return rates.filter((r) => {
+      if (groupFilter === 'per_kg' && r.pricing_mode !== 'per_kg') return false;
+      if (groupFilter !== 'all' && groupFilter !== 'per_kg' && r.price_summary?.price_signature !== groupFilter) return false;
+      if (!s) return true;
       const zh = worldByCode.get(r.country_code)?.name_zh || '';
       return r.country_code.toLowerCase().includes(s) || r.country_name.toLowerCase().includes(s) || zh.includes(q.trim());
     });
-  }, [rates, q, worldByCode]);
+  }, [rates, q, worldByCode, groupFilter]);
 
   const allChecked = filtered.length > 0 && filtered.every((r) => selected.includes(r.country_code));
 
@@ -414,6 +434,22 @@ function RatesTab(props: {
             className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm"
           />
         </div>
+        {mode === 'country' && groups.size > 0 && (
+          <select
+            value={groupFilter}
+            onChange={(e) => setGroupFilter(e.target.value)}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm md:mr-auto md:ml-3"
+            aria-label={L('价格组', 'Price group')}
+          >
+            <option value="all">{L(`全部国家 (${rates.length})`, `All countries (${rates.length})`)}</option>
+            {[...groups.entries()].map(([sig, g]) => (
+              <option key={sig} value={sig}>
+                {L(`价格组 ${g.index} · ${g.members.length} 国 · ${money(g.members[0].price_summary?.fee_from)} 起`, `Group ${g.index} · ${g.members.length} countries · from ${money(g.members[0].price_summary?.fee_from)}`)}
+              </option>
+            ))}
+            {rates.some((r) => r.pricing_mode === 'per_kg') && <option value="per_kg">{L('统一每公斤', 'Flat per kg')}</option>}
+          </select>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {selected.length > 0 && (
             <button
@@ -479,7 +515,8 @@ function RatesTab(props: {
                 {mode === 'carrier' && <th className="px-4 py-3">{L('承运商/服务', 'Carrier')}</th>}
                 <th className="px-4 py-3">{L('国家', 'Country')}</th>
                 <th className="px-4 py-3">{L('计费方式', 'Pricing')}</th>
-                <th className="px-4 py-3 text-right">{L('每公斤运费', 'Rate / kg')}</th>
+                <th className="px-4 py-3 text-right">{L('运费', 'Price')}</th>
+                {mode === 'country' && <th className="px-4 py-3">{L('价格组', 'Group')}</th>}
                 <th className="px-4 py-3">{L('币种', 'Currency')}</th>
                 <th className="px-4 py-3">{L('状态', 'Status')}</th>
                 {mode === 'country' && <th className="px-4 py-3 text-right">{L('操作', 'Actions')}</th>}
@@ -487,10 +524,10 @@ function RatesTab(props: {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {props.loading ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-500">{L('加载中...', 'Loading...')}</td></tr>
+                <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-500">{L('加载中...', 'Loading...')}</td></tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
+                  <td colSpan={9} className="px-4 py-12 text-center">
                     <GlobeAltIcon className="mx-auto h-10 w-10 text-gray-300" />
                     <p className="mt-2 text-gray-500">
                       {q ? L('没有匹配的国家', 'No matching countries') : L('还没有配置运费，点击「批量导入」或「添加国家运费」开始。', 'No rates yet. Import a sheet or add a country.')}
@@ -501,8 +538,12 @@ function RatesTab(props: {
                 filtered.map((r) => {
                   const isEditing = editing === r.country_code;
                   const zh = worldByCode.get(r.country_code)?.name_zh;
+                  const sum = r.price_summary;
+                  const group = sum ? groups.get(sum.price_signature) : undefined;
+                  const isOpen = mode === 'country' && openTable === r.country_code;
                   return (
-                    <tr key={`${r.carrier || ''}:${r.service_code || ''}:${r.country_code}`} className="hover:bg-gray-50">
+                    <Fragment key={`${r.carrier || ''}:${r.service_code || ''}:${r.country_code}`}>
+                    <tr className={cn('hover:bg-gray-50', isOpen && 'bg-blue-50/60')}>
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
@@ -522,7 +563,17 @@ function RatesTab(props: {
                             {r.country_code}
                           </span>
                           <div>
-                            <div className="font-medium text-gray-900">{r.country_name}</div>
+                            {mode === 'country' ? (
+                              <button
+                                type="button"
+                                onClick={() => setOpenTable(isOpen ? null : r.country_code)}
+                                className="text-left font-medium text-gray-900 hover:text-blue-700 hover:underline"
+                              >
+                                {r.country_name}
+                              </button>
+                            ) : (
+                              <div className="font-medium text-gray-900">{r.country_name}</div>
+                            )}
                             {zh && <div className="text-xs text-gray-500">{zh}</div>}
                           </div>
                         </div>
@@ -531,9 +582,19 @@ function RatesTab(props: {
                         {r.pricing_mode === 'per_kg' ? (
                           <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{L('每公斤', 'Per kg')}</span>
                         ) : (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700" title={L(`${r.weight_brackets} 条重量规则，${r.quote_surcharges} 条附加费规则`, `${r.weight_brackets} brackets, ${r.quote_surcharges} surcharges`)}>
-                            {L(`分段 · ${r.weight_brackets} 条`, `Brackets · ${r.weight_brackets}`)}
-                          </span>
+                          <div className="space-y-0.5">
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                              {sum && sum.fixed_count > 0
+                                ? L(`价格表 ${sum.fixed_min_kg}–${sum.fixed_max_kg}kg · ${sum.fixed_count} 档`, `Table ${sum.fixed_min_kg}–${sum.fixed_max_kg}kg · ${sum.fixed_count} steps`)
+                                : L(`分段 · ${r.weight_brackets} 条`, `Brackets · ${r.weight_brackets}`)}
+                            </span>
+                            {sum && sum.over_rate_per_kg > 0 && (
+                              <div className="text-xs text-gray-500">{L(`21kg+ ${money(sum.over_rate_per_kg)}/kg`, `21kg+ ${money(sum.over_rate_per_kg)}/kg`)}</div>
+                            )}
+                            {(r.quote_surcharges || 0) > 0 && (
+                              <div className="text-xs text-gray-500">{L(`附加费 ${r.quote_surcharges} 条`, `${r.quote_surcharges} surcharges`)}</div>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -552,11 +613,34 @@ function RatesTab(props: {
                             className="w-28 rounded-md border border-blue-400 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                           />
                         ) : r.pricing_mode === 'per_kg' && typeof r.rate_per_kg === 'number' ? (
-                          <span className="font-semibold tabular-nums text-gray-900">{r.rate_per_kg.toFixed(2)}</span>
+                          <span className="font-semibold tabular-nums text-gray-900">{r.rate_per_kg.toFixed(2)}<span className="ml-0.5 text-xs font-normal text-gray-500">/kg</span></span>
+                        ) : sum && sum.fixed_count > 0 ? (
+                          <div className="tabular-nums">
+                            <div className="font-semibold text-gray-900">
+                              {money(sum.fee_from)} <span className="text-xs font-normal text-gray-500">/ {sum.fixed_min_kg}kg</span>
+                            </div>
+                            <div className="text-xs text-gray-500">{money(sum.fee_to)} / {sum.fixed_max_kg}kg</div>
+                          </div>
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
+                      {mode === 'country' && (
+                        <td className="px-4 py-3">
+                          {group ? (
+                            <button
+                              type="button"
+                              onClick={() => setGroupFilter(groupFilter === sum?.price_signature ? 'all' : sum?.price_signature || 'all')}
+                              title={group.members.map((m) => m.country_code).join(' ')}
+                              className={cn('rounded-full px-2 py-0.5 text-xs font-medium', GROUP_TONES[(group.index - 1) % GROUP_TONES.length])}
+                            >
+                              {L(`组 ${group.index} · ${group.members.length} 国`, `G${group.index} · ${group.members.length}`)}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         {isEditing ? (
                           <select value={editCurrency} onChange={(e) => setEditCurrency(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1 text-sm">
@@ -587,9 +671,18 @@ function RatesTab(props: {
                               </>
                             ) : (
                               <>
-                                <IconButton title={L('修改运费', 'Edit rate')} onClick={() => startEdit(r)}>
-                                  <PencilSquareIcon className="h-4 w-4" />
+                                <IconButton
+                                  title={L('查看/编辑价格表', 'View / edit price table')}
+                                  tone={isOpen ? 'blue' : 'gray'}
+                                  onClick={() => setOpenTable(isOpen ? null : r.country_code)}
+                                >
+                                  <TableCellsIcon className="h-4 w-4" />
                                 </IconButton>
+                                {r.pricing_mode === 'per_kg' && (
+                                  <IconButton title={L('修改每公斤运费', 'Edit per-kg rate')} onClick={() => startEdit(r)}>
+                                    <PencilSquareIcon className="h-4 w-4" />
+                                  </IconButton>
+                                )}
                                 <IconButton
                                   title={L('删除', 'Delete')}
                                   tone="red"
@@ -607,6 +700,21 @@ function RatesTab(props: {
                         </td>
                       )}
                     </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={9} className="p-0">
+                          <ShippingPriceTableEditor
+                            L={L}
+                            countryCode={r.country_code}
+                            countryName={r.country_name}
+                            countryNameZh={zh}
+                            onClose={() => setOpenTable(null)}
+                            onSaved={props.onInvalidate}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })
               )}
@@ -632,6 +740,16 @@ function RatesTab(props: {
       </div>
     </div>
   );
+}
+
+const GROUP_TONES = [
+  'bg-sky-50 text-sky-700', 'bg-violet-50 text-violet-700', 'bg-emerald-50 text-emerald-700', 'bg-orange-50 text-orange-700',
+  'bg-pink-50 text-pink-700', 'bg-teal-50 text-teal-700', 'bg-indigo-50 text-indigo-700', 'bg-lime-50 text-lime-700',
+  'bg-rose-50 text-rose-700', 'bg-cyan-50 text-cyan-700',
+];
+
+function money(v: number | undefined): string {
+  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(2) : '—';
 }
 
 function IconButton({
