@@ -800,7 +800,7 @@ func extractCountryCode(s string) string {
 }
 
 // Under21Kg sheet: matrix format
-// A1=Weight header, B1..=Country codes; rows: weight=1..20, each cell is final shipping fee.
+// A1=Weight header, B1..=Country codes; rows: weight 0.5..20 (0.5kg or 1kg steps), each cell is final shipping fee.
 func parseUnder21MatrixSheet(f *excelize.File, name string) ([]weightRow, []string) {
 	rows, err := f.GetRows(name)
 	if err != nil {
@@ -855,7 +855,8 @@ func parseUnder21MatrixSheet(f *excelize.File, name string) ([]weightRow, []stri
 		if w <= 0 || w >= 21 {
 			continue
 		}
-		w = math.Round(w) // expect integer kg
+		// Carrier rate cards step in 0.5kg (0.5, 1.0, 1.5 ...); integer sheets are unchanged.
+		w = math.Round(w*2) / 2
 		for _, cc := range countryCols {
 			feeStr := strings.TrimSpace(get(r, cc.col))
 			if feeStr == "" {
