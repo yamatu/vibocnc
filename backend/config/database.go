@@ -124,93 +124,7 @@ func ConnectDatabase() {
 
 		// Disable FK checks during migrate to reduce noisy failures
 		DB.Exec("SET FOREIGN_KEY_CHECKS=0;")
-		modelsToMigrate := []interface{}{
-			&models.AdminUser{},
-			&models.Language{},
-			&models.Category{},
-			&models.CategoryTranslation{},
-			&models.Product{},
-			&models.ProductImage{},
-			&models.ProductTranslation{},
-			&models.ProductAttribute{},
-			&models.ProductReview{},
-			&models.ProductFAQ{},
-			&models.EbayImportDraft{},
-			&models.EbayImportJSONTask{},
-			&models.EbayImportJSONTaskItem{},
-			&models.EbayMarketQuote{},
-			&models.PriceSyncChange{},
-			&models.EbayDraftReviewJob{},
-			&models.EbayDraftReviewJobItem{},
-			&models.IntegrationToken{},
-			&models.ProductProfileDraft{},
-			&models.PurchaseLink{},
-			&models.SEORedirect{},
-			&models.Customer{},
-			&models.Order{},
-			&models.OrderItem{},
-			&models.PaymentTransaction{},
-			&models.Refund{},
-			&models.Banner{},
-			&models.HomepageContent{},
-			&models.CompanyProfile{},
-			&models.SocialMediaSetting{},
-			&models.ContactMessage{},
-			&models.Coupon{},
-			&models.CouponUsage{},
-			&models.Ticket{},
-			&models.TicketReply{},
-			&models.TicketAttachment{},
-			&models.MediaAsset{},
-			&models.CloudflareCacheSetting{},
-			&models.AIAgentProfile{},
-			&models.AIAgentSetting{},
-			&models.AIAgentSEOJob{},
-			&models.AIAgentSEOJobItem{},
-			&models.AIAgentConversation{},
-			&models.AIAgentConversationMessage{},
-			&models.AIAgentPromptPreset{},
-			&models.ProductClassificationAudit{},
-			&models.HotlinkProtectionSetting{},
-			&models.PayPalSetting{},
-			&models.TurnstileSetting{},
-			&models.HomepageContentDraft{},
-			&models.SocialLinkSetting{},
-			&models.EmailSetting{},
-			&models.IndexNowSetting{},
-			&models.EmailVerificationCode{},
-			// Shipping (new template-based)
-			&models.ShippingTemplate{},
-			&models.ShippingWeightBracket{},
-			&models.ShippingQuoteSurcharge{},
-			// Shipping (carrier-specific)
-			&models.ShippingCarrierTemplate{},
-			&models.ShippingCarrierWeightBracket{},
-			&models.ShippingCarrierQuoteSurcharge{},
-			// Shipping allowed countries whitelist
-			&models.ShippingAllowedCountry{},
-			// Shipping free shipping settings
-			&models.ShippingFreeSetting{},
-			// Storefront commercial promise (shipping / warranty / returns)
-			&models.CommercePolicySetting{},
-			// Model-number spec research review queue (never published directly)
-			&models.ProductSpecDraft{},
-			// Legacy flat shipping rate table (kept for compatibility; not used by new flow)
-			&models.ShippingRate{},
-			&models.WatermarkSetting{},
-			&models.ProductImageAutofillJob{},
-			&models.ProductImageCleanupJob{},
-			&models.ProductImageArchiveJob{},
-			&models.ProductImagePolicySetting{},
-			&models.ProductImageTrustedURL{},
-			&models.ProductCatalogImportJob{},
-			&models.VisitorLog{},
-			&models.AnalyticsSetting{},
-			// News / Articles
-			&models.Article{},
-			&models.ArticleTranslation{},
-			&models.SitePage{},
-		}
+		modelsToMigrate := MigratedModels()
 		for _, m := range modelsToMigrate {
 			// GORM may try to "DROP FOREIGN KEY <uni_xxx>" on existing tables (a known benign issue when
 			// unique indexes are mistaken for FKs during diff). If that happens while migrating a model
@@ -237,6 +151,11 @@ func ConnectDatabase() {
 		log.Println("Database migration completed (with tolerant drop handling)")
 	} else {
 		log.Println("DB_AUTO_MIGRATE=false, skipping AutoMigrate")
+		if drift, err := FindSchemaDrift(DB); err != nil {
+			log.Printf("schema drift check failed: %v", err)
+		} else if len(drift) > 0 {
+			log.Printf("ERROR: database schema is behind the code (%d missing): %s. Run scripts/apply-migrations.sh", len(drift), strings.Join(drift, ", "))
+		}
 		if missing := missingAIAgentProfileSchema(DB); len(missing) > 0 {
 			log.Printf(
 				"AI profile schema is incomplete (%s); run backend/migrations/20260808_add_ai_agent_profiles.sql before using AI profiles",
@@ -1121,4 +1040,96 @@ func createDefaultCompanyProfile() {
 
 func GetDB() *gorm.DB {
 	return DB
+}
+
+// MigratedModels lists every model whose table the application expects. It
+// drives AutoMigrate and the schema drift check used when AutoMigrate is off.
+func MigratedModels() []interface{} {
+	return []interface{}{
+		&models.AdminUser{},
+		&models.Language{},
+		&models.Category{},
+		&models.CategoryTranslation{},
+		&models.Product{},
+		&models.ProductImage{},
+		&models.ProductTranslation{},
+		&models.ProductAttribute{},
+		&models.ProductReview{},
+		&models.ProductFAQ{},
+		&models.EbayImportDraft{},
+		&models.EbayImportJSONTask{},
+		&models.EbayImportJSONTaskItem{},
+		&models.EbayMarketQuote{},
+		&models.PriceSyncChange{},
+		&models.EbayDraftReviewJob{},
+		&models.EbayDraftReviewJobItem{},
+		&models.IntegrationToken{},
+		&models.ProductProfileDraft{},
+		&models.PurchaseLink{},
+		&models.SEORedirect{},
+		&models.Customer{},
+		&models.Order{},
+		&models.OrderItem{},
+		&models.PaymentTransaction{},
+		&models.Refund{},
+		&models.Banner{},
+		&models.HomepageContent{},
+		&models.CompanyProfile{},
+		&models.SocialMediaSetting{},
+		&models.ContactMessage{},
+		&models.Coupon{},
+		&models.CouponUsage{},
+		&models.Ticket{},
+		&models.TicketReply{},
+		&models.TicketAttachment{},
+		&models.MediaAsset{},
+		&models.CloudflareCacheSetting{},
+		&models.AIAgentProfile{},
+		&models.AIAgentSetting{},
+		&models.AIAgentSEOJob{},
+		&models.AIAgentSEOJobItem{},
+		&models.AIAgentConversation{},
+		&models.AIAgentConversationMessage{},
+		&models.AIAgentPromptPreset{},
+		&models.ProductClassificationAudit{},
+		&models.HotlinkProtectionSetting{},
+		&models.PayPalSetting{},
+		&models.TurnstileSetting{},
+		&models.HomepageContentDraft{},
+		&models.SocialLinkSetting{},
+		&models.EmailSetting{},
+		&models.IndexNowSetting{},
+		&models.EmailVerificationCode{},
+		// Shipping (new template-based)
+		&models.ShippingTemplate{},
+		&models.ShippingWeightBracket{},
+		&models.ShippingQuoteSurcharge{},
+		// Shipping (carrier-specific)
+		&models.ShippingCarrierTemplate{},
+		&models.ShippingCarrierWeightBracket{},
+		&models.ShippingCarrierQuoteSurcharge{},
+		// Shipping allowed countries whitelist
+		&models.ShippingAllowedCountry{},
+		// Shipping free shipping settings
+		&models.ShippingFreeSetting{},
+		// Storefront commercial promise (shipping / warranty / returns)
+		&models.CommercePolicySetting{},
+		// Model-number spec research review queue (never published directly)
+		&models.ProductSpecDraft{},
+		// Legacy flat shipping rate table (kept for compatibility; not used by new flow)
+		&models.ShippingRate{},
+		&models.WatermarkSetting{},
+		&models.ProductImageAutofillJob{},
+		&models.ProductImageCleanupJob{},
+		&models.ProductImageArchiveJob{},
+		&models.ProductImagePolicySetting{},
+		&models.ProductImageTrustedURL{},
+		&models.ProductCatalogImportJob{},
+		&models.VisitorLog{},
+		&models.AnalyticsSetting{},
+		// News / Articles
+		&models.Article{},
+		&models.ArticleTranslation{},
+		&models.SitePage{},
+	}
 }

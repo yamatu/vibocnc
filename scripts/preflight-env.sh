@@ -111,7 +111,7 @@ if [[ -n "$mysql_password" && "$mysql_password" == "$jwt_secret" ]]; then
   fail "MYSQL_PASSWORD must not reuse JWT_SECRET"
 fi
 if [[ "$(env_file_value "$ENV_FILE" DB_AUTO_MIGRATE)" == "true" ]]; then
-  warn "DB_AUTO_MIGRATE=true runs schema changes on every boot; keep it true for the first deployment, then set it to false and apply migrations deliberately"
+  warn "DB_AUTO_MIGRATE=true runs schema changes on every boot; keep it true for the first deployment, then set it to false; scripts/docker-up.sh then applies backend/migrations/*.sql on every deploy"
 fi
 
 echo "Auth cookies and errors"
@@ -167,7 +167,7 @@ else
   pass "REDIS_ADDR is set"
 fi
 if [[ "$(env_file_value "$ENV_FILE" PRODUCT_SEARCH_MODE)" == "fulltext" ]]; then
-  warn "PRODUCT_SEARCH_MODE=fulltext: confirm migrations/20260910_add_product_search_fulltext.sql has been applied"
+  warn "PRODUCT_SEARCH_MODE=fulltext: confirm migrations/optional/20260910_add_product_search_fulltext.sql has been applied"
 fi
 if [[ "$(env_file_value "$ENV_FILE" AI_PROVIDER_ALLOW_PRIVATE_ADDRESSES)" == "true" ]]; then
   warn "AI_PROVIDER_ALLOW_PRIVATE_ADDRESSES=true: AI provider requests may reach private addresses and arbitrary ports; confirm the configured base URL is trusted"

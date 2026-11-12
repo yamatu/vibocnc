@@ -70,13 +70,12 @@ docker compose config >/dev/null       # YAML / 变量插值检查
 ### 2.3 启动
 
 ```bash
-docker compose up -d --build
-docker compose ps                     # mysql 应为 healthy
+bash scripts/docker-up.sh
 curl -fsS http://127.0.0.1:8080/health
 ```
 
 `DB_AUTO_MIGRATE=true` 会在启动时补齐表结构（首次部署保留该值）。
-上线稳定后建议改为 `false`，迁移改为显式执行。
+上线稳定后建议改为 `false`，之后的表结构变更由 `scripts/docker-up.sh` 在每次发布时执行（见 3.1）。
 
 ---
 
@@ -85,14 +84,27 @@ curl -fsS http://127.0.0.1:8080/health
 ```bash
 bash scripts/preflight-env.sh .env     # 只在 .env 变更时需要
 git pull --ff-only
-docker compose up -d --build
+bash scripts/docker-up.sh
 docker compose logs --tail=100 backend
 curl -fsS http://127.0.0.1:8080/health
 ```
 
-- 先 `git pull` 再 `up -d --build`：`--build` 会用新代码重新构建镜像，
-  不会动数据卷。
-- 数据库结构变更由后端启动时的 auto-migrate 处理（`DB_AUTO_MIGRATE=true` 时）。
+- 不要再直接用 `docker compose up -d --build` 发布：那样会跳过数据库迁移。
+- `docker-up.sh` 不会动数据卷，构建期间旧服务继续运行。
+
+### 3.1 数据库迁移
+
+`scripts/docker-up.sh` 的顺序是：构建镜像 → 启动 MySQL → `scripts/apply-migrations.sh`
+→（`DB_AUTO_MIGRATE=false` 时）用新后端镜像执行 `/app/schema-check` → 启动服务。
+
+- `apply-migrations.sh` 按文件名顺序执行 `backend/migrations/*.sql`，成功后记入
+  `schema_migrations` 表，重复运行只会跳过已执行的文件；某个文件失败时脚本以非 0 退出，
+  该文件不记录、后续文件不执行，修复后重新运行即可。
+- `schema-check` 对比后端模型与数据库，缺任何表或列都会中止发布，正在运行的服务保持不变。
+  后端启动时也会在日志里输出 `ERROR: database schema is behind the code`。
+- 单独查看/执行：`bash scripts/apply-migrations.sh --status`、`--dry-run`。
+- `backend/migrations/optional/` 下的文件不会自动执行。
+- 编写规范见 `backend/migrations/README.md`。
 - 前端镜像重新构建后，Next.js 的 ISR 缓存位于容器内，重建会冷启动一次页面缓存。
 
 ### 回滚
@@ -221,7 +233,7 @@ docker run --rm -v vibocnc_uploads:/data -v "$PWD:/backup" alpine \
 ## 8. 已知的可选优化
 
 - **FULLTEXT 搜索**（可选，默认关闭）
-  先执行 `backend/migrations/20260910_add_product_search_fulltext.sql`，
+  先执行 `backend/migrations/optional/20260910_add_product_search_fulltext.sql`，
   再设置 `PRODUCT_SEARCH_MODE=fulltext`。中文关键词需要 `ngram` 解析器，
   上线前用真实关键词验证召回效果，不满意就回退到 `like`。
 - **复合索引**：商品表与 AI 任务表的复合索引通过 `AutoMigrate` 添加，

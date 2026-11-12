@@ -20,6 +20,7 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/server .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/bulk-seo-optimize ./cmd/bulk-seo-optimize
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/schema-check ./cmd/schema-check
 
 ARG BASE_REGISTRY=docker.io
 FROM ${BASE_REGISTRY}/library/alpine:3.23 AS runner
@@ -36,6 +37,7 @@ RUN addgroup -g 10001 -S app && adduser -u 10001 -S app -G app
 
 COPY --from=builder /out/server /app/server
 COPY --from=builder /out/bulk-seo-optimize /app/bulk-seo-optimize
+COPY --from=builder /out/schema-check /app/schema-check
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 

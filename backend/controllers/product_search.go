@@ -18,7 +18,7 @@ import (
 // every product row.
 //
 // `PRODUCT_SEARCH_MODE=fulltext` switches to the FULLTEXT index declared in
-// backend/migrations/20260910_add_product_search_fulltext.sql. It is opt-in
+// backend/migrations/optional/20260910_add_product_search_fulltext.sql. It is opt-in
 // because FULLTEXT cannot reproduce `%substring%` semantics (token length and
 // word-boundary rules apply), which is a product decision rather than a purely
 // technical one.
