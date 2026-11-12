@@ -32,6 +32,21 @@ export interface AdminReviewList extends PaginationResponse<ProductReview> {
   status_counts: Record<ProductReviewStatus, number>;
 }
 
+export const REVIEW_SOURCES = ['email', 'ebay', 'whatsapp', 'phone', 'offline', 'other'] as const;
+export type ReviewSource = (typeof REVIEW_SOURCES)[number];
+
+export interface AdminReviewCreate {
+  sku: string;
+  customer_name: string;
+  rating: number;
+  review_title?: string;
+  review_content: string;
+  source?: ReviewSource | '';
+  order_number?: string;
+  status?: ProductReviewStatus;
+  review_date?: string;
+}
+
 export interface AdminReviewUpdate {
   customer_name?: string;
   rating?: number;
@@ -71,6 +86,11 @@ export class ReviewService {
     }
     const res = await apiClient.get<APIResponse<AdminReviewList>>('/admin/reviews', { params });
     return unwrap(res, 'Failed to load reviews');
+  }
+
+  static async adminCreate(payload: AdminReviewCreate): Promise<ProductReview> {
+    const res = await apiClient.post<APIResponse<ProductReview>>('/admin/reviews', payload);
+    return unwrap(res, 'Failed to add review');
   }
 
   static async adminUpdate(id: number, payload: AdminReviewUpdate): Promise<ProductReview> {

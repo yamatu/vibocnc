@@ -21,7 +21,7 @@ export default function LanguageSelector() {
         onChange={(event) => changeLocale(event.target.value as PublicLocale)}
         aria-label={t('language.label')}
         title={t('language.label')}
-        className="h-10 w-[11rem] appearance-none border border-slate-300 bg-white py-2 pl-9 pr-7 text-sm font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-orange-400 focus:border-[#003a78] focus:ring-2 focus:ring-blue-100"
+        className="h-10 w-[11rem] appearance-none border border-slate-300 bg-white py-2 pl-9 pr-7 text-sm font-medium text-slate-700 shadow-sm outline-none transition-colors hover:border-orange-400 focus:border-[var(--site-primary)] focus:ring-2 focus:ring-blue-100"
       >
         {PUBLIC_LOCALES.map((option) => (
           <option key={option.code} value={option.code}>

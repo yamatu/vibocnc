@@ -148,7 +148,7 @@ export function Header() {
                     <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
                     <p className="text-xs text-gray-500">SKU: {p.sku}</p>
                   </div>
-                  <div className="max-w-28 shrink-0 text-right text-sm font-semibold text-[#0b3e75]">
+                  <div className="max-w-28 shrink-0 text-right text-sm font-semibold text-[var(--site-primary)]">
                     {hasProductPrice(p) ? formatCurrency(p.price) : t('products.contactForQuote')}
                   </div>
                 </Link>
@@ -233,7 +233,7 @@ export function Header() {
                   className={cn(
                     'shrink-0 whitespace-nowrap text-xs font-semibold uppercase tracking-wide transition-colors duration-200 min-[1800px]:text-sm',
                     item.key === 'nav.repair'
-                      ? 'rounded-md bg-orange-700 px-3 py-2 text-white hover:bg-[#003a78]'
+                      ? 'rounded-md bg-orange-700 px-3 py-2 text-white hover:bg-[var(--site-primary)]'
                       : 'text-slate-700 hover:text-orange-600',
                   )}
                 >
@@ -265,12 +265,12 @@ export function Header() {
                         placeholder={t('header.searchProducts')}
                         value={searchQuery}
                         onChange={(e) => handleSearchInput(e.target.value)}
-                        className="flex-1 px-3 py-2 border border-slate-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#003a78]"
+                        className="flex-1 px-3 py-2 border border-slate-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--site-primary)]"
                         autoFocus
                       />
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-[#003a78] text-white rounded-r-md hover:bg-orange-600 transition-colors font-semibold"
+                        className="px-4 py-2 bg-[var(--site-primary)] text-white rounded-r-md hover:bg-orange-600 transition-colors font-semibold"
                       >
                         {t('header.search')}
                       </button>
@@ -356,7 +356,7 @@ export function Header() {
                 </Link>
                 <Link
                   href="/register"
-                  className="px-3 py-2 text-sm font-semibold text-white bg-[#003a78] rounded-md hover:bg-orange-600 transition-colors"
+                  className="px-3 py-2 text-sm font-semibold text-white bg-[var(--site-primary)] rounded-md hover:bg-orange-600 transition-colors"
                 >
                   {t('header.register')}
                 </Link>
@@ -417,11 +417,11 @@ export function Header() {
                   placeholder={t('header.searchProducts')}
                 value={searchQuery}
                 onChange={(e) => handleSearchInput(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#003a78]"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--site-primary)]"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#003a78] text-white rounded-r-md hover:bg-orange-600 transition-colors font-semibold"
+                  className="px-4 py-2 bg-[var(--site-primary)] text-white rounded-r-md hover:bg-orange-600 transition-colors font-semibold"
                 >
                   {t('header.search')}
                 </button>
@@ -451,7 +451,7 @@ export function Header() {
                 </Link>
                 <Link
                   href="/register"
-                  className="rounded-md bg-[#003a78] px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-orange-600"
+                  className="rounded-md bg-[var(--site-primary)] px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-orange-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {t('header.register')}
@@ -586,7 +586,7 @@ function CategoriesDropdown() {
                           scroll={false}
                           className={cn(
                             'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                            isActive ? 'bg-blue-50 text-[#003a78]' : 'text-slate-800 hover:bg-slate-50 hover:text-orange-600'
+                            isActive ? 'bg-blue-50 text-[var(--site-primary)]' : 'text-slate-800 hover:bg-slate-50 hover:text-orange-600'
                           )}
                         >
                           <span className="min-w-0 flex-1 truncate">{cat.name}</span>

@@ -380,6 +380,11 @@ func (rc *ReviewController) AdminUpdateReview(c *gin.Context) {
 		review.ReviewContent = strings.TrimSpace(*req.ReviewContent)
 	}
 	if req.IsVerified != nil {
+		// "Verified buyer" is a factual claim; it requires a linked order.
+		if *req.IsVerified && review.OrderID == nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Only reviews linked to an order can be marked as verified", Error: "verification_requires_order"})
+			return
+		}
 		review.IsVerified = *req.IsVerified
 	}
 	if req.Status != nil {
@@ -452,4 +457,124 @@ func (rc *ReviewController) AdminDeleteReview(c *gin.Context) {
 		refreshReviewedProducts(c.Request.Context(), db, []uint{review.ProductID})
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Message: "Deleted"})
+}
+
+type adminCreateReviewRequest struct {
+	ProductID     uint   `json:"product_id"`
+	SKU           string `json:"sku"`
+	CustomerName  string `json:"customer_name"`
+	Rating        int    `json:"rating"`
+	ReviewTitle   string `json:"review_title"`
+	ReviewContent string `json:"review_content"`
+	Source        string `json:"source"`
+	OrderNumber   string `json:"order_number"`
+	Status        string `json:"status"`
+	ReviewDate    string `json:"review_date"`
+}
+
+// Admin: POST /api/v1/admin/reviews
+// Records feedback a customer gave through another channel (email, eBay,
+// WhatsApp...). A review is only marked "verified" when it is tied to an order
+// that actually contains the product.
+func (rc *ReviewController) AdminCreateReview(c *gin.Context) {
+	var req adminCreateReviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid request", Error: err.Error()})
+		return
+	}
+	db := config.GetDB()
+
+	var product models.Product
+	q := db.Select("id", "sku")
+	switch {
+	case req.ProductID > 0:
+		q = q.Where("id = ?", req.ProductID)
+	case strings.TrimSpace(req.SKU) != "":
+		q = q.Where("sku = ?", strings.TrimSpace(req.SKU))
+	default:
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Product is required", Error: "product_required"})
+		return
+	}
+	if err := q.First(&product).Error; err != nil {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Product not found", Error: "product_not_found"})
+		return
+	}
+
+	name := strings.TrimSpace(req.CustomerName)
+	title := strings.TrimSpace(req.ReviewTitle)
+	content := strings.TrimSpace(req.ReviewContent)
+	if msg := validateReviewFields(name, title, content, req.Rating); msg != "" {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: msg, Error: "invalid_review"})
+		return
+	}
+
+	status := strings.TrimSpace(req.Status)
+	if status == "" {
+		status = models.ReviewStatusApproved
+	}
+	if !validReviewStatus(status) {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid status"})
+		return
+	}
+
+	review := models.ProductReview{
+		ProductID:     product.ID,
+		CustomerName:  name,
+		Rating:        req.Rating,
+		ReviewTitle:   title,
+		ReviewContent: content,
+	}
+	if id, ok := c.Get("user_id"); ok {
+		if uid, ok := id.(uint); ok && uid > 0 {
+			review.CreatedByAdminID = &uid
+		}
+	}
+
+	if orderNumber := strings.TrimSpace(req.OrderNumber); orderNumber != "" {
+		var order models.Order
+		err := db.Where("order_number = ?", orderNumber).
+			Where("EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = orders.id AND oi.product_id = ?)", product.ID).
+			First(&order).Error
+		if err != nil {
+			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "No order with this number contains the product", Error: "order_not_found"})
+			return
+		}
+		orderID := order.ID
+		review.OrderID = &orderID
+		review.CustomerID = order.CustomerID
+		review.CustomerEmail = order.CustomerEmail
+		review.IsVerified = true
+	}
+
+	source := strings.ToLower(strings.TrimSpace(req.Source))
+	if review.OrderID == nil && !models.ReviewSources[source] {
+		c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Choose where this feedback came from", Error: "source_required"})
+		return
+	}
+	if models.ReviewSources[source] {
+		review.Source = source
+	}
+
+	if d := strings.TrimSpace(req.ReviewDate); d != "" {
+		parsed, err := time.Parse("2006-01-02", d)
+		if err != nil || parsed.After(time.Now()) {
+			c.JSON(http.StatusBadRequest, models.APIResponse{Success: false, Message: "Invalid review date", Error: "invalid_date"})
+			return
+		}
+		review.CreatedAt = parsed
+	}
+	applyReviewStatus(&review, status)
+
+	if err := db.Create(&review).Error; err != nil {
+		if strings.Contains(err.Error(), "Duplicate entry") {
+			c.JSON(http.StatusConflict, models.APIResponse{Success: false, Message: "This customer already has a review for the product", Error: "already_reviewed"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to save review", Error: utils.PublicError(err, "internal_error")})
+		return
+	}
+	if review.IsApproved {
+		refreshReviewedProducts(c.Request.Context(), db, []uint{product.ID})
+	}
+	c.JSON(http.StatusCreated, models.APIResponse{Success: true, Message: "Review added", Data: review})
 }

@@ -19,7 +19,7 @@ export default function FloatingCartButton() {
       type="button"
       onClick={toggleCart}
       aria-label={`Shopping cart (${itemCount})`}
-      className="fixed right-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#0b3e75] text-white shadow-xl transition-colors hover:bg-[#082f59] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 sm:right-6 sm:bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] sm:h-16 sm:w-16"
+      className="fixed right-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--site-primary)] text-white shadow-xl transition-colors hover:bg-[var(--site-primary-strong)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 sm:right-6 sm:bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] sm:h-16 sm:w-16"
     >
       <ShoppingCartIcon className="h-6 w-6 sm:h-8 sm:w-8" aria-hidden="true" />
       <span aria-live="polite" className="absolute -right-1 -top-1 min-w-6 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold text-white ring-2 ring-white">

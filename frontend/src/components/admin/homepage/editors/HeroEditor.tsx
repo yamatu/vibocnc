@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useDraftReporter } from '@/components/admin/homepage/useDraftReporter';
+import type { SectionPayload } from '@/components/admin/homepage/section-payload';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { toast } from 'react-hot-toast';
 import { Bars3Icon, PlusIcon, TrashIcon, PhotoIcon } from '@heroicons/react/24/outline';
 
+import ImageField from '@/components/admin/homepage/ImageField';
 import MediaPickerModal from '@/components/admin/MediaPickerModal';
 import type { HomepageContent } from '@/types';
 import { SortableList } from '@/components/admin/homepage/SortableList';
@@ -85,9 +88,11 @@ function toData(values: FormValues): HeroEditorData {
 export default function HeroEditor({
   content,
   onSave,
+  onDraftChange,
 }: {
   content?: HomepageContent | null;
   onSave: (payload: { data: any; title?: string; subtitle?: string; description?: string; image_url?: string; button_text?: string; button_url?: string; is_active: boolean; sort_order: number }) => Promise<void>;
+  onDraftChange?: (payload: Partial<SectionPayload>) => void;
 }) {
   const { locale, t } = useAdminI18n();
   const defaults = useMemo(() => fromContent(content), [content]);
@@ -102,14 +107,11 @@ export default function HeroEditor({
 
   const [picker, setPicker] = useState<{ open: boolean; idx: number | null }>({ open: false, idx: null });
 
-  const onSubmit = async (values: FormValues) => {
-    if (!values.slides || values.slides.length === 0) {
-      toast.error(t('homepage.hero.minOneSlide', locale === 'zh' ? '至少需要 1 张轮播图' : 'At least 1 slide is required'));
-      return;
-    }
+  const buildPayload = (values: FormValues) => {
+    if (!values.slides || values.slides.length === 0) return null;
     const data = toData(values);
     const first = values.slides[0];
-    await onSave({
+    return {
       data,
       // Keep simple fields in sync for SEO/back-compat.
       title: first.title,
@@ -120,13 +122,23 @@ export default function HeroEditor({
       button_url: first.primaryHref,
       is_active: values.is_active,
       sort_order: values.sort_order,
-    });
+    };
   };
+
+  const onSubmit = async (values: FormValues) => {
+    const payload = buildPayload(values);
+    if (!payload) {
+      toast.error(t('homepage.hero.minOneSlide', locale === 'zh' ? '至少需要 1 张轮播图' : 'At least 1 slide is required'));
+      return;
+    }
+    await onSave(payload);
+  };
+  useDraftReporter(watch, buildPayload, onDraftChange);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-5">
+      <div className="grid grid-cols-1 @4xl:grid-cols-12 gap-6">
+        <div className="@4xl:col-span-5">
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                 <div className="font-medium text-gray-900">{t('homepage.hero.slides', locale === 'zh' ? '轮播列表' : 'Slides')}</div>
@@ -207,9 +219,9 @@ export default function HeroEditor({
           </div>
         </div>
 
-        <div className="lg:col-span-7">
+        <div className="@4xl:col-span-7">
           <form onSubmit={handleSubmit(onSubmit)} className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 @xl:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('homepage.hero.autoPlay', locale === 'zh' ? '自动播放（毫秒）' : 'Auto Play (ms)')}</label>
                 <input
@@ -250,32 +262,23 @@ export default function HeroEditor({
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="sm:col-span-2">
+                    <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
+                      <div className="@xl:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.title', locale === 'zh' ? '标题' : 'Title')}</label>
                         <input {...register(`slides.${idx}.title` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                       </div>
-                      <div className="sm:col-span-2">
+                      <div className="@xl:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.subtitle', locale === 'zh' ? '副标题' : 'Subtitle')}</label>
                         <input {...register(`slides.${idx}.subtitle` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                       </div>
-                      <div className="sm:col-span-2">
+                      <div className="@xl:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.description', locale === 'zh' ? '描述' : 'Description')}</label>
                         <textarea rows={4} {...register(`slides.${idx}.description` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                       </div>
 
-                      <div className="sm:col-span-2">
+                      <div className="@xl:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.image', locale === 'zh' ? '图片' : 'Image')}</label>
-                        <div className="flex gap-2">
-                          <input {...register(`slides.${idx}.image` as const)} className="flex-1 px-3 py-2 border border-gray-300 rounded-md" placeholder="/uploads/..." />
-                          <button
-                            type="button"
-                            onClick={() => setPicker({ open: true, idx })}
-                            className="px-3 py-2 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
-                          >
-                            {t('common.choose', locale === 'zh' ? '选择' : 'Choose')}
-                          </button>
-                        </div>
+                        <ImageField value={slides?.[idx]?.image || ''} onChange={(url) => setValue(`slides.${idx}.image` as const, url, { shouldDirty: true })} />
                       </div>
 
                       <div>

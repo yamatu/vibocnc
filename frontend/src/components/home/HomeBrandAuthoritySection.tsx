@@ -86,7 +86,7 @@ export default function HomeBrandAuthoritySection({
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:items-start">
             <div>
-              <p className="text-xs font-bold uppercase text-[#0b3e75]">Vibocnc company profile</p>
+              <p className="text-xs font-bold uppercase text-[var(--site-primary)]">Vibocnc company profile</p>
               {primaryHeading ? (
                 <h1 className="mt-3 max-w-3xl text-3xl font-black text-slate-950 sm:text-4xl">
                   What is Vibocnc?
@@ -109,14 +109,14 @@ export default function HomeBrandAuthoritySection({
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href={localizedHref('/products')}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[#0b3e75] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#082f59]"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[var(--site-primary)] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[var(--site-primary-strong)]"
                 >
                   Browse automation parts
                   <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
                 </Link>
                 <Link
                   href={localizedHref('/contact?inquiry_type=quote')}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-900 transition-colors hover:border-[#0b3e75] hover:text-[#0b3e75]"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-900 transition-colors hover:border-[var(--site-primary)] hover:text-[var(--site-primary)]"
                 >
                   Request a model check
                   <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
@@ -164,14 +164,14 @@ export default function HomeBrandAuthoritySection({
       <section id="vibocnc-faq" className="border-b border-slate-200 bg-[#f3f6f8] py-16 lg:py-20">
         <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.72fr_1.28fr] lg:px-8">
           <div>
-            <p className="text-xs font-bold uppercase text-[#0b3e75]">Vibocnc FAQ</p>
+            <p className="text-xs font-bold uppercase text-[var(--site-primary)]">Vibocnc FAQ</p>
             <h2 className="mt-3 text-3xl font-black text-slate-950 sm:text-4xl">Questions about Vibocnc</h2>
             <p className="mt-5 max-w-md text-base leading-7 text-slate-600">
               Direct answers about our company, supported manufacturers, model verification and international supply.
             </p>
             <Link
               href={localizedHref('/about')}
-              className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[#0b3e75] underline decoration-slate-300 underline-offset-4 hover:text-orange-700"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[var(--site-primary)] underline decoration-slate-300 underline-offset-4 hover:text-orange-700"
             >
               Read the full company profile
               <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
@@ -181,7 +181,7 @@ export default function HomeBrandAuthoritySection({
           <div className="border-t border-slate-300">
             {HOMEPAGE_BRAND_FAQS.map((item, index) => (
               <details key={item.question} className="group border-b border-slate-300 py-1" open={index === 0}>
-                <summary className="cursor-pointer py-5 pr-6 text-base font-bold leading-6 text-slate-950 marker:text-[#0b3e75]">
+                <summary className="cursor-pointer py-5 pr-6 text-base font-bold leading-6 text-slate-950 marker:text-[var(--site-primary)]">
                   {item.question}
                 </summary>
                 <p className="faq-answer max-w-3xl pb-5 pr-6 text-sm leading-7 text-slate-600">{item.answer}</p>

@@ -182,6 +182,7 @@ export interface ProductReview {
   review_title: string;
   review_content: string;
   status?: ProductReviewStatus;
+  source?: string;
   is_verified: boolean;
   is_approved: boolean;
   helpful_count: number;

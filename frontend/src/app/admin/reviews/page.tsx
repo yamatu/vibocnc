@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast';
 import {
   CheckIcon,
   MagnifyingGlassIcon,
+  PlusIcon,
   PencilSquareIcon,
   StarIcon,
   TrashIcon,
@@ -13,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import AdminLayout from '@/components/admin/AdminLayout';
+import AddReviewModal, { reviewSourceLabel } from '@/components/admin/AddReviewModal';
 import { useAdminI18n } from '@/lib/admin-i18n';
 import { ReviewService, type AdminReviewUpdate } from '@/services/review.service';
 import type { ProductReview, ProductReviewStatus } from '@/types';
@@ -50,6 +52,7 @@ export default function AdminReviewsPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<number[]>([]);
   const [editing, setEditing] = useState<ProductReview | null>(null);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -106,7 +109,8 @@ export default function AdminReviewsPage() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">{L('商品评价', 'Product Reviews')}</h1>
           <p className="mt-1 text-sm text-gray-600">
             {L(
@@ -114,6 +118,14 @@ export default function AdminReviewsPage() {
               'Only customers who bought a product can review it. Every review must be approved before it appears on the product page. You can edit text, rating and display name.',
             )}
           </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg bg-yellow-500 px-4 py-2 text-sm font-semibold text-black hover:bg-yellow-600"
+          >
+            <PlusIcon className="h-4 w-4" />{L('录入客户评价', 'Add customer feedback')}
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -217,6 +229,7 @@ export default function AdminReviewsPage() {
                         <div className="font-medium text-gray-900">{r.customer_name}</div>
                         {r.customer_email && <div className="text-xs text-gray-500">{r.customer_email}</div>}
                         {r.is_verified && <div className="mt-1 text-xs font-medium text-green-700">{L('已购买', 'Verified buyer')}</div>}
+                        {r.source && <div className="mt-1 text-xs text-gray-500">{L('录入来源', 'Source')}: {reviewSourceLabel(r.source, L)}</div>}
                         {r.order_id ? <div className="text-xs text-gray-400">{L('订单', 'Order')} #{r.order_id}</div> : null}
                       </td>
                       <td className="max-w-md px-4 py-3">
@@ -279,6 +292,10 @@ export default function AdminReviewsPage() {
         </div>
       </div>
 
+      {adding && (
+        <AddReviewModal L={L} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); invalidate(); }} />
+      )}
+
       {editing && (
         <EditReviewModal
           review={editing}
@@ -319,15 +336,15 @@ function EditReviewModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-xl rounded-lg bg-white shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" role="dialog" aria-modal="true">
+      <div className="flex max-h-[92dvh] w-full max-w-xl flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-lg">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
           <h2 className="text-lg font-semibold text-gray-900">
             {L('编辑评价', 'Edit review')} {review.product?.sku ? `· ${review.product.sku}` : ''}
           </h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gray-500 hover:bg-gray-100"><XMarkIcon className="h-5 w-5" /></button>
         </div>
-        <div className="space-y-4 px-5 py-4">
+        <div className="space-y-4 overflow-y-auto px-5 py-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-gray-700">{L('显示名称', 'Display name')}</span>
@@ -360,9 +377,10 @@ function EditReviewModal({
             <span className="mb-1 block font-medium text-gray-700">{L('评价内容', 'Review text')}</span>
             <textarea value={form.review_content} onChange={(e) => setForm((f) => ({ ...f, review_content: e.target.value }))} rows={6} maxLength={3000} className="block w-full rounded-md border border-gray-300 px-3 py-2" />
           </label>
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={form.is_verified} onChange={(e) => setForm((f) => ({ ...f, is_verified: e.target.checked }))} className="rounded border-gray-300" />
+          <label className={`inline-flex flex-wrap items-center gap-2 text-sm ${review.order_id ? 'text-gray-700' : 'text-gray-400'}`}>
+            <input type="checkbox" disabled={!review.order_id} checked={form.is_verified} onChange={(e) => setForm((f) => ({ ...f, is_verified: e.target.checked }))} className="rounded border-gray-300" />
             {L('显示“已购买”标记', 'Show "Verified buyer" badge')}
+            {!review.order_id ? <span className="text-xs">{L('（需关联订单）', '(requires a linked order)')}</span> : null}
           </label>
           {review.customer_email && (
             <p className="text-xs text-gray-500">{L('提交人', 'Submitted by')}: {review.customer_email}{review.order_id ? ` · ${L('订单', 'Order')} #${review.order_id}` : ''}</p>

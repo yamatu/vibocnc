@@ -174,17 +174,17 @@ export default function CategoriesClient({ initialCategories = [] }: CategoriesC
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
-                  <IconComponent className="h-20 w-20 text-[#0b3e75]" />
+                  <IconComponent className="h-20 w-20 text-[var(--site-primary)]" />
                 </div>
               )}
               
-              <div className="absolute bottom-4 right-4 rounded-full bg-[#0b3e75] px-3 py-1 text-sm font-semibold text-white">
+              <div className="absolute bottom-4 right-4 rounded-full bg-[var(--site-primary)] px-3 py-1 text-sm font-semibold text-white">
                 {productCounts[category.id] !== undefined ? productCounts[category.id] : '...'}
               </div>
             </div>
             
             <div className="p-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-[#0b3e75] transition-colors">
+              <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-[var(--site-primary)] transition-colors">
                 {category.name}
               </h3>
               <p className="text-gray-600 mb-4 line-clamp-3">

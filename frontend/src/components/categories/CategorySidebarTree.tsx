@@ -98,13 +98,13 @@ export default function CategorySidebarTree({
 
     return (
       <div key={node.id}>
-        <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? 'bg-blue-50 text-[#0b3e75] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[#0b3e75]'}`}>
+        <div className={`flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${isActive ? 'bg-blue-50 text-[var(--site-primary)] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[var(--site-primary)]'}`}>
           <div style={{ width: depth * 12 }} />
           {hasChildren ? (
             <button
               type="button"
               onClick={() => toggle(node.id)}
-              className="p-0.5 rounded text-slate-500 hover:bg-slate-200 hover:text-[#0b3e75]"
+              className="p-0.5 rounded text-slate-500 hover:bg-slate-200 hover:text-[var(--site-primary)]"
               aria-label={isOpen ? 'Collapse' : 'Expand'}
             >
               {isOpen ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}

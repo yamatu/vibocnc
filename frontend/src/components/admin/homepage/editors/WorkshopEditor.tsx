@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useDraftReporter } from '@/components/admin/homepage/useDraftReporter';
+import type { SectionPayload } from '@/components/admin/homepage/section-payload';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { Bars3Icon, PlusIcon, TrashIcon, PhotoIcon } from '@heroicons/react/24/outline';
 
+import ImageField from '@/components/admin/homepage/ImageField';
 import MediaPickerModal from '@/components/admin/MediaPickerModal';
 import type { HomepageContent } from '@/types';
 import { SortableList } from '@/components/admin/homepage/SortableList';
@@ -144,9 +147,11 @@ const CAP_ICON_OPTIONS: string[] = ['cog', 'clipboard', 'truck', 'check'];
 export default function WorkshopEditor({
   content,
   onSave,
+  onDraftChange,
 }: {
   content?: HomepageContent | null;
   onSave: (payload: { data: WorkshopSectionData; title?: string; description?: string; is_active: boolean; sort_order: number }) => Promise<void>;
+  onDraftChange?: (payload: Partial<SectionPayload>) => void;
 }) {
   const { locale, t } = useAdminI18n();
   const defaults = useMemo(() => fromContent(content), [content]);
@@ -185,9 +190,9 @@ export default function WorkshopEditor({
 
   const [picker, setPicker] = useState<{ open: boolean; facilityIdx: number | null }>({ open: false, facilityIdx: null });
 
-  const onSubmit = async (values: FormValues) => {
+  const buildPayload = (values: FormValues) => {
     const data = toData(values);
-    await onSave({
+    return ({
       data,
       title: values.headerTitle,
       description: values.headerDescription,
@@ -195,11 +200,15 @@ export default function WorkshopEditor({
       sort_order: values.sort_order,
     });
   };
+  const onSubmit = async (values: FormValues) => {
+    await onSave(buildPayload(values));
+  };
+  useDraftReporter(watch, buildPayload, onDraftChange);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 @xl:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.sortOrder', locale === 'zh' ? '排序' : 'Sort Order')}</label>
             <input type="number" {...register('sort_order', { valueAsNumber: true })} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
@@ -222,8 +231,8 @@ export default function WorkshopEditor({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-6 bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+      <div className="grid grid-cols-1 @4xl:grid-cols-12 gap-6">
+        <div className="@4xl:col-span-6 bg-white border border-gray-200 rounded-lg p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="font-medium text-gray-900">{t('homepage.workshop.facilities', locale === 'zh' ? '设施（标签页）' : 'Facilities (Tabs)')}</div>
             <button
@@ -279,7 +288,7 @@ export default function WorkshopEditor({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 @xl:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Icon</label>
                       <select {...register(`facilities.${idx}.icon` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
@@ -290,24 +299,19 @@ export default function WorkshopEditor({
                         ))}
                       </select>
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="@xl:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
                       <input {...register(`facilities.${idx}.title` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="@xl:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
                       <textarea rows={2} {...register(`facilities.${idx}.description` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="@xl:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Image</label>
-                      <div className="flex gap-2">
-                        <input {...register(`facilities.${idx}.image` as const)} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="/uploads/..." />
-                        <button type="button" onClick={() => setPicker({ open: true, facilityIdx: idx })} className="px-3 py-2 border border-gray-200 rounded-md text-sm hover:bg-gray-50">
-                          {t('common.choose', locale === 'zh' ? '选择' : 'Choose')}
-                        </button>
-                      </div>
+                      <ImageField value={watch(`facilities.${idx}.image` as const) || ''} onChange={(url) => setValue(`facilities.${idx}.image` as const, url, { shouldDirty: true })} />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="@xl:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Features (1 per line)</label>
                       <textarea rows={4} {...register(`facilities.${idx}.featuresText` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-xs" />
                     </div>
@@ -318,7 +322,7 @@ export default function WorkshopEditor({
           </SortableList>
         </div>
 
-        <div className="lg:col-span-6 bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+        <div className="@4xl:col-span-6 bg-white border border-gray-200 rounded-lg p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="font-medium text-gray-900">{t('homepage.workshop.capabilities', locale === 'zh' ? '能力' : 'Capabilities')}</div>
             <button
@@ -359,7 +363,7 @@ export default function WorkshopEditor({
                       <TrashIcon className="h-5 w-5" />
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 @xl:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Icon</label>
                       <select {...register(`capabilities.${idx}.icon` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
@@ -374,7 +378,7 @@ export default function WorkshopEditor({
                       <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
                       <input {...register(`capabilities.${idx}.title` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="@xl:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
                       <textarea rows={2} {...register(`capabilities.${idx}.description` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                     </div>
@@ -389,8 +393,8 @@ export default function WorkshopEditor({
       <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
         <div className="font-medium text-gray-900">{t('homepage.workshop.bottomBlock', locale === 'zh' ? '底部统计 + CTA（黄色区块）' : 'Bottom Stats + CTA (Yellow Block)')}</div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-6 space-y-4">
+        <div className="grid grid-cols-1 @4xl:grid-cols-12 gap-6">
+          <div className="@4xl:col-span-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium text-gray-900">Stats Items</div>
               <button type="button" onClick={() => statsFA.append({ id: newId('stat'), value: '', title: '', subtitle: '' })} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50">
@@ -425,7 +429,7 @@ export default function WorkshopEditor({
                         <TrashIcon className="h-5 w-5" />
                       </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 @xl:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Value</label>
                         <input {...register(`statsItems.${idx}.value` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
@@ -445,7 +449,7 @@ export default function WorkshopEditor({
             </SortableList>
           </div>
 
-          <div className="lg:col-span-6 space-y-4">
+          <div className="@4xl:col-span-6 space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">CTA Title</label>
               <input {...register('ctaTitle')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
@@ -454,7 +458,7 @@ export default function WorkshopEditor({
               <label className="block text-sm font-medium text-gray-700 mb-1">CTA Description</label>
               <textarea rows={3} {...register('ctaDescription')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Primary Button Text</label>
                 <input {...register('primaryCtaText')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />

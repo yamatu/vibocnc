@@ -161,7 +161,9 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     .map((url) => toAbsoluteUrl(url, baseUrl));
 
   // Reviews & aggregate rating
-  const approvedReviews = product.reviews?.filter(r => r.is_approved) || [];
+  // Reviews transcribed from other channels without an order are shown on the
+  // page but kept out of rich results, which require first-party reviews.
+  const approvedReviews = product.reviews?.filter(r => r.is_approved && (r.is_verified || !r.source)) || [];
   const hasReviews = approvedReviews.length > 0;
   const avgRating = hasReviews
     ? approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length

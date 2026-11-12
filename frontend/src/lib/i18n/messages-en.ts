@@ -174,6 +174,13 @@ export const enMessages = {
   'review.moderationNote': 'Reviews are checked by our team before they appear.',
   'review.reviewsLink': '{count} reviews',
   'review.purchasedIn': 'Purchased in order {number}',
+  'review.via': 'Feedback via {source}',
+  'review.source.email': 'email',
+  'review.source.ebay': 'eBay',
+  'review.source.whatsapp': 'WhatsApp',
+  'review.source.phone': 'phone',
+  'review.source.offline': 'offline order',
+  'review.source.other': 'other channel',
 } as const;
 
 export type PublicMessageKey = keyof typeof enMessages;

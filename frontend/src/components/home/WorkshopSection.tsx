@@ -86,8 +86,8 @@ export function WorkshopSection({ content }: Props) {
                 onClick={() => setActiveTab(index)}
                 className={`px-6 py-3 font-medium text-sm md:text-base transition-colors duration-300 border-b-2 ${
                   activeTab === index
-                    ? 'border-[#003a78] text-[#003a78]'
-                    : 'border-transparent text-slate-600 hover:text-[#003a78]'
+                    ? 'border-[var(--site-primary)] text-[var(--site-primary)]'
+                    : 'border-transparent text-slate-600 hover:text-[var(--site-primary)]'
                 }`}
               >
                 {facility.title}
@@ -121,7 +121,7 @@ export function WorkshopSection({ content }: Props) {
                       <div className="bg-blue-50 p-3 rounded-lg mr-4">
                         {(() => {
                           const Icon = ICONS[String(activeFacility.icon)] || BeakerIcon;
-                          return <Icon className="h-8 w-8 text-[#003a78]" />;
+                          return <Icon className="h-8 w-8 text-[var(--site-primary)]" />;
                         })()}
                       </div>
                       <h3 className="text-2xl font-bold text-slate-950">
@@ -158,7 +158,7 @@ export function WorkshopSection({ content }: Props) {
               <div className="bg-blue-50 p-4 rounded-lg w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                 {(() => {
                   const Icon = ICONS[String(capability.icon)] || CogIcon;
-                  return <Icon className="h-8 w-8 text-[#003a78]" />;
+                  return <Icon className="h-8 w-8 text-[var(--site-primary)]" />;
                 })()}
               </div>
               <h3 className="text-lg font-semibold text-slate-950 mb-2">
@@ -193,7 +193,7 @@ export function WorkshopSection({ content }: Props) {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
                 href={href(data.statsBlock?.ctaPrimary?.href || '/contact')}
-                className="bg-orange-700 text-white hover:bg-[#003a78] px-8 py-3 rounded-md font-semibold transition-colors duration-300"
+                className="bg-orange-700 text-white hover:bg-[var(--site-primary)] px-8 py-3 rounded-md font-semibold transition-colors duration-300"
               >
                 {locale === 'en' ? data.statsBlock?.ctaPrimary?.text || t('common.contactUs') : t('common.contactUs')}
               </a>

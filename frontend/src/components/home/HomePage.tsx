@@ -7,6 +7,11 @@ import WorkshopSection from '@/components/home/WorkshopSection';
 import ServicesSection from '@/components/home/ServicesSection';
 import SimpleContentSection from '@/components/home/SimpleContentSection';
 import BrandsSection from '@/components/home/BrandsSection';
+import BrandCarousel from '@/components/home/BrandCarousel';
+import TemplateSection from '@/components/home/TemplateSection';
+import PreviewBridge from '@/components/admin/homepage/PreviewBridge';
+import { toTemplateModel } from '@/lib/section-templates';
+import { applyHomepageDrafts } from '@/lib/homepage-drafts.server';
 import RepairCapabilitiesSection from '@/components/home/RepairCapabilitiesSection';
 import HomeBlogSection from '@/components/home/HomeBlogSection';
 import HomeBrandAuthoritySection, { HOMEPAGE_BRAND_FAQS } from '@/components/home/HomeBrandAuthoritySection';
@@ -40,6 +45,7 @@ export function getHomeDescription(locale: string): string {
 
 const PRIMARY_HOME_SECTIONS: Array<{ key: string; defaultSort: number }> = [
   { key: 'hero_section', defaultSort: 10 },
+  { key: 'brand_carousel', defaultSort: 15 },
   { key: 'company_stats', defaultSort: 20 },
   { key: 'featured_products', defaultSort: 30 },
   { key: 'brands_section', defaultSort: 40 },
@@ -210,7 +216,8 @@ export default async function HomePage({
   isAdminPreview?: boolean;
 }) {
   const baseUrl = getSiteUrl();
-  const list = await getHomepageContentList({ fresh: isAdminPreview });
+  const published = await getHomepageContentList({ fresh: isAdminPreview });
+  const list = isAdminPreview ? await applyHomepageDrafts(published) : published;
   // Social links are non-critical footer content. Fetch them during admin
   // preview for accurate structured-data review; public requests use the
   // client-cached footer query so the first HTML response has one backend call.
@@ -247,8 +254,15 @@ export default async function HomePage({
         content: c,
       })),
   ]
-    .filter((s) => s.isActive)
+    // The admin preview keeps hidden sections so they can still be edited.
+    .filter((s) => s.isActive || isAdminPreview)
     .sort((a, b) => a.sort - b.sort);
+
+  // The company profile follows the hero, after the brand strip when that sits directly below it.
+  const heroIndex = renderQueue.findIndex((s) => s.key === 'hero_section');
+  const authorityAnchorKey = heroIndex >= 0 && renderQueue[heroIndex + 1]?.key === 'brand_carousel'
+    ? 'brand_carousel'
+    : 'hero_section';
 
   // Enhanced structured data using the new utility functions
   const organizationSchema = generateOrganizationSchema(getSocialMediaURLs(socialMediaSettings));
@@ -302,6 +316,7 @@ export default async function HomePage({
         {renderQueue.map((s) => {
           let section: ReactNode;
           if (s.key === 'hero_section') section = <HeroSection content={s.content} />;
+          else if (s.key === 'brand_carousel') section = <BrandCarousel content={s.content} locale={locale} />;
           else if (s.key === 'company_stats') section = <CompanyStats content={s.content} />;
           else if (s.key === 'featured_products') {
             // Featured products fetch in the client when this section enters
@@ -318,19 +333,25 @@ export default async function HomePage({
                 <DeferredHomeBlog content={s.content} locale={locale} />
               </Suspense>
             );
-          } else section = <SimpleContentSection content={s.content} />;
+          } else {
+            const model = s.content ? toTemplateModel(s.content) : null;
+            section = model
+              ? <TemplateSection model={model} sectionId={`section-${s.key}`} resolveHref={(path) => localizePublicPath(path, locale)} />
+              : <SimpleContentSection content={s.content} />;
+          }
 
           return (
             <Fragment key={s.key}>
               {isAdminPreview ? (
-                <HomepagePreviewMarker sectionKey={s.key} label={`Edit ${s.key}`}>
+                <HomepagePreviewMarker sectionKey={s.key} label={s.content?.title || s.key} hidden={!s.isActive}>
                   {section}
                 </HomepagePreviewMarker>
               ) : section}
-              {s.key === 'hero_section' ? <HomeBrandAuthoritySection locale={locale} /> : null}
+              {s.key === authorityAnchorKey ? <HomeBrandAuthoritySection locale={locale} /> : null}
             </Fragment>
           );
         })}
+        {isAdminPreview ? <PreviewBridge /> : null}
         {!renderQueue.some((section) => section.key === 'hero_section') ? (
           <HomeBrandAuthoritySection locale={locale} primaryHeading />
         ) : null}

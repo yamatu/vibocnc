@@ -66,6 +66,7 @@ func SetupRoutes(r *gin.Engine) {
 	productProfileDraftController := &controllers.ProductProfileDraftController{}
 	aiAgentController := &controllers.AIAgentController{}
 	reviewController := &controllers.ReviewController{}
+	homepageDraftController := &controllers.HomepageDraftController{}
 	turnstileController := &controllers.TurnstileController{}
 	// eBay drafts are never auto-imported. AI optimization queues a proposal;
 	// the administrator explicitly approves the final product import.
@@ -599,6 +600,7 @@ func SetupRoutes(r *gin.Engine) {
 			reviews.Use(middleware.EditorOrAdmin())
 			{
 				reviews.GET("", reviewController.AdminListReviews)
+				reviews.POST("", reviewController.AdminCreateReview)
 				reviews.POST("/bulk-status", reviewController.AdminBulkStatus)
 				reviews.PUT("/:id", reviewController.AdminUpdateReview)
 				reviews.DELETE("/:id", middleware.AdminOnly(), reviewController.AdminDeleteReview)
@@ -676,6 +678,10 @@ func SetupRoutes(r *gin.Engine) {
 			{
 				homepageContent.GET("", homepageContentController.GetHomepageContentsAdmin)
 				homepageContent.GET("/sections", homepageContentController.GetPredefinedSections)
+				homepageContent.GET("/drafts", homepageDraftController.ListDrafts)
+				homepageContent.DELETE("/drafts", homepageDraftController.ClearDrafts)
+				homepageContent.PUT("/drafts/:section_key", homepageDraftController.SaveDraft)
+				homepageContent.DELETE("/drafts/:section_key", homepageDraftController.DeleteDraft)
 				homepageContent.GET("/section/:section_key", homepageContentController.GetHomepageContentBySectionAdmin)
 				homepageContent.PUT("/section/:section_key", homepageContentController.UpsertHomepageContentBySection)
 				homepageContent.GET("/:id", homepageContentController.GetHomepageContent)

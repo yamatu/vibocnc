@@ -365,14 +365,14 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                             under the buttons on narrow cards (global .flex > * { min-width: 0 }). */}
                         <div className="site-product-card-actions space-y-3">
                           {hasProductPrice(product) && (
-                            <p className="whitespace-nowrap text-xl font-bold leading-none text-[#0b3e75]">{formatCurrency(product.price)}</p>
+                            <p className="whitespace-nowrap text-xl font-bold leading-none text-[var(--site-primary)]">{formatCurrency(product.price)}</p>
                           )}
                           <div className="flex items-stretch gap-2">
                             {hasProductPrice(product) ? (
                               <button
                                 type="button"
                                 onClick={() => handleAddToCart(product)}
-                                className="site-primary-action flex-1 whitespace-nowrap px-3 py-2 text-sm"
+                                className="site-primary-action site-buy-action flex-1 whitespace-nowrap px-3 py-2 text-sm"
                                 title={t('common.addToCart')}
                               >
                                 <ShoppingCartIcon className="mr-1 h-4 w-4 flex-shrink-0" />
@@ -433,7 +433,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                         </div>
 
                         <div className="flex-shrink-0 text-left sm:text-right">
-                          <div className="text-xl font-bold text-[#0b3e75] mb-2">
+                          <div className="text-xl font-bold text-[var(--site-primary)] mb-2">
                             {hasProductPrice(product) ? formatCurrency(product.price) : (
                               <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
                                 {t('products.contactForQuote')}

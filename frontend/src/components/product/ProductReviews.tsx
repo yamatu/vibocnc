@@ -22,7 +22,7 @@ export function RatingStars({ rating, className = 'h-4 w-4' }: { rating: number;
     <span className="inline-flex items-center" aria-hidden="true">
       {[1, 2, 3, 4, 5].map((star) =>
         star <= rounded
-          ? <StarIconSolid key={star} className={`${className} text-[#c46a2d]`} />
+          ? <StarIconSolid key={star} className={`${className} text-[var(--site-accent)]`} />
           : <StarIcon key={star} className={`${className} text-slate-300`} />,
       )}
     </span>
@@ -90,7 +90,7 @@ export default function ProductReviews({ productId, reviews }: ProductReviewsPro
                       <div key={star} className="flex items-center gap-2 text-xs text-slate-600">
                         <span className="w-6 shrink-0">{star}★</span>
                         <span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                          <span className="block h-full rounded-full bg-[#c46a2d]" style={{ width: `${pct}%` }} />
+                          <span className="block h-full rounded-full bg-[var(--site-accent)]" style={{ width: `${pct}%` }} />
                         </span>
                         <span className="w-6 shrink-0 text-right">{n}</span>
                       </div>
@@ -125,12 +125,16 @@ export default function ProductReviews({ productId, reviews }: ProductReviewsPro
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-slate-950">{review.customer_name}</span>
-                    {review.is_verified && (
+                    {review.is_verified ? (
                       <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
                         <CheckBadgeIcon className="mr-0.5 h-3.5 w-3.5" />
                         {t('review.verifiedBuyer')}
                       </span>
-                    )}
+                    ) : review.source ? (
+                      <span className="inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        {t('review.via', { source: t(`review.source.${review.source}`) })}
+                      </span>
+                    ) : null}
                   </div>
                   <time dateTime={review.created_at} className="text-xs text-slate-500">
                     {new Date(review.created_at).toLocaleDateString(dateLocale)}
@@ -257,10 +261,10 @@ function ReviewForm({ productId }: { productId: number }) {
               aria-label={t('review.stars', { count: star })}
               onClick={() => setRating(star)}
               onMouseEnter={() => setHover(star)}
-              className="rounded p-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c46a2d]"
+              className="rounded p-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--site-accent)]"
             >
               {star <= shown
-                ? <StarIconSolid className="pointer-events-none h-7 w-7 text-[#c46a2d]" />
+                ? <StarIconSolid className="pointer-events-none h-7 w-7 text-[var(--site-accent)]" />
                 : <StarIcon className="pointer-events-none h-7 w-7 text-slate-300" />}
             </button>
           ))}

@@ -82,7 +82,7 @@ export default function RepairRequestForm({ locale }: { locale: PublicLocale }) 
         {copy.submitNote}
       </div>
 
-      <button disabled={submitting} className="mt-6 w-full rounded-md bg-orange-700 px-6 py-4 font-bold text-white hover:bg-[#0b3e75] disabled:opacity-50">{submitting ? copy.submittingButton : copy.submitButton}</button>
+      <button disabled={submitting} className="mt-6 w-full rounded-md bg-orange-700 px-6 py-4 font-bold text-white hover:bg-[var(--site-primary)] disabled:opacity-50">{submitting ? copy.submittingButton : copy.submitButton}</button>
     </form>
   );
 }

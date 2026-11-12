@@ -134,7 +134,7 @@ export function CartSidebar() {
                                              href={`/products/${toProductPathId(item.product.sku)}`}
 
                                             onClick={closeCart}
-                                            className="hover:text-[#0b3e75]"
+                                            className="hover:text-[var(--site-primary)]"
                                           >
                                             {item.product.name}
                                           </Link>
@@ -200,7 +200,7 @@ export function CartSidebar() {
                         <div className="mt-6 space-y-3">
                           <Link
                             href="/checkout/guest"
-                            className="site-primary-action px-6 py-3 text-base"
+                            className="site-primary-action site-buy-action px-6 py-3 text-base"
                             onClick={closeCart}
                           >
                             Buy Now

@@ -261,11 +261,11 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
                 placeholder={t('footer.emailPlaceholder')}
                 value={newsletterEmail}
                 onChange={(e) => setNewsletterEmail(e.target.value)}
-                className="min-w-0 flex-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#003a78] text-white placeholder-slate-400"
+                className="min-w-0 flex-1 px-4 py-2 bg-slate-900 border border-slate-700 rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--site-primary)] text-white placeholder-slate-400"
               />
               <button
                 type="submit"
-                className="px-6 py-2 bg-orange-700 text-white rounded-r-md hover:bg-[#003a78] transition-colors duration-200 font-semibold"
+                className="px-6 py-2 bg-orange-700 text-white rounded-r-md hover:bg-[var(--site-primary)] transition-colors duration-200 font-semibold"
               >
                 {t('footer.subscribe')}
               </button>

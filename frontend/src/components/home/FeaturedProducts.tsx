@@ -150,7 +150,7 @@ export function FeaturedProducts({
                   {(product.stock_quantity ?? 0) > 0 && hasProductPrice(product) && (
                     <button
                       onClick={() => handleAddToCart(product)}
-                      className="relative z-20 bg-orange-500 text-white p-3 rounded-full hover:bg-[#003a78] transition-colors"
+                      className="relative z-20 bg-orange-500 text-white p-3 rounded-full hover:bg-[var(--site-primary)] transition-colors"
                     >
                       <ShoppingCartIcon className="h-5 w-5" />
                     </button>
@@ -176,11 +176,11 @@ export function FeaturedProducts({
               {/* Product Info */}
               <div className="p-6">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-[#003a78] font-medium">{product.category?.name || t('common.cncParts')}</span>
+                  <span className="text-sm text-[var(--site-primary)] font-medium">{product.category?.name || t('common.cncParts')}</span>
                 </div>
 
                 <h3 className="text-lg font-semibold text-slate-950 mb-2 line-clamp-2">
-                  <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="relative z-20 hover:text-[#003a78]">
+                  <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="relative z-20 hover:text-[var(--site-primary)]">
                     {product.name}
                   </Link>
                 </h3>
@@ -223,7 +223,7 @@ export function FeaturedProducts({
                   {(product.stock_quantity ?? 0) > 0 && hasProductPrice(product) ? (
                     <button
                       onClick={() => handleAddToCart(product)}
-                      className="relative z-20 bg-orange-500 hover:bg-[#003a78] text-white px-4 py-2 rounded-md font-medium transition-colors duration-300"
+                      className="relative z-20 bg-orange-500 hover:bg-[var(--site-primary)] text-white px-4 py-2 rounded-md font-medium transition-colors duration-300"
                     >
                       {t('common.addToCart')}
                     </button>
@@ -237,7 +237,7 @@ export function FeaturedProducts({
                   ) : (
                     <Link
                       href={href(`/products/${toProductPathId(product.sku)}`)}
-                      className="relative z-20 rounded-md border border-slate-300 bg-white px-4 py-2 font-medium text-[#0b3e75] hover:bg-slate-50"
+                      className="relative z-20 rounded-md border border-slate-300 bg-white px-4 py-2 font-medium text-[var(--site-primary)] hover:bg-slate-50"
                     >
                       {t('products.contactForQuote')}
                     </Link>

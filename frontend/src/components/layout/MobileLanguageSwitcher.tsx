@@ -55,13 +55,13 @@ export default function MobileLanguageSwitcher() {
         >
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
             <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900">
-              <GlobeAltIcon className="h-5 w-5 shrink-0 text-[#003a78]" aria-hidden="true" />
+              <GlobeAltIcon className="h-5 w-5 shrink-0 text-[var(--site-primary)]" aria-hidden="true" />
               <span className="truncate">{t('language.label')}</span>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-full p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#003a78]"
+              className="rounded-full p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[var(--site-primary)]"
               aria-label={t('header.closeMenu')}
             >
               <XMarkIcon className="h-5 w-5" />
@@ -80,7 +80,7 @@ export default function MobileLanguageSwitcher() {
                   dir={option.dir}
                   onClick={() => selectLocale(option.code)}
                   aria-pressed={selected}
-                  className={`flex min-h-12 items-center gap-2 rounded-xl px-3 py-2 text-start text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[#003a78] ${selected ? 'bg-blue-50 font-semibold text-[#003a78]' : 'text-slate-700 hover:bg-slate-50'}`}
+                  className={`flex min-h-12 items-center gap-2 rounded-xl px-3 py-2 text-start text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--site-primary)] ${selected ? 'bg-blue-50 font-semibold text-[var(--site-primary)]' : 'text-slate-700 hover:bg-slate-50'}`}
                 >
                   <span className="w-6 shrink-0 text-center text-xs font-bold uppercase text-slate-500">{option.code}</span>
                   <span className="min-w-0 flex-1 leading-tight">{option.nativeName}</span>

@@ -16,7 +16,7 @@ export function PublicLayout({ children, socialMediaSettings }: PublicLayoutProp
     <div className="site-public min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <a
         href="#main-content"
-        className="fixed left-4 top-3 z-[100] -translate-y-20 rounded-md bg-white px-4 py-2 font-semibold text-slate-950 shadow-lg ring-2 ring-[#003a78] transition-transform focus:translate-y-0"
+        className="fixed left-4 top-3 z-[100] -translate-y-20 rounded-md bg-white px-4 py-2 font-semibold text-slate-950 shadow-lg ring-2 ring-[var(--site-primary)] transition-transform focus:translate-y-0"
       >
         Skip to main content
       </a>

@@ -286,7 +286,7 @@ export default function CheckoutForm({
       <button
         type="submit"
         disabled={isProcessing}
-        className="site-primary-action w-full px-4 py-3 disabled:cursor-not-allowed disabled:opacity-50"
+        className="site-primary-action site-buy-action w-full px-4 py-3 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isProcessing ? (
           <div className="flex items-center justify-center">

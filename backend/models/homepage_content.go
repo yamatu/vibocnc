@@ -67,6 +67,11 @@ func GetPredefinedSections() []HomepageSection {
 			Description: "Main banner section at the top of the homepage",
 		},
 		{
+			Key:         "brand_carousel",
+			Name:        "Brand Logo Carousel",
+			Description: "Scrolling brand logo strip below the hero",
+		},
+		{
 			Key:         "company_stats",
 			Name:        "Company Stats",
 			Description: "Company introduction + stats grid section",

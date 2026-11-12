@@ -47,7 +47,7 @@ export default function SimpleContentSection({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           <div className="space-y-4">
             {subtitle ? (
-              <p className="text-sm font-medium text-[#003a78] uppercase tracking-wide">{subtitle}</p>
+              <p className="text-sm font-medium text-[var(--site-primary)] uppercase tracking-wide">{subtitle}</p>
             ) : null}
             {title ? (
               <h2 className="text-3xl lg:text-4xl font-bold text-slate-950">{title}</h2>
@@ -59,7 +59,7 @@ export default function SimpleContentSection({
               <div className="pt-2">
                 <Link
                   href={href(buttonUrl)}
-                  className="inline-flex items-center px-6 py-3 bg-[#003a78] text-white font-semibold rounded-md hover:bg-orange-600 transition-colors"
+                  className="inline-flex items-center px-6 py-3 bg-[var(--site-primary)] text-white font-semibold rounded-md hover:bg-orange-600 transition-colors"
                 >
                   {buttonText}
                 </Link>

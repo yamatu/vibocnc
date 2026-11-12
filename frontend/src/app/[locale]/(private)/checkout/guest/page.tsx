@@ -470,7 +470,7 @@ export default function GuestCheckoutPage() {
                     <button
                       type="submit"
                       disabled={isProcessing}
-                      className="site-primary-action w-full mt-6 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="site-primary-action site-buy-action w-full mt-6 px-4 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isProcessing ? 'Processing...' : 'Place Order & Pay'}
                     </button>

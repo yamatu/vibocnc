@@ -127,11 +127,11 @@ export default async function About({ params }: { params: LocaleRouteParams }) {
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="site-subtle-card p-4">
-                  <div className="text-2xl font-bold text-[#0b3e75]">15+</div>
+                  <div className="text-2xl font-bold text-[var(--site-primary)]">15+</div>
                   <div className="text-sm text-gray-600">{translatePublicMessage(locale, 'about.years')}</div>
                 </div>
                 <div className="site-subtle-card p-4">
-                  <div className="text-2xl font-bold text-[#0b3e75]">20+</div>
+                  <div className="text-2xl font-bold text-[var(--site-primary)]">20+</div>
                   <div className="text-sm text-gray-600">{translatePublicMessage(locale, 'about.topSupplier')}</div>
                 </div>
               </div>
@@ -163,25 +163,25 @@ export default async function About({ params }: { params: LocaleRouteParams }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="site-detail-panel text-center p-8">
-              <BuildingOfficeIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
+              <BuildingOfficeIcon className="h-12 w-12 text-[var(--site-primary)] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">3,500</div>
               <div className="text-gray-600">{translatePublicMessage(locale, 'about.workshop')}</div>
             </div>
 
             <div className="site-detail-panel text-center p-8">
-              <UserGroupIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
+              <UserGroupIcon className="h-12 w-12 text-[var(--site-primary)] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">37</div>
               <div className="text-gray-600">{translatePublicMessage(locale, 'about.employees')}</div>
             </div>
 
             <div className="site-detail-panel text-center p-8">
-              <CubeIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
+              <CubeIcon className="h-12 w-12 text-[var(--site-primary)] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">100K+</div>
               <div className="text-gray-600">{translatePublicMessage(locale, 'about.items')}</div>
             </div>
 
             <div className="site-detail-panel text-center p-8">
-              <TruckIcon className="h-12 w-12 text-[#0b3e75] mx-auto mb-4" />
+              <TruckIcon className="h-12 w-12 text-[var(--site-primary)] mx-auto mb-4" />
               <div className="text-3xl font-bold text-gray-900 mb-2">50-100</div>
               <div className="text-gray-600">{translatePublicMessage(locale, 'about.parcels')}</div>
             </div>
@@ -203,7 +203,7 @@ export default async function About({ params }: { params: LocaleRouteParams }) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center p-6">
-              <ChartBarIcon className="h-16 w-16 text-[#0b3e75] mx-auto mb-4" />
+              <ChartBarIcon className="h-16 w-16 text-[var(--site-primary)] mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">{translatePublicMessage(locale, 'about.sales')}</h3>
               <p className="text-gray-600">
                 {translatePublicMessage(locale, 'about.salesDescription')}
@@ -211,7 +211,7 @@ export default async function About({ params }: { params: LocaleRouteParams }) {
             </div>
 
             <div className="text-center p-6">
-              <ClockIcon className="h-16 w-16 text-[#0b3e75] mx-auto mb-4" />
+              <ClockIcon className="h-16 w-16 text-[var(--site-primary)] mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">{translatePublicMessage(locale, 'about.testing')}</h3>
               <p className="text-gray-600">
                 {translatePublicMessage(locale, 'about.testingDescription')}
@@ -219,7 +219,7 @@ export default async function About({ params }: { params: LocaleRouteParams }) {
             </div>
 
             <div className="text-center p-6">
-              <WrenchScrewdriverIcon className="h-16 w-16 text-[#0b3e75] mx-auto mb-4" />
+              <WrenchScrewdriverIcon className="h-16 w-16 text-[var(--site-primary)] mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 mb-3">{translatePublicMessage(locale, 'about.maintenance')}</h3>
               <p className="text-gray-600">
                 {translatePublicMessage(locale, 'about.maintenanceDescription')}

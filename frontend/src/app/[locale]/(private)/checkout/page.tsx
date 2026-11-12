@@ -381,7 +381,7 @@ export default function CheckoutPage() {
                 <div className="space-y-3">
                   <button
                     onClick={() => router.push('/account/orders')}
-                    className="site-primary-action w-full px-4 py-2.5 text-sm"
+                    className="site-primary-action site-buy-action w-full px-4 py-2.5 text-sm"
                   >
                     View My Orders
                   </button>

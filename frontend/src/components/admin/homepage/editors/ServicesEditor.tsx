@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
+import { useDraftReporter } from '@/components/admin/homepage/useDraftReporter';
+import type { SectionPayload } from '@/components/admin/homepage/section-payload';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { Bars3Icon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
@@ -133,9 +135,11 @@ const COLOR_OPTIONS: string[] = ['bg-yellow-500', 'bg-green-500', 'bg-purple-500
 export default function ServicesEditor({
   content,
   onSave,
+  onDraftChange,
 }: {
   content?: HomepageContent | null;
   onSave: (payload: { data: any; title?: string; description?: string; button_text?: string; button_url?: string; is_active: boolean; sort_order: number }) => Promise<void>;
+  onDraftChange?: (payload: Partial<SectionPayload>) => void;
 }) {
   const { locale, t } = useAdminI18n();
   const defaults = useMemo(() => fromContent(content), [content]);
@@ -176,9 +180,9 @@ export default function ServicesEditor({
     return map[v] || value;
   };
 
-  const onSubmit = async (values: FormValues) => {
+  const buildPayload = (values: FormValues) => {
     const data = toData(values);
-    await onSave({
+    return ({
       data,
       title: values.headerTitle,
       description: values.headerDescription,
@@ -188,11 +192,15 @@ export default function ServicesEditor({
       sort_order: values.sort_order,
     });
   };
+  const onSubmit = async (values: FormValues) => {
+    await onSave(buildPayload(values));
+  };
+  useDraftReporter(watch, buildPayload, onDraftChange);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 @xl:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.sortOrder', locale === 'zh' ? '排序' : 'Sort Order')}</label>
             <input type="number" {...register('sort_order', { valueAsNumber: true })} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
@@ -265,7 +273,7 @@ export default function ServicesEditor({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 @xl:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.icon', locale === 'zh' ? '图标' : 'Icon')}</label>
                     <select {...register(`services.${idx}.icon` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
@@ -286,19 +294,19 @@ export default function ServicesEditor({
                       ))}
                     </select>
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="@xl:col-span-2">
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.title', locale === 'zh' ? '标题' : 'Title')}</label>
                     <input {...register(`services.${idx}.title` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="@xl:col-span-2">
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.description', locale === 'zh' ? '描述' : 'Description')}</label>
                     <textarea rows={2} {...register(`services.${idx}.description` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="@xl:col-span-2">
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.linkUrl', locale === 'zh' ? '链接' : 'Link URL')}</label>
                     <input {...register(`services.${idx}.href` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="@xl:col-span-2">
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t('homepage.featuresPerLine', locale === 'zh' ? '特点（每行一个）' : 'Features (1 per line)')}</label>
                     <textarea rows={4} {...register(`services.${idx}.featuresText` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-xs" />
                   </div>
@@ -356,12 +364,12 @@ export default function ServicesEditor({
                     <TrashIcon className="h-5 w-5" />
                   </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="sm:col-span-2">
+                <div className="grid grid-cols-1 @xl:grid-cols-2 gap-3">
+                    <div className="@xl:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.title', locale === 'zh' ? '标题' : 'Title')}</label>
                       <input {...register(`processSteps.${idx}.title` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="@xl:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">{t('common.description', locale === 'zh' ? '描述' : 'Description')}</label>
                       <textarea rows={2} {...register(`processSteps.${idx}.description` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" />
                     </div>
@@ -382,7 +390,7 @@ export default function ServicesEditor({
           <label className="block text-sm font-medium text-gray-700 mb-1">{t('homepage.cta.desc', locale === 'zh' ? 'CTA 描述' : 'CTA Description')}</label>
           <textarea rows={3} {...register('ctaDescription')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('homepage.cta.primaryText', locale === 'zh' ? '主按钮文字' : 'Primary Button Text')}</label>
             <input {...register('primaryCtaText')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />

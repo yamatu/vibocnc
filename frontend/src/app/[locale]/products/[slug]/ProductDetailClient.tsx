@@ -512,12 +512,12 @@ export default function ProductDetailClient({
 
             {/* Product Info */}
             <div className="site-detail-panel mt-4 px-4 py-5 sm:mt-8 sm:px-6 sm:py-6 lg:mt-0">
-              <div className="mb-2.5 inline-flex max-w-full items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#0b3e75] sm:mb-3 sm:px-3 sm:py-1 sm:text-xs">
+              <div className="mb-2.5 inline-flex max-w-full items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[var(--site-primary)] sm:mb-3 sm:px-3 sm:py-1 sm:text-xs">
                 <span className="truncate">{categoryName}</span>
               </div>
               <h1 className="break-words text-xl font-bold leading-snug tracking-tight text-slate-950 sm:text-2xl lg:text-3xl">{computedHeading}</h1>
               {reviewSummary.count > 0 && (
-                <a href="#reviews" className="mt-2 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-[#0b3e75]">
+                <a href="#reviews" className="mt-2 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-[var(--site-primary)]">
                   <RatingStars rating={reviewSummary.average} />
                   <span className="font-semibold text-slate-900">{reviewSummary.average.toFixed(1)}</span>
                   <span>({t('review.reviewsLink', { count: reviewSummary.count })})</span>
@@ -527,10 +527,10 @@ export default function ProductDetailClient({
               <div className="mt-3">
                 <h2 className="sr-only">{t('product.information')}</h2>
                 {canPurchase ? (
-                  <p className="text-2xl font-bold tracking-tight text-[#0b3e75] sm:text-3xl">{formatCurrency(product.price)}</p>
+                  <p className="text-2xl font-bold tracking-tight text-[var(--site-primary)] sm:text-3xl">{formatCurrency(product.price)}</p>
                 ) : (
                   <div>
-                    <p className="text-xl font-bold text-[#0b3e75]">{t('product.contactForQuote')}</p>
+                    <p className="text-xl font-bold text-[var(--site-primary)]">{t('product.contactForQuote')}</p>
                     <p className="mt-1 text-sm text-slate-600">{t('product.quotePriceHint')}</p>
                   </div>
                 )}
@@ -561,7 +561,7 @@ export default function ProductDetailClient({
                   <button
                     type="button"
                     onClick={handleAddToCart}
-                    className="site-primary-action w-full justify-center px-5 py-3 text-sm sm:w-auto"
+                    className="site-primary-action site-buy-action w-full justify-center px-5 py-3 text-sm sm:w-auto"
                   >
                     <ShoppingCartIcon className="h-5 w-5 mr-2" />
                     {t('common.addToCart')}
@@ -612,7 +612,7 @@ export default function ProductDetailClient({
               {shippingCountries.length > 0 && (
                 <div className="mt-5 rounded-lg border border-slate-200 bg-white p-3.5 sm:mt-6 sm:p-4">
                   <h3 className="text-sm font-semibold text-slate-950 flex items-center mb-3">
-                    <TruckIcon className="h-4 w-4 mr-2 text-[#0b3e75]" />
+                    <TruckIcon className="h-4 w-4 mr-2 text-[var(--site-primary)]" />
                     {t('product.worldwideShipping')}
                   </h3>
                   <div className="relative" ref={countryDropdownRef}>
@@ -659,7 +659,7 @@ export default function ProductDetailClient({
                               key={c.country_code}
                               onClick={() => selectCountry(c.country_code, c.country_name)}
                               className={`cursor-pointer px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between ${
-                                shippingCountry === c.country_code ? 'bg-blue-50 text-[#0b3e75] font-medium' : 'text-slate-900'
+                                shippingCountry === c.country_code ? 'bg-blue-50 text-[var(--site-primary)] font-medium' : 'text-slate-900'
                               }`}
                             >
                               <span>{c.country_name}</span>
@@ -714,7 +714,7 @@ export default function ProductDetailClient({
                     </>
                   ) : (
                     <>
-                      <ClockIcon className="h-4 w-4 text-[#c46a2d] mr-2 flex-shrink-0" />
+                      <ClockIcon className="h-4 w-4 text-[var(--site-accent)] mr-2 flex-shrink-0" />
                       <span className="font-medium text-[#8a421d]">{t('product.availableToOrder')}</span>
                       <span className="text-slate-500 ml-1">- {shownLeadTime} lead time</span>
                     </>
@@ -729,15 +729,15 @@ export default function ProductDetailClient({
               {/* Trust Badges */}
               <div className="mt-5 grid grid-cols-3 gap-2 sm:mt-6 sm:gap-3">
                 <div className="site-subtle-card flex flex-col items-center p-2 text-center sm:p-3">
-                  <ShieldCheckIcon className="mb-1 h-5 w-5 text-[#0b3e75] sm:h-6 sm:w-6" />
+                  <ShieldCheckIcon className="mb-1 h-5 w-5 text-[var(--site-primary)] sm:h-6 sm:w-6" />
                   <span className="text-[11px] font-medium leading-tight text-slate-700 sm:text-xs">{shownWarranty} Warranty</span>
                 </div>
                 <div className="site-subtle-card flex flex-col items-center p-2 text-center sm:p-3">
-                  <GlobeAltIcon className="mb-1 h-5 w-5 text-[#0b3e75] sm:h-6 sm:w-6" />
+                  <GlobeAltIcon className="mb-1 h-5 w-5 text-[var(--site-primary)] sm:h-6 sm:w-6" />
                   <span className="text-[11px] font-medium leading-tight text-slate-700 sm:text-xs">{t('product.worldwideShipping')}</span>
                 </div>
                 <div className="site-subtle-card flex flex-col items-center p-2 text-center sm:p-3">
-                  <CheckIcon className="mb-1 h-5 w-5 text-[#0b3e75] sm:h-6 sm:w-6" />
+                  <CheckIcon className="mb-1 h-5 w-5 text-[var(--site-primary)] sm:h-6 sm:w-6" />
                   <span className="text-[11px] font-medium leading-tight text-slate-700 sm:text-xs">{t('product.qualityTested')}</span>
                 </div>
               </div>

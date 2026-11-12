@@ -183,7 +183,7 @@ export function HeroSection({ content }: Props) {
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
                 href={href(localizedSlide.cta.primary.href)}
-                className="inline-flex justify-center bg-orange-700 hover:bg-[#003a78] text-white px-7 py-3 rounded-md text-base font-semibold transition-colors shadow-lg shadow-teal-950/30"
+                className="inline-flex justify-center bg-orange-700 hover:bg-[var(--site-primary)] text-white px-7 py-3 rounded-md text-base font-semibold transition-colors shadow-lg shadow-teal-950/30"
               >
                 {localizedSlide.cta.primary.text}
               </Link>

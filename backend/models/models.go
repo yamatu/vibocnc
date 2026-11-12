@@ -376,26 +376,35 @@ const (
 	ReviewStatusRejected = "rejected"
 )
 
+// ReviewSources are the channels an administrator can transcribe a review from.
+var ReviewSources = map[string]bool{
+	"email": true, "ebay": true, "whatsapp": true, "phone": true, "offline": true, "other": true,
+}
+
 // ProductReview represents customer reviews for products
 type ProductReview struct {
-	ID            uint       `json:"id" gorm:"primaryKey"`
-	ProductID     uint       `json:"product_id" gorm:"not null;index;uniqueIndex:idx_product_reviews_customer_product,priority:2"`
-	Product       *Product   `json:"product,omitempty" gorm:"foreignKey:ProductID"`
-	CustomerID    *uint      `json:"customer_id,omitempty" gorm:"uniqueIndex:idx_product_reviews_customer_product,priority:1"`
-	OrderID       *uint      `json:"order_id,omitempty" gorm:"index"`
-	CustomerName  string     `json:"customer_name" gorm:"size:100;not null"`
-	CustomerEmail string     `json:"customer_email,omitempty" gorm:"size:255"`
-	Rating        int        `json:"rating" gorm:"not null;check:rating >= 1 AND rating <= 5"`
-	ReviewTitle   string     `json:"review_title" gorm:"size:255"`
-	ReviewContent string     `json:"review_content" gorm:"type:text"`
-	Status        string     `json:"status" gorm:"size:20;not null;default:'pending';index"`
-	IsVerified    bool       `json:"is_verified" gorm:"default:false"`
-	IsApproved    bool       `json:"is_approved" gorm:"default:false;index"`
-	HelpfulCount  int        `json:"helpful_count" gorm:"default:0"`
-	IPAddress     string     `json:"-" gorm:"size:64"`
-	ApprovedAt    *time.Time `json:"approved_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID            uint     `json:"id" gorm:"primaryKey"`
+	ProductID     uint     `json:"product_id" gorm:"not null;index;uniqueIndex:idx_product_reviews_customer_product,priority:2"`
+	Product       *Product `json:"product,omitempty" gorm:"foreignKey:ProductID"`
+	CustomerID    *uint    `json:"customer_id,omitempty" gorm:"uniqueIndex:idx_product_reviews_customer_product,priority:1"`
+	OrderID       *uint    `json:"order_id,omitempty" gorm:"index"`
+	CustomerName  string   `json:"customer_name" gorm:"size:100;not null"`
+	CustomerEmail string   `json:"customer_email,omitempty" gorm:"size:255"`
+	Rating        int      `json:"rating" gorm:"not null;check:rating >= 1 AND rating <= 5"`
+	ReviewTitle   string   `json:"review_title" gorm:"size:255"`
+	ReviewContent string   `json:"review_content" gorm:"type:text"`
+	Status        string   `json:"status" gorm:"size:20;not null;default:'pending';index"`
+	// Source is empty for reviews submitted on the storefront; reviews an
+	// administrator transcribes from another channel record where they came from.
+	Source           string     `json:"source,omitempty" gorm:"size:30;default:''"`
+	CreatedByAdminID *uint      `json:"-" gorm:"index"`
+	IsVerified       bool       `json:"is_verified" gorm:"default:false"`
+	IsApproved       bool       `json:"is_approved" gorm:"default:false;index"`
+	HelpfulCount     int        `json:"helpful_count" gorm:"default:0"`
+	IPAddress        string     `json:"-" gorm:"size:64"`
+	ApprovedAt       *time.Time `json:"approved_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // ProductFAQ represents frequently asked questions for products

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
+import { useDraftReporter } from '@/components/admin/homepage/useDraftReporter';
+import type { SectionPayload } from '@/components/admin/homepage/section-payload';
 import { useForm } from 'react-hook-form';
 
 import type { HomepageContent } from '@/types';
@@ -30,17 +32,19 @@ function fromContent(content?: HomepageContent | null): FormValues {
 export default function FeaturedProductsEditor({
   content,
   onSave,
+  onDraftChange,
 }: {
   content?: HomepageContent | null;
   onSave: (payload: { title: string; description: string; button_text: string; button_url: string; is_active: boolean; sort_order: number; data?: any }) => Promise<void>;
+  onDraftChange?: (payload: Partial<SectionPayload>) => void;
 }) {
   const { locale, t } = useAdminI18n();
   const defaults = useMemo(() => fromContent(content), [content]);
-  const { register, handleSubmit, reset, formState } = useForm<FormValues>({ defaultValues: defaults });
+  const { register, handleSubmit, reset, watch, formState } = useForm<FormValues>({ defaultValues: defaults });
   useEffect(() => reset(defaults), [defaults, reset]);
 
-  const onSubmit = async (values: FormValues) => {
-    await onSave({
+  const buildPayload = (values: FormValues) => {
+    return ({
       title: values.headerTitle,
       description: values.headerDescription,
       button_text: values.ctaText,
@@ -56,10 +60,14 @@ export default function FeaturedProductsEditor({
       },
     });
   };
+  const onSubmit = async (values: FormValues) => {
+    await onSave(buildPayload(values));
+  };
+  useDraftReporter(watch, buildPayload, onDraftChange);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 @xl:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.sortOrder', locale === 'zh' ? '排序' : 'Sort Order')}</label>
           <input type="number" {...register('sort_order', { valueAsNumber: true })} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
@@ -81,7 +89,7 @@ export default function FeaturedProductsEditor({
         <textarea rows={4} {...register('headerDescription')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.buttonText', locale === 'zh' ? '按钮文字' : 'CTA Text')}</label>
           <input {...register('ctaText')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />

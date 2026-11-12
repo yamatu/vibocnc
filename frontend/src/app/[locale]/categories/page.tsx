@@ -145,7 +145,7 @@ export default async function CategoriesPage({ params }: { params: LocaleRoutePa
             />
           ) : (
             <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-slate-600">
-              {copy.empty} <Link href={localizePublicPath('/products', locale)} className="font-bold text-[#0b3e75]">{copy.all}</Link>.
+              {copy.empty} <Link href={localizePublicPath('/products', locale)} className="font-bold text-[var(--site-primary)]">{copy.all}</Link>.
             </div>
           )}
 

@@ -173,7 +173,7 @@ export default function ProductCard({
             <button
               onClick={handleAddToCart}
               disabled={isLoading}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-500 hover:bg-[#003a78] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-500 hover:bg-[var(--site-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <ShoppingCartIcon className="h-4 w-4 mr-1" />
               {isLoading ? 'Adding...' : 'Add to Cart'}

@@ -84,7 +84,7 @@ export default function ProductCardHorizontal({ product }: { product: Product })
         <div className="mt-auto pt-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold text-[#0b3e75]">{hasProductPrice(product) ? formatCurrency(product.price) : 'Contact for quote'}</span>
+              <span className="text-lg font-bold text-[var(--site-primary)]">{hasProductPrice(product) ? formatCurrency(product.price) : 'Contact for quote'}</span>
               {hasProductPrice(product) && product.compare_price && product.compare_price > product.price ? (
                 <span className="text-sm text-gray-500 line-through">{formatCurrency(product.compare_price)}</span>
               ) : null}

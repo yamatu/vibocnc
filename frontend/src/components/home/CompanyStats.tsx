@@ -117,7 +117,7 @@ export function CompanyStats({ content }: Props) {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
                 href={href(data.ctaPrimary?.href || '/contact')}
-                className="bg-orange-700 hover:bg-[#003a78] text-white px-8 py-3 rounded-md font-semibold transition-colors duration-300"
+                className="bg-orange-700 hover:bg-[var(--site-primary)] text-white px-8 py-3 rounded-md font-semibold transition-colors duration-300"
               >
                 {locale === 'en' ? data.ctaPrimary?.text || t('home.stats.contact') : t('home.stats.contact')}
               </a>

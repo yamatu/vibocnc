@@ -171,7 +171,7 @@ export default function OrderSummary({
               <button
                 onClick={handleApplyCoupon}
                 disabled={isValidatingCoupon || !couponCode.trim()}
-                className="site-primary-action px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="site-primary-action site-buy-action px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isValidatingCoupon ? 'Validating...' : 'Apply'}
               </button>

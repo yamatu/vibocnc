@@ -1,10 +1,12 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import type { HomepageContent } from '@/types';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
+import { bundledBrandLogo } from '@/lib/brand-logos';
 
-type BrandItem = { name: string; focus: string; href?: string };
+type BrandItem = { name: string; focus: string; href?: string; logo?: string };
 
 const CANONICAL_BRAND_PATHS: Record<string, string> = {
   fanuc: '/categories/fanuc',
@@ -60,10 +62,10 @@ export default function BrandsSection({ content }: { content?: HomepageContent |
   ];
 
   return (
-    <section id="brands-we-supply" className="home-deferred-section border-y border-slate-200 bg-[#eef3f8] py-16 lg:py-20">
+    <section id="brands-we-supply" className="home-deferred-section border-y border-slate-200 bg-[var(--site-primary-soft)] py-16 lg:py-20">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.78fr_2.22fr] lg:px-8">
         <div className="self-center">
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-[#0b3e75]">Multi-brand supply</p>
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--site-primary)]">Multi-brand supply</p>
           <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{title}</h2>
           <p className="mt-5 max-w-lg text-base leading-7 text-slate-600">{description}</p>
           <div className="home-brand-summary mt-6 border-t border-slate-300 pt-5">
@@ -72,13 +74,13 @@ export default function BrandsSection({ content }: { content?: HomepageContent |
             </p>
             <nav aria-label="Vibocnc company links" className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">
               {vibocncLinks.map((item) => (
-                <Link key={item.href} href={href(item.href)} className="text-[#0b3e75] underline decoration-slate-300 underline-offset-4 hover:text-orange-700">
+                <Link key={item.href} href={href(item.href)} className="text-[var(--site-primary)] underline decoration-slate-300 underline-offset-4 hover:text-orange-700">
                   {item.label}
                 </Link>
               ))}
             </nav>
           </div>
-          <Link href={href(buttonUrl)} className="mt-7 inline-flex items-center gap-2 font-bold text-[#0b3e75] hover:text-orange-700">
+          <Link href={href(buttonUrl)} className="mt-7 inline-flex items-center gap-2 font-bold text-[var(--site-primary)] hover:text-orange-700">
             {buttonText}<span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -91,11 +93,25 @@ export default function BrandsSection({ content }: { content?: HomepageContent |
               aria-label={`${brand.name} industrial automation parts`}
               className="group flex min-h-32 flex-col justify-between rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg"
             >
-              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-50 text-lg font-black text-[#0b3e75]">
-                {brand.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase()}
-              </span>
+              {brand.logo || bundledBrandLogo(brand.name) ? (
+                <span className="flex h-10 items-center">
+                  <Image
+                    src={(brand.logo || bundledBrandLogo(brand.name)) as string}
+                    alt=""
+                    width={120}
+                    height={40}
+                    unoptimized
+                    loading="lazy"
+                    className="h-8 w-auto max-w-[120px] object-contain"
+                  />
+                </span>
+              ) : (
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-lg font-black text-[var(--site-primary)]">
+                  {brand.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase()}
+                </span>
+              )}
               <span>
-                <strong className="block text-base text-slate-950 group-hover:text-[#0b3e75]">{brand.name}</strong>
+                <strong className="block text-base text-slate-950 group-hover:text-[var(--site-primary)]">{brand.name}</strong>
                 <span className="mt-1 block text-xs leading-5 text-slate-500">{brand.focus}</span>
               </span>
             </Link>

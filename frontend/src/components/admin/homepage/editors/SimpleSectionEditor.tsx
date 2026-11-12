@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useDraftReporter } from '@/components/admin/homepage/useDraftReporter';
+import type { SectionPayload } from '@/components/admin/homepage/section-payload';
 import { useForm } from 'react-hook-form';
-import { PhotoIcon } from '@heroicons/react/24/outline';
 
-import MediaPickerModal from '@/components/admin/MediaPickerModal';
+import ImageField from '@/components/admin/homepage/ImageField';
 import EditorPanel from '@/components/admin/homepage/EditorPanel';
 import type { HomepageContent } from '@/types';
 import { useAdminI18n } from '@/lib/admin-i18n';
@@ -52,9 +53,11 @@ function fromContent(content?: HomepageContent | null): FormValues {
 export default function SimpleSectionEditor({
   content,
   onSave,
+  onDraftChange,
 }: {
   content?: HomepageContent | null;
   onSave: (payload: { title: string; subtitle: string; description: string; image_url: string; button_text: string; button_url: string; sort_order: number; is_active: boolean; data?: any }) => Promise<void>;
+  onDraftChange?: (payload: Partial<SectionPayload>) => void;
 }) {
   const { locale, t } = useAdminI18n();
   const defaults = useMemo(() => fromContent(content), [content]);
@@ -62,9 +65,8 @@ export default function SimpleSectionEditor({
   useEffect(() => reset(defaults), [defaults, reset]);
 
   const imageUrl = watch('image_url');
-  const [pickerOpen, setPickerOpen] = useState(false);
 
-  const onSubmit = async (values: FormValues) => {
+  const buildPayload = (values: FormValues) => {
     const payload: any = {
       title: values.title,
       subtitle: values.subtitle,
@@ -87,14 +89,18 @@ export default function SimpleSectionEditor({
     } else {
       payload.data = null;
     }
-
-    await onSave(payload);
+    return payload;
   };
+
+  const onSubmit = async (values: FormValues) => {
+    await onSave(buildPayload(values));
+  };
+  useDraftReporter(watch, buildPayload, onDraftChange);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <EditorPanel title={t('homepage.editor.basics', locale === 'zh' ? '基础' : 'Basics')} defaultOpen={true}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 @xl:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.sortOrder', locale === 'zh' ? '排序' : 'Sort Order')}</label>
             <input type="number" {...register('sort_order', { valueAsNumber: true })} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
@@ -124,23 +130,12 @@ export default function SimpleSectionEditor({
       <EditorPanel title={t('common.image', locale === 'zh' ? '图片' : 'Image')} defaultOpen={true}>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.image', locale === 'zh' ? '图片' : 'Image')}</label>
-          <div className="flex gap-2">
-            <input {...register('image_url')} className="flex-1 px-3 py-2 border border-gray-300 rounded-md" placeholder="/uploads/..." />
-            <button type="button" onClick={() => setPickerOpen(true)} className="px-3 py-2 rounded-md border border-gray-200 hover:bg-gray-50">
-              <PhotoIcon className="h-5 w-5" />
-            </button>
-          </div>
-          {imageUrl ? (
-              <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                { }
-                <img src={imageUrl} alt={t('common.preview', locale === 'zh' ? '预览' : 'Preview')} className="w-full h-auto" />
-              </div>
-            ) : null}
+          <ImageField value={imageUrl || ''} onChange={(url) => setValue('image_url', url, { shouldDirty: true })} />
         </div>
       </EditorPanel>
 
       <EditorPanel title={t('common.button', locale === 'zh' ? '按钮' : 'Button')} defaultOpen={false}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.buttonText', locale === 'zh' ? '按钮文字' : 'Button Text')}</label>
             <input {...register('button_text')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
@@ -182,15 +177,6 @@ export default function SimpleSectionEditor({
         </div>
       </div>
 
-      <MediaPickerModal
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        multiple={false}
-        title={t('media.picker.title.single', locale === 'zh' ? '选择图片' : 'Select an image')}
-        onSelect={(assets) => {
-          if (assets[0]) setValue('image_url', assets[0].url, { shouldDirty: true });
-        }}
-      />
     </form>
   );
 }

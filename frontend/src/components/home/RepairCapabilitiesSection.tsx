@@ -46,7 +46,7 @@ export default function RepairCapabilitiesSection({ content }: { content?: Homep
     <section id="repair-capabilities" className="home-deferred-section bg-white py-16 lg:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0b3e75]">Our repair capabilities</p>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--site-primary)]">Our repair capabilities</p>
           <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{content?.title || 'What We Repair'}</h2>
           <p className="mt-5 text-lg leading-8 text-slate-600">
             {content?.description || 'We evaluate automation parts for repair and replacement, including HMI panels, servo drives, motors, CNC boards, power supplies, PLC modules, inverters and other industrial electronics. If a unit is not listed, send the model and fault details for review.'}
@@ -58,7 +58,7 @@ export default function RepairCapabilitiesSection({ content }: { content?: Homep
             const Icon = ICONS[index % ICONS.length];
             return (
               <article key={item.title} className="rounded-lg border border-slate-200 bg-slate-50 p-6 shadow-sm">
-                <div className="flex h-12 w-12 items-center justify-center rounded-md bg-blue-50 text-[#0b3e75]"><Icon className="h-6 w-6" /></div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-md bg-blue-50 text-[var(--site-primary)]"><Icon className="h-6 w-6" /></div>
                 <h3 className="mt-5 text-xl font-bold text-slate-950">{item.title}</h3>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p>
                 <ul className="mt-5 space-y-2 border-t border-slate-200 pt-4">
@@ -72,7 +72,7 @@ export default function RepairCapabilitiesSection({ content }: { content?: Homep
 
         <div className="mt-10 flex flex-col items-start justify-between gap-5 rounded-lg bg-slate-950 p-7 text-white sm:flex-row sm:items-center">
           <div><h3 className="text-xl font-bold">Not sure whether your unit can be repaired?</h3><p className="mt-2 text-sm leading-6 text-slate-300">Request an initial evaluation and ask about available replacement stock before committing.</p></div>
-          <Link href={href(content?.button_url || '/repair-request')} className="shrink-0 rounded-md bg-orange-700 px-6 py-3 font-bold text-white hover:bg-[#0b3e75]">{content?.button_text || 'Request Repair Evaluation'}</Link>
+          <Link href={href(content?.button_url || '/repair-request')} className="shrink-0 rounded-md bg-orange-700 px-6 py-3 font-bold text-white hover:bg-[var(--site-primary)]">{content?.button_text || 'Request Repair Evaluation'}</Link>
         </div>
       </div>
     </section>

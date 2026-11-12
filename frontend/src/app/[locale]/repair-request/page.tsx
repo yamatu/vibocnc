@@ -47,7 +47,7 @@ export default async function RepairRequestPage({ params }: { params: LocaleRout
     <section className="site-page-shell py-16">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[0.78fr_1.22fr_0.72fr] lg:px-8">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0b3e75]">{copy.beforeSubmit}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--site-primary)]">{copy.beforeSubmit}</p>
           <h2 className="mt-3 text-3xl font-black text-slate-950">{copy.informationTitle}</h2>
           <ul className="mt-7 space-y-4">
             {copy.checklist.map((item) => <li key={item} className="flex gap-3 rounded-md border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700"><span className="font-black text-orange-600">✓</span>{item}</li>)}
@@ -59,14 +59,14 @@ export default async function RepairRequestPage({ params }: { params: LocaleRout
           <div className="rounded-lg border border-orange-200 bg-orange-50 p-6 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-700">{copy.quoteTitle}</p>
             <p className="mt-3 text-sm leading-6 text-slate-700">{copy.quoteDescription}</p>
-            <a href={localizePublicPath('/contact?inquiry_type=quote', locale)} className="mt-5 inline-flex w-full items-center justify-center rounded-md bg-orange-700 px-5 py-3 text-center text-sm font-bold text-white transition-colors hover:bg-[#0b3e75]">{copy.quoteButton}</a>
+            <a href={localizePublicPath('/contact?inquiry_type=quote', locale)} className="mt-5 inline-flex w-full items-center justify-center rounded-md bg-orange-700 px-5 py-3 text-center text-sm font-bold text-white transition-colors hover:bg-[var(--site-primary)]">{copy.quoteButton}</a>
           </div>
         </aside>
       </div>
     </section>
 
     <section className="bg-white py-16">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"><p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0b3e75]">{copy.processKicker}</p><h2 className="mt-3 text-3xl font-black text-slate-950">{copy.processTitle}</h2><div className="mt-9 grid gap-4 md:grid-cols-5">{copy.steps.map(({ title, description }, index) => { const number = String(index + 1).padStart(2, '0'); return <article key={number} className="border-t-4 border-[#0b3e75] bg-slate-50 p-5"><span className="text-xs font-black tracking-widest text-[#0b3e75]">{copy.stepLabel} {number}</span><h3 className="mt-4 font-bold text-slate-950">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-600">{description}</p></article>; })}</div></div>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"><p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--site-primary)]">{copy.processKicker}</p><h2 className="mt-3 text-3xl font-black text-slate-950">{copy.processTitle}</h2><div className="mt-9 grid gap-4 md:grid-cols-5">{copy.steps.map(({ title, description }, index) => { const number = String(index + 1).padStart(2, '0'); return <article key={number} className="border-t-4 border-[var(--site-primary)] bg-slate-50 p-5"><span className="text-xs font-black tracking-widest text-[var(--site-primary)]">{copy.stepLabel} {number}</span><h3 className="mt-4 font-bold text-slate-950">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-600">{description}</p></article>; })}</div></div>
     </section>
   </PublicLayout>;
 }

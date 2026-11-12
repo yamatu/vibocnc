@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
+import { useDraftReporter } from '@/components/admin/homepage/useDraftReporter';
+import type { SectionPayload } from '@/components/admin/homepage/section-payload';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { Bars3Icon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
@@ -97,9 +99,11 @@ const STAT_ICON_OPTIONS: string[] = ['calendar', 'building', 'users', 'shield', 
 export default function CompanyStatsEditor({
   content,
   onSave,
+  onDraftChange,
 }: {
   content?: HomepageContent | null;
   onSave: (payload: { data: any; title?: string; description?: string; button_text?: string; button_url?: string; is_active: boolean; sort_order: number }) => Promise<void>;
+  onDraftChange?: (payload: Partial<SectionPayload>) => void;
 }) {
   const { locale, t } = useAdminI18n();
   const defaults = useMemo(() => fromContent(content), [content]);
@@ -128,9 +132,9 @@ export default function CompanyStatsEditor({
     return map[key] || value;
   };
 
-  const onSubmit = async (values: FormValues) => {
+  const buildPayload = (values: FormValues) => {
     const data = toData(values);
-    await onSave({
+    return ({
       data,
       title: values.headerTitle,
       description: values.headerDescription,
@@ -140,10 +144,14 @@ export default function CompanyStatsEditor({
       sort_order: values.sort_order,
     });
   };
+  const onSubmit = async (values: FormValues) => {
+    await onSave(buildPayload(values));
+  };
+  useDraftReporter(watch, buildPayload, onDraftChange);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-4 lg:self-start">
+    <div className="grid grid-cols-1 @4xl:grid-cols-12 gap-6">
+      <div className="@4xl:col-span-5 space-y-4 @4xl:sticky @4xl:top-4 @4xl:self-start">
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 text-white">
           <div className="border-b border-white/10 px-4 py-3">
             <div className="text-xs font-semibold uppercase text-orange-300">
@@ -248,9 +256,9 @@ export default function CompanyStatsEditor({
         </div>
       </div>
 
-      <div className="lg:col-span-7">
+      <div className="@4xl:col-span-7">
         <form onSubmit={handleSubmit(onSubmit)} className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 @xl:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.sortOrder', locale === 'zh' ? '排序' : 'Sort Order')}</label>
               <input type="number" {...register('sort_order', { valueAsNumber: true })} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
@@ -286,7 +294,7 @@ export default function CompanyStatsEditor({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.icon', locale === 'zh' ? '图标' : 'Icon')}</label>
                       <div className="flex items-center gap-2">
@@ -315,7 +323,7 @@ export default function CompanyStatsEditor({
                       <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.label', locale === 'zh' ? '名称' : 'Label')}</label>
                       <input {...register(`stats.${idx}.label` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="@xl:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">{t('common.description', locale === 'zh' ? '描述' : 'Description')}</label>
                       <input {...register(`stats.${idx}.description` as const)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
                     </div>
@@ -335,7 +343,7 @@ export default function CompanyStatsEditor({
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('homepage.cta.desc', locale === 'zh' ? 'CTA 描述' : 'CTA Description')}</label>
               <textarea rows={3} {...register('ctaDescription')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 @xl:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('homepage.cta.primaryText', locale === 'zh' ? '主按钮文字' : 'Primary Button Text')}</label>
                 <input {...register('primaryCtaText')} className="w-full px-3 py-2 border border-gray-300 rounded-md" />

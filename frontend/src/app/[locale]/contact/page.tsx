@@ -153,7 +153,7 @@ function ContactContent() {
 
               <div className="space-y-6">
                 <div className="flex items-start space-x-4">
-                  <MapPinIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
+                  <MapPinIcon className="h-6 w-6 text-[var(--site-primary)] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.address')}</h3>
                     <p className="text-gray-600">
@@ -164,7 +164,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <PhoneIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
+                  <PhoneIcon className="h-6 w-6 text-[var(--site-primary)] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.phone')}</h3>
                     <p className="text-gray-600">+86 13301553506</p>
@@ -172,7 +172,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <EnvelopeIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
+                  <EnvelopeIcon className="h-6 w-6 text-[var(--site-primary)] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.email')}</h3>
                     <p className="text-gray-600">flora@vibocnc.com</p>
@@ -180,7 +180,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <ClockIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
+                  <ClockIcon className="h-6 w-6 text-[var(--site-primary)] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.hours')}</h3>
                     <p className="text-gray-600">
@@ -192,7 +192,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <BuildingOfficeIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
+                  <BuildingOfficeIcon className="h-6 w-6 text-[var(--site-primary)] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.facility')}</h3>
                     <p className="text-gray-600">3,500 sqm Inspection & Service Facility</p>
@@ -200,7 +200,7 @@ function ContactContent() {
                 </div>
 
                 <div className="flex items-start space-x-4">
-                  <GlobeAltIcon className="h-6 w-6 text-[#0b3e75] mt-1 flex-shrink-0" />
+                  <GlobeAltIcon className="h-6 w-6 text-[var(--site-primary)] mt-1 flex-shrink-0" />
                   <div>
                     <h3 className="font-semibold text-gray-900">{t('contact.serviceArea')}</h3>
                     <p className="text-gray-600">{t('product.worldwideShipping')}</p>
@@ -360,7 +360,7 @@ function ContactContent() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center p-6">
               <div className="site-subtle-card w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <ClockIcon className="h-8 w-8 text-[#0b3e75]" />
+                <ClockIcon className="h-8 w-8 text-[var(--site-primary)]" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">{t('contact.fastResponse')}</h3>
               <p className="text-gray-600">
@@ -370,7 +370,7 @@ function ContactContent() {
 
             <div className="text-center p-6">
               <div className="site-subtle-card w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <BuildingOfficeIcon className="h-8 w-8 text-[#0b3e75]" />
+                <BuildingOfficeIcon className="h-8 w-8 text-[var(--site-primary)]" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">{t('contact.largeInventory')}</h3>
               <p className="text-gray-600">
@@ -380,7 +380,7 @@ function ContactContent() {
 
             <div className="text-center p-6">
               <div className="site-subtle-card w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <GlobeAltIcon className="h-8 w-8 text-[#0b3e75]" />
+                <GlobeAltIcon className="h-8 w-8 text-[var(--site-primary)]" />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">{t('contact.globalShipping')}</h3>
               <p className="text-gray-600">
@@ -396,7 +396,7 @@ function ContactContent() {
 
 export default function Contact() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center py-10" aria-busy="true"><div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[#0b3e75]" /></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center py-10" aria-busy="true"><div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--site-primary)]" /></div>}>
       <ContactContent />
     </Suspense>
   );

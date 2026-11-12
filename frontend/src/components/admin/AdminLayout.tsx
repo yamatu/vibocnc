@@ -274,7 +274,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   }, [isNotificationOpen, closeNotificationPanel]);
 
   return (
-    <div className="h-screen overflow-hidden bg-gray-50 flex">
+    <div className="flex h-screen h-dvh overflow-hidden bg-gray-50">
         {/* Mobile sidebar overlay */}
         {sidebarOpen && (
           <div 
@@ -286,7 +286,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
         )}
 
         {/* Sidebar */}
-        <div className={`fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+        <div className={`fixed inset-y-0 left-0 z-50 flex h-screen h-dvh w-64 max-w-[85vw] flex-col bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}>
           <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-6">
@@ -364,22 +364,23 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
           {/* Top navigation */}
           <header className="shrink-0 bg-white shadow-sm border-b border-gray-200">
             <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center">
+              <div className="flex min-w-0 flex-1 items-center">
                 <button
-                  className="lg:hidden"
+                  className="-ml-1 shrink-0 rounded-md p-1 lg:hidden"
                   onClick={() => setSidebarOpen(true)}
+                  aria-label={t('admin.menu', 'Menu')}
                 >
                   <Bars3Icon className="h-6 w-6 text-gray-500" />
                 </button>
                 
-                <h1 className="ml-4 lg:ml-0 text-xl font-semibold text-gray-900">
+                <h1 className="ml-3 truncate text-base font-semibold text-gray-900 sm:text-xl lg:ml-0">
                   {activeNav ? t(activeNav.key, activeNav.name) : t('admin.panel', 'Admin Panel')}
                 </h1>
               </div>
 
-              <div className="flex items-center space-x-4">
+              <div className="flex shrink-0 items-center gap-1 sm:gap-3">
                 {/* Notifications */}
-                <div className="relative" ref={notificationPanelRef}>
+                <div className="sm:relative" ref={notificationPanelRef}>
                   <button
                     onClick={handleNotificationToggle}
                     className="relative p-2 text-gray-400 hover:text-gray-500"
@@ -397,7 +398,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   </button>
 
                   {isNotificationOpen && (
-                    <div className="absolute right-0 z-50 mt-2 w-80 sm:w-96 rounded-lg border border-gray-200 bg-white shadow-xl">
+                    <div className="fixed inset-x-2 top-16 z-50 rounded-lg border border-gray-200 bg-white shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96">
                       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                         <h3 className="text-sm font-semibold text-gray-900">
                           {t('orders.notice.title', locale === 'zh' ? '新订单提醒' : 'New Order Alerts')}
@@ -466,12 +467,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 </div>
 
                 {/* Language */}
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                   <span className="hidden md:block text-sm text-gray-500">{t('action.language', 'Language')}</span>
                   <select
                     value={locale}
                     onChange={(e) => setLocale(e.target.value as 'en' | 'zh')}
-                    className="block px-2 py-1 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="block rounded-md border border-gray-300 bg-white px-1.5 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:px-2"
                     aria-label="Language"
                   >
                     <option value="en">English</option>
@@ -480,8 +481,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 </div>
 
                 {/* User menu */}
-                <div className="flex items-center space-x-3">
-                  <UserCircleIcon className="h-8 w-8 text-gray-400" />
+                <div className="flex items-center gap-1 sm:gap-3">
+                  <UserCircleIcon className="hidden h-8 w-8 text-gray-400 sm:block" />
                   <div className="hidden md:block">
                     <p className="text-sm font-medium text-gray-900">
                       {user?.full_name || user?.username}
@@ -494,7 +495,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   {/* Logout button */}
                   <button
                     onClick={handleLogout}
-                    className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    className="flex items-center rounded-md px-2 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 sm:px-3"
                     title={t('action.signOut', 'Sign out')}
                   >
                     <ArrowRightOnRectangleIcon className="h-5 w-5" />
@@ -506,7 +507,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
           </header>
 
 	        {/* Page content */}
-	        <main ref={mainRef} className="flex-1 overflow-y-auto">
+	        <main ref={mainRef} className="admin-main min-w-0 flex-1 overflow-y-auto">
 	            <div className="p-4 sm:p-6 lg:p-8">
 	              {children}
 	            </div>

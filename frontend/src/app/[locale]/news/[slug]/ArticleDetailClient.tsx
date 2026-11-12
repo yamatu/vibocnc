@@ -130,10 +130,10 @@ export default function ArticleDetailClient({
           <aside className="border-t border-gray-200 py-8" aria-label="Related Vibocnc resources">
             <h2 className="mb-4 text-xl font-bold text-gray-900">Explore related resources</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Link href={href('/products')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[#0b3e75] hover:border-blue-300">Automation parts →</Link>
-              <Link href={href('/categories')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[#0b3e75] hover:border-blue-300">Product categories →</Link>
-              <Link href={href('/repair-request')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[#0b3e75] hover:border-blue-300">Repair evaluation →</Link>
-              <Link href={href('/contact')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[#0b3e75] hover:border-blue-300">Ask our team →</Link>
+              <Link href={href('/products')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[var(--site-primary)] hover:border-blue-300">Automation parts →</Link>
+              <Link href={href('/categories')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[var(--site-primary)] hover:border-blue-300">Product categories →</Link>
+              <Link href={href('/repair-request')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[var(--site-primary)] hover:border-blue-300">Repair evaluation →</Link>
+              <Link href={href('/contact')} className="rounded-lg border border-gray-200 p-4 text-sm font-semibold text-[var(--site-primary)] hover:border-blue-300">Ask our team →</Link>
             </div>
           </aside>
 

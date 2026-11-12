@@ -86,7 +86,7 @@ export default function CategoryFilterTree({
         <div
           className={cn(
             'flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors',
-            isSelected ? 'bg-blue-50 text-[#0b3e75] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[#0b3e75]'
+            isSelected ? 'bg-blue-50 text-[var(--site-primary)] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[var(--site-primary)]'
           )}
         >
           <div style={{ width: depth * 12 }} />
@@ -94,7 +94,7 @@ export default function CategoryFilterTree({
             <button
               type="button"
               onClick={() => toggle(node.id)}
-              className="p-0.5 rounded text-slate-500 hover:bg-slate-200 hover:text-[#0b3e75]"
+              className="p-0.5 rounded text-slate-500 hover:bg-slate-200 hover:text-[var(--site-primary)]"
               aria-label={isOpen ? 'Collapse' : 'Expand'}
             >
               {isOpen ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
@@ -129,7 +129,7 @@ export default function CategoryFilterTree({
           aria-expanded={mobileOpen}
           aria-controls={panelId}
           onClick={() => setMobileOpen((open) => !open)}
-          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md bg-blue-50 px-3 py-2 text-left text-sm font-medium text-[#0b3e75] ring-1 ring-blue-100 lg:hidden"
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md bg-blue-50 px-3 py-2 text-left text-sm font-medium text-[var(--site-primary)] ring-1 ring-blue-100 lg:hidden"
         >
           <span>{allLabel}</span>
           <ChevronDownIcon className={cn('h-5 w-5 shrink-0 transition-transform', mobileOpen && 'rotate-180')} />
@@ -141,7 +141,7 @@ export default function CategoryFilterTree({
         onClick={() => selectCategory(null)}
         className={cn(
           'w-full rounded-md px-2 py-2 text-left text-sm font-medium',
-          !hasSelection ? 'bg-blue-50 text-[#0b3e75] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[#0b3e75]'
+          !hasSelection ? 'bg-blue-50 text-[var(--site-primary)] ring-1 ring-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-[var(--site-primary)]'
         )}
       >
         {allLabel}

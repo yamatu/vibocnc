@@ -75,14 +75,14 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
                 <h2 className="truncate text-lg font-bold text-slate-950">{category.name}</h2>
               </div>
               {typeof category.product_count === 'number' && category.product_count > 0 && (
-                <span className="shrink-0 rounded-full bg-[#0b3e75]/10 px-3 py-1 text-sm font-semibold text-[#0b3e75]">
+                <span className="shrink-0 rounded-full bg-[var(--site-primary)]/10 px-3 py-1 text-sm font-semibold text-[var(--site-primary)]">
                   {category.product_count.toLocaleString()} {copy.products}
                 </span>
               )}
               <Link
                 href={href(`/categories/${category.path || category.slug}`)}
                 onClick={(event) => event.stopPropagation()}
-                className="shrink-0 text-sm font-bold text-[#0b3e75] hover:text-orange-700"
+                className="shrink-0 text-sm font-bold text-[var(--site-primary)] hover:text-orange-700"
               >
                 {copy.browse} →
               </Link>
@@ -94,7 +94,7 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
                     <li key={child.id}>
                       <Link
                         href={href(`/categories/${child.path || child.slug}`)}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 transition hover:border-[#0b3e75] hover:text-[#0b3e75]"
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 transition hover:border-[var(--site-primary)] hover:text-[var(--site-primary)]"
                       >
                         <span className="min-w-0 truncate">{child.name}</span>
                         {typeof child.product_count === 'number' && child.product_count > 0 && (
@@ -105,7 +105,7 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
                   ))}
                 </ul>
               ) : (
-                <Link href={href(`/categories/${category.path || category.slug}`)} className="text-sm font-bold text-[#0b3e75] hover:text-orange-700">
+                <Link href={href(`/categories/${category.path || category.slug}`)} className="text-sm font-bold text-[var(--site-primary)] hover:text-orange-700">
                   {copy.viewAll} →
                 </Link>
               )}
@@ -122,7 +122,7 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
               <Link
                 key={category.id}
                 href={href(`/categories/${category.path || category.slug}`)}
-                className="rounded-full border border-slate-200 px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-[#0b3e75] hover:text-[#0b3e75]"
+                className="rounded-full border border-slate-200 px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-[var(--site-primary)] hover:text-[var(--site-primary)]"
               >
                 {category.name}
                 {typeof category.product_count === 'number' && category.product_count > 0 && (

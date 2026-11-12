@@ -114,7 +114,7 @@ export function ServicesSection({ content }: Props) {
 
                   <Link
                     href={href(service.href || '/contact')}
-                    className="text-[#003a78] hover:text-[#003a78] font-semibold text-sm flex items-center group-hover:translate-x-2 transition-transform duration-300"
+                    className="text-[var(--site-primary)] hover:text-[var(--site-primary)] font-semibold text-sm flex items-center group-hover:translate-x-2 transition-transform duration-300"
                   >
                     {locale === 'en' ? `View ${service.title}` : `${service.title} · ${t('common.learnMore')}`}
                     <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -177,7 +177,7 @@ export function ServicesSection({ content }: Props) {
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link
                   href={href(data.ctaPrimary?.href || '/contact')}
-                  className="bg-orange-700 text-white hover:bg-[#003a78] px-8 py-4 rounded-md font-semibold transition-colors duration-300 flex items-center justify-center"
+                  className="bg-orange-700 text-white hover:bg-[var(--site-primary)] px-8 py-4 rounded-md font-semibold transition-colors duration-300 flex items-center justify-center"
                 >
                   <PhoneIcon className="h-5 w-5 mr-2" />
                   {locale === 'en' ? data.ctaPrimary?.text || t('common.contactUs') : t('common.contactUs')}
