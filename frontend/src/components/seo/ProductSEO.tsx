@@ -124,6 +124,12 @@ function buildAnswerFirstSummary(product: Product, policy: CommercePolicySetting
   return `${brandLabel} ${product.sku} is a ${categoryName.toLowerCase()} used for CNC repair, replacement, and industrial automation maintenance. ${stockText} ${warrantyText}`;
 }
 
+// Customer reviews are user input; escaping '<' keeps a '</script>' in review
+// text from terminating the JSON-LD block.
+function toJsonLd(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
 export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PUBLIC_SITE_URL, contentLocale, commercePolicy }: ProductSEOProps) {
   const { locale, t, href } = usePublicI18n();
   const policy = resolvePolicy(commercePolicy);
@@ -417,7 +423,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(structuredData)
+            __html: toJsonLd(structuredData)
           }}
         />
       )}
@@ -426,7 +432,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(breadcrumbData)
+          __html: toJsonLd(breadcrumbData)
         }}
       />
 
@@ -434,14 +440,14 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(faqData)
+          __html: toJsonLd(faqData)
         }}
       />
 
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(webPageData)
+          __html: toJsonLd(webPageData)
         }}
       />
     </>

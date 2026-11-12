@@ -168,17 +168,24 @@ export interface PurchaseLink {
   updated_at: string;
 }
 
+export type ProductReviewStatus = 'pending' | 'approved' | 'rejected';
+
 export interface ProductReview {
   id: number;
   product_id: number;
+  product?: Pick<Product, 'id' | 'sku' | 'name' | 'slug'>;
+  customer_id?: number;
+  order_id?: number;
   customer_name: string;
   customer_email?: string;
   rating: number;
   review_title: string;
   review_content: string;
+  status?: ProductReviewStatus;
   is_verified: boolean;
   is_approved: boolean;
   helpful_count: number;
+  approved_at?: string;
   created_at: string;
   updated_at: string;
 }

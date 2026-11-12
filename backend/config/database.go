@@ -173,6 +173,7 @@ func ConnectDatabase() {
 			&models.ProductClassificationAudit{},
 			&models.HotlinkProtectionSetting{},
 			&models.PayPalSetting{},
+			&models.TurnstileSetting{},
 			&models.EmailSetting{},
 			&models.IndexNowSetting{},
 			&models.EmailVerificationCode{},
@@ -229,6 +230,8 @@ func ConnectDatabase() {
 		DB.Exec("SET FOREIGN_KEY_CHECKS=1;")
 		// Preserve existing articles created before content types were introduced.
 		DB.Model(&models.Article{}).Where("content_type IS NULL OR content_type = ''").Update("content_type", "news")
+		// Reviews approved before moderation states existed keep their public status.
+		DB.Model(&models.ProductReview{}).Where("is_approved = ? AND status <> ?", true, models.ReviewStatusApproved).Update("status", models.ReviewStatusApproved)
 		log.Println("Database migration completed (with tolerant drop handling)")
 	} else {
 		log.Println("DB_AUTO_MIGRATE=false, skipping AutoMigrate")

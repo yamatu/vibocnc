@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast';
 import { useCustomer } from '@/store/customer.store';
 import { CustomerService } from '@/services/customer.service';
 import type { Order } from '@/types';
-import { getDefaultProductImageWithSku, getProductImageUrl } from '@/lib/utils';
+import { getDefaultProductImageWithSku, getProductImageUrl, toProductPathId } from '@/lib/utils';
 import Layout from '@/components/layout/Layout';
 import {
   ChevronLeftIcon,
@@ -16,6 +16,7 @@ import {
   CheckCircleIcon,
   ClockIcon,
   XCircleIcon,
+  StarIcon,
 } from '@heroicons/react/24/outline';
 
 const statusConfig: Record<string, { color: string; icon: ComponentType<SVGProps<SVGSVGElement>>; label: string }> = {
@@ -108,6 +109,12 @@ export default function OrderDetailPage() {
   }
 
   const statusInfo = statusConfig[order.status] || statusConfig.pending;
+  // Mirrors the backend review eligibility rule.
+  const canReview =
+    order.status !== 'cancelled' &&
+    order.payment_status !== 'refunded' &&
+    (['paid', 'partially_refunded', 'refund_pending'].includes(order.payment_status) ||
+      ['shipped', 'delivered'].includes(order.status));
   const StatusIcon = statusInfo.icon;
 
   return (
@@ -177,6 +184,15 @@ export default function OrderDetailPage() {
                           <p className="text-sm text-gray-500 mt-1">
                             Quantity: {item.quantity}
                           </p>
+                          {canReview && item.product?.sku && (
+                            <Link
+                              href={`/products/${toProductPathId(item.product.sku)}#reviews`}
+                              className="mt-2 inline-flex items-center text-sm font-medium text-amber-700 hover:text-amber-800"
+                            >
+                              <StarIcon className="mr-1 h-4 w-4" />
+                              Write a review
+                            </Link>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-medium text-gray-900">

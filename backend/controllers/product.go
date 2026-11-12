@@ -65,7 +65,13 @@ func withPublicProductPreloads(db *gorm.DB) *gorm.DB {
 		Preload("Category.Translations").
 		Preload("Translations").
 		Preload("PurchaseLinks", "is_active = ?", true).
-		Preload("Reviews", "is_approved = ?", true)
+		Preload("Reviews", func(db *gorm.DB) *gorm.DB {
+			// Public payload: never expose reviewer email, IP or account links.
+			return db.Select("id", "product_id", "customer_name", "rating", "review_title", "review_content",
+				"status", "is_verified", "is_approved", "helpful_count", "approved_at", "created_at", "updated_at").
+				Where("is_approved = ?", true).
+				Order("created_at DESC")
+		})
 	if hasProductFAQsTable() {
 		q = q.Preload("FAQs", "is_active = ?", true)
 	}

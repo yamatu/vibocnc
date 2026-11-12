@@ -6,7 +6,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ShoppingCartIcon,
-  StarIcon,
   CheckIcon,
   TruckIcon,
   ShieldCheckIcon,
@@ -17,16 +16,16 @@ import {
   ChevronDownIcon,
   EnvelopeIcon,
 } from '@heroicons/react/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { FaPaypal } from 'react-icons/fa6';
 import Layout from '@/components/layout/Layout';
 import ProductImageViewer from '@/components/product/ProductImageViewer';
+import ProductReviews, { RatingStars, summarizeReviews } from '@/components/product/ProductReviews';
 import ProductSEO from '@/components/seo/ProductSEO';
 import { ProductService } from '@/services/product.service';
 import { CategoryService } from '@/services/category.service';
 import { ShippingRateService } from '@/services/shipping-rate.service';
 import type { ShippingRatePublic, ShippingQuote } from '@/services/shipping-rate.service';
-import type { PaginationResponse, Product, ProductImage, ProductReview, Category, CommercePolicySetting } from '@/types';
+import type { PaginationResponse, Product, ProductImage, Category, CommercePolicySetting } from '@/types';
 import {
   FALLBACK_COMMERCE_POLICY,
   resolveLeadTime,
@@ -432,6 +431,7 @@ export default function ProductDetailClient({
   };
 
   const specs = parseTechnicalSpecs(product.technical_specs);
+  const reviewSummary = summarizeReviews(product.reviews);
   const rawDescription = product.description && product.description.trim().length > 0
     ? product.description
     : getFallbackDescription();
@@ -516,6 +516,13 @@ export default function ProductDetailClient({
                 <span className="truncate">{categoryName}</span>
               </div>
               <h1 className="break-words text-xl font-bold leading-snug tracking-tight text-slate-950 sm:text-2xl lg:text-3xl">{computedHeading}</h1>
+              {reviewSummary.count > 0 && (
+                <a href="#reviews" className="mt-2 inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-[#0b3e75]">
+                  <RatingStars rating={reviewSummary.average} />
+                  <span className="font-semibold text-slate-900">{reviewSummary.average.toFixed(1)}</span>
+                  <span>({t('review.reviewsLink', { count: reviewSummary.count })})</span>
+                </a>
+              )}
 
               <div className="mt-3">
                 <h2 className="sr-only">{t('product.information')}</h2>
@@ -859,41 +866,7 @@ export default function ProductDetailClient({
               </div>
             </section>
 
-            {/* Customer Reviews */}
-            {product.reviews && product.reviews.filter((r: ProductReview) => r.is_approved).length > 0 && (
-              <section>
-                <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.reviews')}</h2>
-                <div className="space-y-4">
-                  {product.reviews.filter((r: ProductReview) => r.is_approved).map((review: ProductReview) => (
-                    <div key={review.id} className="site-detail-panel p-4 sm:p-6">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-950">{review.customer_name}</span>
-                          {review.is_verified && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                              <CheckIcon className="h-3 w-3 mr-0.5" />
-                              Verified
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-xs text-slate-500">{new Date(review.created_at).toLocaleDateString(locale === 'zh' ? 'zh-CN' : locale)}</span>
-                      </div>
-                      <div className="flex items-center mb-2">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          star <= review.rating
-                            ? <StarIconSolid key={star} className="h-4 w-4 text-[#c46a2d]" />
-                            : <StarIcon key={star} className="h-4 w-4 text-slate-300" />
-                        ))}
-                      </div>
-                      {review.review_title && (
-                        <h3 className="font-semibold text-slate-950 mb-1">{review.review_title}</h3>
-                      )}
-                      <p className="text-sm text-slate-700">{review.review_content}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+            <ProductReviews productId={product.id} reviews={product.reviews} />
 
             <section>
               <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.explore')}</h2>

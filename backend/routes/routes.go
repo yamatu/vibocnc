@@ -65,6 +65,8 @@ func SetupRoutes(r *gin.Engine) {
 	integrationTokenController := &controllers.IntegrationTokenController{}
 	productProfileDraftController := &controllers.ProductProfileDraftController{}
 	aiAgentController := &controllers.AIAgentController{}
+	reviewController := &controllers.ReviewController{}
+	turnstileController := &controllers.TurnstileController{}
 	// eBay drafts are never auto-imported. AI optimization queues a proposal;
 	// the administrator explicitly approves the final product import.
 	services.StartProductCatalogImportDaemon(db)
@@ -137,6 +139,7 @@ func SetupRoutes(r *gin.Engine) {
 
 			// PayPal (public config)
 			public.GET("/paypal/config", payPalController.GetPublicConfig)
+			public.GET("/turnstile/config", turnstileController.GetPublicConfig)
 			public.GET("/social-links", socialLinksController.GetPublicConfig)
 
 			// Email (public)
@@ -582,6 +585,25 @@ func SetupRoutes(r *gin.Engine) {
 				indexnow.POST("/products/:id/submit", indexNowController.SubmitProductByID)
 			}
 
+			// Cloudflare Turnstile human verification (admin only)
+			turnstile := admin.Group("/turnstile")
+			turnstile.Use(middleware.AdminOnly())
+			{
+				turnstile.GET("/settings", turnstileController.GetSettings)
+				turnstile.PUT("/settings", turnstileController.UpdateSettings)
+				turnstile.POST("/test", turnstileController.TestSettings)
+			}
+
+			// Product review moderation (editor/admin; deletion admin only)
+			reviews := admin.Group("/reviews")
+			reviews.Use(middleware.EditorOrAdmin())
+			{
+				reviews.GET("", reviewController.AdminListReviews)
+				reviews.POST("/bulk-status", reviewController.AdminBulkStatus)
+				reviews.PUT("/:id", reviewController.AdminUpdateReview)
+				reviews.DELETE("/:id", middleware.AdminOnly(), reviewController.AdminDeleteReview)
+			}
+
 			// Visitor Analytics (editor/admin for reads, admin-only for cleanup)
 			analytics := admin.Group("/analytics")
 			analytics.Use(middleware.EditorOrAdmin())
@@ -754,6 +776,11 @@ func SetupRoutes(r *gin.Engine) {
 				// Customer orders
 				customerProtected.GET("/orders", orderController.GetMyOrders)
 				customerProtected.GET("/orders/:id", orderController.GetMyOrderDetails)
+
+				// Product reviews (verified buyers only, moderated before publishing)
+				customerProtected.GET("/reviews", reviewController.GetMyReviews)
+				customerProtected.GET("/reviews/eligibility", reviewController.GetEligibility)
+				customerProtected.POST("/reviews", middleware.IPRateLimit("review_create", 10, time.Hour), reviewController.CreateReview)
 
 				// Ticket/Support system
 				customerProtected.POST("/tickets", ticketController.CreateTicket)
