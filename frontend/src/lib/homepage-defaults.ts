@@ -25,7 +25,7 @@ export const DEFAULT_HERO_DATA: HeroSectionData = {
       subtitle: 'FANUC, Siemens, Mitsubishi, ABB and 20+ automation brands',
       description:
         'Since 2007, Vibocnc has helped maintenance teams source current, legacy and obsolete automation parts, verify models and coordinate inspection, repair evaluation and worldwide delivery.',
-      image: 'https://s2.loli.net/2025/08/26/Vo4JfbtW5H2GMEN.png',
+      image: '/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png',
       cta: {
         primary: { text: 'Browse Products', href: '/products' },
         secondary: { text: 'Get a Quote', href: '/contact?inquiry_type=quote' },
@@ -37,7 +37,7 @@ export const DEFAULT_HERO_DATA: HeroSectionData = {
       subtitle: 'Organized stock, testing benches and export packing',
       description:
         'Our Kunshan facility supports organized storage, incoming inspection, functional checks, protective export packing and efficient dispatch for urgent industrial parts orders.',
-      image: 'https://s2.loli.net/2025/08/26/17MRNhXEcrKTdDY.png',
+      image: '/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png',
       cta: {
         primary: { text: 'View Facility', href: '/about' },
         secondary: { text: 'Get a Quote', href: '/contact?inquiry_type=quote' },
@@ -49,7 +49,7 @@ export const DEFAULT_HERO_DATA: HeroSectionData = {
       subtitle: 'Part-number checks, sourcing, testing and repair evaluation',
       description:
         'Our sales and technical teams coordinate part-number checks, sourcing, testing, repair evaluation and international transport as one practical service.',
-      image: 'https://s2.loli.net/2025/08/26/17MRNhXEcrKTdDY.png',
+      image: '/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png',
       cta: {
         primary: { text: 'Request a Repair', href: '/repair-request' },
         secondary: { text: 'Get a Quote', href: '/contact?inquiry_type=quote' },
@@ -187,7 +187,7 @@ export const DEFAULT_WORKSHOP_SECTION_DATA: WorkshopSectionData = {
       title: 'Testing & Quality Control',
       description:
         'Testing equipment and inspection procedures help verify parts before they leave our facility.',
-      image: 'https://s2.loli.net/2025/09/01/ZxuFKAvIM3zUHj4.jpg',
+      image: '/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png',
       features: [
         'Automated testing systems',
         'Documented inspection process',
@@ -201,7 +201,7 @@ export const DEFAULT_WORKSHOP_SECTION_DATA: WorkshopSectionData = {
       title: 'Organized Storage',
       description:
         'Climate-controlled warehouse with systematic inventory management for optimal part preservation.',
-      image: 'https://s2.loli.net/2025/09/01/pxWRrVkNlO8Ugm4.jpg',
+      image: '/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png',
       features: [
         'Climate-controlled environment',
         'Systematic organization',
@@ -215,7 +215,7 @@ export const DEFAULT_WORKSHOP_SECTION_DATA: WorkshopSectionData = {
       title: 'Repair & Refurbishment',
       description:
         'Professional repair and refurbishment support for critical CNC and automation components.',
-      image: 'https://s2.loli.net/2025/09/01/wMHu93Fv5egJ6pn.jpg',
+      image: '/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png',
       features: [
         'Experienced technicians',
         'Multi-brand repair procedures',
@@ -229,7 +229,7 @@ export const DEFAULT_WORKSHOP_SECTION_DATA: WorkshopSectionData = {
       title: 'Secure Packaging',
       description:
         'Professional packaging ensures safe delivery of sensitive electronic components worldwide.',
-      image: 'https://s2.loli.net/2025/09/01/3Rli1zNOEm5sA4T.jpg',
+      image: '/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png',
       features: [
         'Anti-static packaging',
         'Shock-resistant materials',

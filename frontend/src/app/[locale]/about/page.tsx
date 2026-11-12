@@ -138,7 +138,7 @@ export default async function About({ params }: { params: LocaleRouteParams }) {
             </div>
             <div className="relative">
               <Image
-                src="https://s2.loli.net/2025/09/01/G1JcoeXWNTdpIfZ.jpg"
+                src="/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png"
                 alt="Vibocnc Company Building"
                 width={600}
                 height={400}
@@ -250,7 +250,7 @@ export default async function About({ params }: { params: LocaleRouteParams }) {
             </div>
             <div className="relative">
               <Image
-                src="https://s2.loli.net/2025/09/01/G1JcoeXWNTdpIfZ.jpg"
+                src="/uploads/media/605e31d297c79d19079f3710453bde878143e088eeaa5ad1bddfd1a45af9b7dc.png"
                 alt="Workshop Interior"
                 width={600}
                 height={400}

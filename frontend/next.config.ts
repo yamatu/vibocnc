@@ -131,7 +131,6 @@ const nextConfig: NextConfig = {
     // allowlist for the image optimizer, so every extra entry is an SSRF-ish
     // surface plus wasted optimizer cache space.
     remotePatterns: [
-      { protocol: 'https', hostname: 's2.loli.net' },
       { protocol: 'https', hostname: 'dz.yamatu.xyz' },
       // Development-only origins (local backend uploads, throwaway placeholders).
       ...(process.env.NODE_ENV === 'production'
