@@ -121,7 +121,9 @@ function buildAnswerFirstSummary(product: Product, policy: CommercePolicySetting
     : `The item is available to order with ${leadTime} lead time.`;
   const warrantyText = `Standard supply includes a ${warranty} warranty, ${policy.return_window_text} returns and ${commercePolicyReturnShippingText(policy)}.`;
 
-  return `${brandLabel} ${product.sku} is a ${categoryName.toLowerCase()} used for CNC repair, replacement, and industrial automation maintenance. ${stockText} ${warrantyText}`;
+  const article = /^[aeiou]/i.test(categoryName) ? 'an' : 'a';
+  const subject = categoryName.toLowerCase().startsWith(brandLabel.toLowerCase()) ? categoryName : `${brandLabel} ${categoryName}`;
+  return `${brandLabel} ${product.sku} is ${article} ${subject} used for CNC repair, replacement, and industrial automation maintenance. ${stockText} ${warrantyText}`;
 }
 
 // Customer reviews are user input; escaping '<' keeps a '</script>' in review
@@ -243,8 +245,10 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         "url": baseUrl
       },
       // Shipping and return promises come from the admin-editable commerce
-      // policy instead of hard-coded copy, so editing them once updates every
-      // product page and its structured data.
+      // policy. A shipping rate of 0 means "not configured" (checkout prices
+      // shipping per country and weight), so no rate is claimed in that case:
+      // publishing $0 would advertise free shipping that checkout does not give.
+      ...(Number(policy.shipping_rate_amount) > 0 ? {
       "shippingDetails": {
         "@type": "OfferShippingDetails",
         "shippingRate": {
@@ -276,6 +280,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
           }
         }
       },
+      } : {}),
       "hasMerchantReturnPolicy": {
         "@type": "MerchantReturnPolicy",
         "applicableCountry": returnCountry,

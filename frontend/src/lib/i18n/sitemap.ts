@@ -6,6 +6,7 @@ export interface LocalizedSitemapEntry {
   changeFrequency: string;
   priority: string;
   availableLocales?: readonly PublicLocale[];
+  images?: Array<{ url: string; title?: string }>;
 }
 
 function escapeXml(value: string): string {
@@ -25,6 +26,16 @@ function absoluteUrl(baseUrl: string, pathname: string): string {
 function entryLocales(entry: LocalizedSitemapEntry) {
   const allowedLocales = new Set<PublicLocale>([DEFAULT_PUBLIC_LOCALE, ...(entry.availableLocales || [])]);
   return PUBLIC_LOCALES.filter((locale) => allowedLocales.has(locale.code));
+}
+
+function renderImages(baseUrl: string, entry: LocalizedSitemapEntry): string {
+  return (entry.images || []).map((image) => [
+    '    <image:image>',
+    `      <image:loc>${escapeXml(/^https?:\/\//i.test(image.url) ? image.url : absoluteUrl(baseUrl, image.url))}</image:loc>`,
+    ...(image.title ? [`      <image:title>${escapeXml(image.title)}</image:title>`] : []),
+    '    </image:image>',
+    '',
+  ].join('\n')).join('');
 }
 
 export function renderLocalizedSitemapEntries(baseUrl: string, entry: LocalizedSitemapEntry): string {
@@ -47,15 +58,16 @@ export function renderLocalizedSitemapEntries(baseUrl: string, entry: LocalizedS
     <loc>${escapeXml(localizedUrl)}</loc>
 ${entry.lastModified ? `    <lastmod>${escapeXml(entry.lastModified)}</lastmod>\n` : ''}    <changefreq>${escapeXml(entry.changeFrequency)}</changefreq>
     <priority>${escapeXml(entry.priority)}</priority>
-${alternateLinks.map((alternate) => `    <xhtml:link rel="alternate" hreflang="${escapeXml(alternate.hreflang)}" href="${escapeXml(alternate.url)}" />\n`).join('')}  </url>`;
+${alternateLinks.map((alternate) => `    <xhtml:link rel="alternate" hreflang="${escapeXml(alternate.hreflang)}" href="${escapeXml(alternate.url)}" />\n`).join('')}${renderImages(baseUrl, entry)}  </url>`;
   }).join('\n');
 }
 
 export function renderLocalizedSitemap(baseUrl: string, entries: LocalizedSitemapEntry[]): string {
   const hasAlternates = entries.some((entry) => entryLocales(entry).length > 1);
   const xhtmlNs = hasAlternates ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : '';
+  const imageNs = entries.some((entry) => entry.images?.length) ? ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"' : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtmlNs}>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${xhtmlNs}${imageNs}>
 ${entries.map((entry) => renderLocalizedSitemapEntries(baseUrl, entry)).join('\n')}
 </urlset>`;
 }

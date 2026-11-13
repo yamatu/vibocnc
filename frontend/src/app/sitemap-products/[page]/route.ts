@@ -37,6 +37,7 @@ export async function GET(
             ? '0.6'
             : '0.8',
       availableLocales: sitemapLocales(product),
+      images: (product.images || []).map((url) => ({ url, title: product.name })),
     }))
 
     const sitemap = renderLocalizedSitemap(baseUrl, urls)

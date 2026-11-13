@@ -8,6 +8,8 @@ export const MAX_PRODUCT_SITEMAPS = 1000;
 
 export interface ProductSitemapEntry {
   sku: string;
+  name?: string;
+  images?: string[];
   updated_at?: string;
   stock_quantity: number;
   is_featured: boolean;
