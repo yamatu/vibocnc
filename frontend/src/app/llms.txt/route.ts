@@ -15,23 +15,36 @@ export async function GET() {
   const policy = await getCommercePolicyCached();
 
   let categoryLines: string[] = [];
+  let topBrands: string[] = [];
   try {
     const categories = await CategoryService.getCategories();
-    categoryLines = (categories || [])
+    // Root categories are brands; rank them by stocked products so the summary
+    // names the brands the catalogue actually carries.
+    const ranked = (categories || [])
       .filter((c: any) => Boolean(c?.path || c?.slug))
+      .sort((a: any, b: any) => (b.product_count || 0) - (a.product_count || 0));
+    topBrands = ranked
+      .filter((c: any) => (c.product_count || 0) > 0 && !/unbranded|other/i.test(c.name || ''))
+      .slice(0, 12)
+      .map((c: any) => c.name);
+    categoryLines = ranked
       .slice(0, 200)
       .map((c: any) => {
         const path = c.path || c.slug;
-        return `- ${c.name}: ${baseUrl}/categories/${path}`;
+        const count = c.product_count ? ` (${c.product_count} products)` : '';
+        return `- ${c.name}${count}: ${baseUrl}/categories/${path}`;
       });
   } catch {
     categoryLines = [];
   }
+  const brandSummary = topBrands.length > 0
+    ? `${topBrands.join(', ')} and other brands`
+    : 'FANUC, Mitsubishi, Siemens, ABB, Omron, Yaskawa, Schneider, SICK, Tamagawa, Heidenhain, Lenze, Danfoss and Allen-Bradley systems';
 
   const lines: string[] = [
     `# ${SITE_NAME}`,
     '',
-    '> Vibocnc supplies new and refurbished industrial automation and CNC spare parts for FANUC, Mitsubishi, Siemens, ABB, Omron, Yaskawa, Schneider, SICK, Tamagawa, Heidenhain, Lenze, Danfoss and Allen-Bradley systems. Every listing is a real catalogue record with a verifiable part number.',
+    `> Vibocnc supplies new and refurbished industrial automation and CNC spare parts for ${brandSummary}. Every listing is a real catalogue record with a verifiable part number.`,
     '',
     '## How to use this file',
     '- Product pages live at `{origin}/products/{sku-with-hyphens}`.',
