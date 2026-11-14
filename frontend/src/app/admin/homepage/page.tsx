@@ -40,6 +40,9 @@ import ServicesEditor from '@/components/admin/homepage/editors/ServicesEditor';
 import SimpleSectionEditor from '@/components/admin/homepage/editors/SimpleSectionEditor';
 import BrandCarouselEditor from '@/components/admin/homepage/editors/BrandCarouselEditor';
 import TemplateSectionEditor from '@/components/admin/homepage/editors/TemplateSectionEditor';
+import PageContentEditor from '@/components/admin/homepage/editors/PageContentEditor';
+import { EDITABLE_PAGE_SECTION_KEYS, type EditablePage } from '@/lib/page-content';
+import { PAGE_SCHEMAS } from '@/lib/page-content-schema';
 
 // Sections rendered by default even before an admin saves them; mirrors HomePage.tsx.
 const PRIMARY_SECTIONS: Array<{ key: string; sort: number; zh: string; en: string }> = [
@@ -55,6 +58,13 @@ const PRIMARY_SECTIONS: Array<{ key: string; sort: number; zh: string; en: strin
 ];
 const PREVIEW_SRC = '/?admin_preview=1';
 const DRAFT_DEBOUNCE_MS = 450;
+
+type EditorPage = 'home' | EditablePage;
+const EDITOR_PAGES: Array<{ key: EditorPage; zh: string; en: string }> = [
+  { key: 'home', zh: '首页', en: 'Homepage' },
+  { key: 'about', zh: '关于我们', en: 'About' },
+  { key: 'contact', zh: '联系我们', en: 'Contact' },
+];
 
 type Block = { key: string; id: string; label: string; content: HomepageContent | null; sort: number; active: boolean; primary: boolean };
 
@@ -72,6 +82,7 @@ export default function AdminHomepageVisualEditor() {
   const canvasRef = useRef<CanvasHandle>(null);
 
   const [selectedKey, setSelectedKey] = useState('hero_section');
+  const [page, setPage] = useState<EditorPage>('home');
   const [tab, setTab] = useState<'blocks' | 'edit'>('blocks');
   const [mobileView, setMobileView] = useState<'panel' | 'preview'>('panel');
   const [widePanel, setWidePanel] = useState(false);
@@ -104,7 +115,7 @@ export default function AdminHomepageVisualEditor() {
     });
     const primaryKeys = new Set(PRIMARY_SECTIONS.map((p) => p.key));
     const custom = contents
-      .filter((c) => !primaryKeys.has(c.section_key))
+      .filter((c) => !primaryKeys.has(c.section_key) && !EDITABLE_PAGE_SECTION_KEYS.has(c.section_key))
       .map((c) => {
         const def = getTemplateDefinition(readTemplateId(c.data));
         const typeName = def ? (zh ? def.name.zh : def.name.en) : L('自定义区块', 'Custom block');
@@ -125,6 +136,8 @@ export default function AdminHomepageVisualEditor() {
   useEffect(() => setOrder(null), [blocks]);
 
   const selected = list.find((b) => b.key === selectedKey) || null;
+  const pageSchema = page === 'home' ? null : PAGE_SCHEMAS[page];
+  const pageContent = pageSchema ? contents.find((c) => c.section_key === pageSchema.sectionKey) ?? null : null;
   const filtered = search.trim()
     ? list.filter((b) => `${b.label} ${b.key}`.toLowerCase().includes(search.trim().toLowerCase()))
     : list;
@@ -276,6 +289,23 @@ export default function AdminHomepageVisualEditor() {
   }, []);
   const onCanvasSelect = useCallback((key: string) => openEditor(key, true), [openEditor]);
 
+  const switchPage = async (next: EditorPage) => {
+    if (next === page) return;
+    if (dirtyKeys.size > 0) {
+      if (!window.confirm(L('当前有未保存的修改，切换页面会放弃这些修改。确定切换吗？', 'You have unsaved changes. Switching pages discards them. Continue?'))) return;
+      await Promise.all(Array.from(dirtyKeys).map((key) => settle(key)));
+    }
+    setPage(next);
+    setMobileView('panel');
+    if (next === 'home') {
+      setSelectedKey('hero_section');
+      setTab('blocks');
+    } else {
+      setSelectedKey(PAGE_SCHEMAS[next].sectionKey);
+      setTab('edit');
+    }
+  };
+
   const renderEditor = () => {
     if (!selected) return null;
     const content = selected.content;
@@ -311,7 +341,9 @@ export default function AdminHomepageVisualEditor() {
       <div className="flex flex-col gap-3 lg:h-[calc(100dvh-8rem)]">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-bold text-gray-900 sm:text-2xl">{L('首页可视化编辑', 'Homepage visual editor')}</h1>
+            <h1 className="truncate text-xl font-bold text-gray-900 sm:text-2xl">
+              {pageSchema ? L(`${pageSchema.zh}页面编辑`, `${pageSchema.en} editor`) : L('首页可视化编辑', 'Homepage visual editor')}
+            </h1>
             <p className="hidden text-xs text-gray-500 sm:block">
               {dirtyKeys.size > 0
                 ? L(`${dirtyKeys.size} 个区块有未发布的修改（预览已实时显示）`, `${dirtyKeys.size} block(s) with unpublished changes (shown in preview)`)
@@ -319,22 +351,38 @@ export default function AdminHomepageVisualEditor() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5" role="tablist" aria-label={L('选择要编辑的页面', 'Page to edit')}>
+              {EDITOR_PAGES.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={page === item.key}
+                  onClick={() => switchPage(item.key)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${page === item.key ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  {zh ? item.zh : item.en}
+                </button>
+              ))}
+            </div>
             <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 lg:hidden">
               <button type="button" onClick={() => setMobileView('panel')} className={`rounded-md px-3 py-1.5 text-sm ${mobileView === 'panel' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>{L('编辑', 'Edit')}</button>
               <button type="button" onClick={() => setMobileView('preview')} className={`rounded-md px-3 py-1.5 text-sm ${mobileView === 'preview' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>{L('预览', 'Preview')}</button>
             </div>
-            <button type="button" onClick={() => setLibraryOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
-              <PlusIcon className="h-4 w-4" />{L('添加区块', 'Add block')}
-            </button>
-            <a href="/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-              <ArrowTopRightOnSquareIcon className="h-4 w-4" /><span className="hidden sm:inline">{L('查看首页', 'View site')}</span>
+            {pageSchema ? null : (
+              <button type="button" onClick={() => setLibraryOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                <PlusIcon className="h-4 w-4" />{L('添加区块', 'Add block')}
+              </button>
+            )}
+            <a href={pageSchema?.path ?? '/'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" /><span className="hidden sm:inline">{pageSchema ? L('查看页面', 'View page') : L('查看首页', 'View site')}</span>
             </a>
           </div>
         </div>
 
         <div className="flex min-h-0 flex-1 gap-4">
           <div className={`${mobileView === 'preview' ? 'flex' : 'hidden'} h-[78dvh] min-h-0 min-w-0 flex-1 flex-col lg:flex lg:h-auto`}>
-            <VisualEditorCanvas ref={canvasRef} src={PREVIEW_SRC} locale={locale} selectedKey={selectedKey} onSelectSection={onCanvasSelect} savingDraft={syncing} />
+            <VisualEditorCanvas key={page} ref={canvasRef} src={pageSchema ? `${pageSchema.path}?admin_preview=1` : PREVIEW_SRC} locale={locale} selectedKey={selectedKey} onSelectSection={onCanvasSelect} savingDraft={syncing} />
           </div>
 
           <aside
@@ -342,6 +390,11 @@ export default function AdminHomepageVisualEditor() {
               widePanel ? 'lg:w-[min(760px,55vw)]' : 'lg:w-[440px]'
             }`}
           >
+            {pageSchema ? (
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                <PageContentEditor key={pageSchema.sectionKey} schema={pageSchema} content={pageContent} onSave={saveSection} onDraftChange={onDraftChange} />
+              </div>
+            ) : (<>
             <div className="flex items-center gap-1 border-b border-gray-200 px-2 py-2">
               <button type="button" onClick={() => setTab('blocks')} className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${tab === 'blocks' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}>
                 <Squares2X2Icon className="h-4 w-4" />{L('区块', 'Blocks')}
@@ -408,6 +461,7 @@ export default function AdminHomepageVisualEditor() {
                 </div>
               ) : null}
             </div>
+            </>)}
           </aside>
         </div>
       </div>

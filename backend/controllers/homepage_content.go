@@ -19,9 +19,14 @@ import (
 // HomepageContentController handles homepage content operations
 type HomepageContentController struct{}
 
+// The homepage editor also edits the About and Contact pages (about_page and
+// contact_page sections). Purging by path covers renders cached before the
+// content was first fetched, which carry no "homepage-content" tag.
+var homepageEditorPaths = []string{"/", "/about", "/contact"}
+
 func invalidateHomepageCaches(ctx context.Context, reason string) {
-	services.InvalidatePublicCaches(ctx, reason, []string{"/"})
-	services.TriggerNextRevalidate(nil, []string{"/"}, false)
+	services.InvalidatePublicCaches(ctx, reason, homepageEditorPaths)
+	services.TriggerNextRevalidate(nil, homepageEditorPaths, false)
 	services.TriggerNextRevalidateTags([]string{"homepage-content"})
 }
 
