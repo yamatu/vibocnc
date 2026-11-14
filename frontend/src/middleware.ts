@@ -150,6 +150,9 @@ function hasClientAdminSession(request: NextRequest): boolean {
 
 const INTERNAL_PREVIEW_REWRITE_HEADER = 'x-vibocnc-preview-rewrite';
 const HOMEPAGE_PREVIEW_PATH = '/homepage-preview';
+const PAGE_PREVIEW_PATH = '/page-preview';
+// Pages edited in the admin homepage editor (see lib/page-content.ts).
+const EDITABLE_PAGE_PATHS = new Set(['/about', '/contact']);
 
 // Unprefixed public URLs are mapped to app/[locale] with locale "en" by the
 // rewrites in next.config.ts, not here: Next only treats a request as ISR when
@@ -157,7 +160,7 @@ const HOMEPAGE_PREVIEW_PATH = '/homepage-preview';
 export async function middleware(request: NextRequest) {
   const rawPathname = request.nextUrl.pathname;
   // Defensive: never re-process the preview URL this middleware rewrote.
-  if (request.headers.get(INTERNAL_PREVIEW_REWRITE_HEADER) === '1' && rawPathname.endsWith(HOMEPAGE_PREVIEW_PATH)) {
+  if (request.headers.get(INTERNAL_PREVIEW_REWRITE_HEADER) === '1' && (rawPathname.endsWith(HOMEPAGE_PREVIEW_PATH) || rawPathname.includes(`${PAGE_PREVIEW_PATH}/`))) {
     return NextResponse.next();
   }
   if (rawPathname === '/en' || rawPathname.startsWith('/en/')) {
@@ -170,6 +173,12 @@ export async function middleware(request: NextRequest) {
   const locale = pathLocale || DEFAULT_PUBLIC_LOCALE;
 
   // The preview route is uncached; only reachable via `/?admin_preview=1`.
+  if (pathname === PAGE_PREVIEW_PATH || pathname.startsWith(`${PAGE_PREVIEW_PATH}/`)) {
+    const url = request.nextUrl.clone();
+    const target = pathname.slice(PAGE_PREVIEW_PATH.length) || '/';
+    url.pathname = localizePublicPath(EDITABLE_PAGE_PATHS.has(target) ? target : '/', locale);
+    return NextResponse.redirect(url, 307);
+  }
   if (pathname === HOMEPAGE_PREVIEW_PATH || pathname.startsWith(`${HOMEPAGE_PREVIEW_PATH}/`)) {
     const url = request.nextUrl.clone();
     url.pathname = localizePublicPath('/', locale);
@@ -215,6 +224,7 @@ export async function middleware(request: NextRequest) {
     && automaticLocale !== DEFAULT_PUBLIC_LOCALE
     && isLocalizablePublicPath(pathname)
     && !isCrawler
+    && request.nextUrl.searchParams.get('admin_preview') !== '1'
   ) {
     const url = request.nextUrl.clone();
     url.pathname = localizePublicPath(pathname, automaticLocale);
@@ -362,12 +372,15 @@ export async function middleware(request: NextRequest) {
   }
 
   const isHomepagePreview = pathname === '/' && request.nextUrl.searchParams.get('admin_preview') === '1';
+  const editablePagePreview = request.nextUrl.searchParams.get('admin_preview') === '1' && EDITABLE_PAGE_PATHS.has(pathname) ? pathname : null;
   let response: NextResponse;
-  if (isHomepagePreview) {
+  if (isHomepagePreview || editablePagePreview) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set(INTERNAL_PREVIEW_REWRITE_HEADER, '1');
     const url = request.nextUrl.clone();
-    url.pathname = `/${locale}${HOMEPAGE_PREVIEW_PATH}`;
+    url.pathname = editablePagePreview
+      ? `/${locale}${PAGE_PREVIEW_PATH}${editablePagePreview}`
+      : `/${locale}${HOMEPAGE_PREVIEW_PATH}`;
     response = NextResponse.rewrite(url, { request: { headers: requestHeaders } });
   } else {
     response = NextResponse.next();

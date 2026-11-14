@@ -19,6 +19,7 @@ import { generateOrganizationSchema, generateWebsiteSchema } from '@/lib/structu
 import type { Article, HomepageContent } from '@/types';
 import { getSiteUrl } from '@/lib/url';
 import { DEFAULT_HERO_DATA } from '@/lib/homepage-defaults';
+import { EDITABLE_PAGE_SECTION_KEYS } from '@/lib/page-content';
 import { getSocialMediaURLs } from '@/lib/social-media';
 import { getPublicSocialMediaSettings } from '@/services/social-media.server';
 import { translatePublicMessage } from '@/lib/i18n/messages';
@@ -246,7 +247,7 @@ export default async function HomePage({
       };
     }),
     ...list
-      .filter((c) => !PRIMARY_HOME_SECTIONS.some((s) => s.key === c.section_key))
+      .filter((c) => !PRIMARY_HOME_SECTIONS.some((s) => s.key === c.section_key) && !EDITABLE_PAGE_SECTION_KEYS.has(c.section_key))
       .map((c) => ({
         key: c.section_key,
         sort: Number(c.sort_order ?? 999),
