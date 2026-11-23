@@ -85,14 +85,41 @@ function ContactContent({ data }: { data: PageData }) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Prefill email from query string (e.g., /contact?email=foo@bar.com)
+  // Prefill email / SKU / product from query string (e.g., /contact?sku=...&product=...&inquiry_type=quote)
   useEffect(() => {
-    const email = searchParams?.get('email') || '';
-    const inquiryType = searchParams?.get('inquiry_type');
-    const nextInquiryType = inquiryType === 'parts' || inquiryType === 'repair' || inquiryType === 'support' || inquiryType === 'quote'
-      ? inquiryType
+    const email = (searchParams?.get('email') || '').trim();
+    const sku = (searchParams?.get('sku') || '').trim();
+    const productName = (searchParams?.get('product') || '').trim();
+    const rawType = (searchParams?.get('inquiry_type') || searchParams?.get('type') || '').trim().toLowerCase();
+    const nextInquiryType = rawType === 'parts' || rawType === 'repair' || rawType === 'support' || rawType === 'quote'
+      ? rawType
       : undefined;
-    if (email || nextInquiryType) setFormData((prev) => ({ ...prev, ...(email ? { email } : {}), ...(nextInquiryType ? { inquiry_type: nextInquiryType } : {}) }));
+    if (!email && !sku && !productName && !nextInquiryType) return;
+
+    setFormData((prev) => {
+      const next = { ...prev };
+      if (email) next.email = email;
+      if (nextInquiryType) next.inquiry_type = nextInquiryType;
+      if (sku || productName) {
+        next.inquiry_type = 'quote';
+        if (!prev.subject) {
+          next.subject = sku ? `Quote Request: ${sku}` : `Quote Request: ${productName}`;
+        }
+        if (!prev.message) {
+          next.message = [
+            'Hello,',
+            '',
+            'I would like to request a quote for the following part:',
+            ...(sku ? [`SKU: ${sku}`] : []),
+            ...(productName ? [`Product: ${productName}`] : []),
+            'Quantity: 1',
+            '',
+            'Please provide pricing, availability, and lead time. Thank you!',
+          ].join('\n');
+        }
+      }
+      return next;
+    });
   }, [searchParams]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {

@@ -11,6 +11,7 @@ import { getLocaleConfig, isPublicLocale, normalizePublicLocale } from "@/lib/i1
 import { getPublicMessageOverrides, translatePublicMessage } from "@/lib/i18n/messages";
 import type { LocaleRouteParams } from "@/lib/i18n/server";
 import TrackingCode, { type PublicTrackingConfig } from "@/components/analytics/TrackingCode";
+import QuickQuoteModal from "@/components/quote/QuickQuoteModal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -153,6 +154,7 @@ export default async function RootLayout({
         <ReactQueryProvider>
           <PublicI18nProvider initialLocale={locale} messageOverrides={getPublicMessageOverrides(locale)}>
             {children}
+            <QuickQuoteModal />
             <Toaster
               position="top-right"
               toastOptions={{

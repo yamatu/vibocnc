@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ShoppingCartIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { ShoppingCartIcon, EyeIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
+import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 
 type Product = {
   id: number;
@@ -27,6 +28,7 @@ type Product = {
 export default function ProductCardHorizontal({ product }: { product: Product }) {
   const [isLoading, setIsLoading] = useState(false);
   const { addItem } = useCartStore();
+  const openQuoteModal = useQuoteModalStore((state) => state.openQuoteModal);
 
   const imageUrl = getProductImageUrl(product.image_urls || product.images || [], getDefaultProductImageWithSku(product.sku));
   const href = `/products/${toProductPathId(product.sku)}`;
@@ -40,6 +42,12 @@ export default function ProductCardHorizontal({ product }: { product: Product })
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleOpenQuote = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openQuoteModal(buildQuoteProductContext(product));
   };
 
   return (
@@ -81,14 +89,16 @@ export default function ProductCardHorizontal({ product }: { product: Product })
           ) : null}
         </div>
 
-        <div className="mt-auto pt-3 flex items-center justify-between gap-3">
+        <div className="mt-auto pt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold text-[var(--site-primary)]">{hasProductPrice(product) ? formatCurrency(product.price) : 'Contact for quote'}</span>
-              {hasProductPrice(product) && product.compare_price && product.compare_price > product.price ? (
-                <span className="text-sm text-gray-500 line-through">{formatCurrency(product.compare_price)}</span>
-              ) : null}
-            </div>
+            {hasProductPrice(product) && (
+              <div className="flex items-baseline gap-2">
+                <span className="text-lg font-bold text-[var(--site-primary)]">{formatCurrency(product.price)}</span>
+                {product.compare_price && product.compare_price > product.price ? (
+                  <span className="text-sm text-gray-500 line-through">{formatCurrency(product.compare_price)}</span>
+                ) : null}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -96,14 +106,34 @@ export default function ProductCardHorizontal({ product }: { product: Product })
               <EyeIcon className="h-4 w-4" />
               View
             </span>
-            {hasProductPrice(product) && (
+            {hasProductPrice(product) ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={isLoading}
+                  className="site-primary-action site-buy-action gap-1 px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  <ShoppingCartIcon className="h-4 w-4" />
+                  {isLoading ? 'Adding' : 'Add'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenQuote}
+                  className="site-secondary-action gap-1 px-3 py-2 text-sm"
+                >
+                  <EnvelopeIcon className="h-4 w-4" />
+                  Quote
+                </button>
+              </>
+            ) : (
               <button
-                onClick={handleAddToCart}
-                disabled={isLoading}
-                className="site-primary-action gap-1 px-3 py-2 text-sm disabled:opacity-60"
+                type="button"
+                onClick={handleOpenQuote}
+                className="site-primary-action gap-1.5 px-3 py-2 text-sm"
               >
-                <ShoppingCartIcon className="h-4 w-4" />
-                {isLoading ? 'Adding' : 'Add'}
+                <EnvelopeIcon className="h-4 w-4" />
+                Contact for quote
               </button>
             )}
           </div>

@@ -12,6 +12,7 @@ import Pagination from '@/components/common/Pagination';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
+import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 import {
   AdjustmentsHorizontalIcon,
   FunnelIcon,
@@ -19,6 +20,7 @@ import {
   ListBulletIcon,
   ShoppingCartIcon,
   EyeIcon,
+  EnvelopeIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
@@ -42,6 +44,7 @@ export default function CategoryProductsClient({
   const { locale, t, href } = usePublicI18n();
   const searchParams = useSearchParams();
   const { addItem } = useCartStore();
+  const openQuoteModal = useQuoteModalStore((state) => state.openQuoteModal);
 
   // Filter states
   const [showFilters, setShowFilters] = useState(false);
@@ -153,6 +156,14 @@ export default function CategoryProductsClient({
   const handleAddToCart = (product: Product) => {
     if (!hasProductPrice(product)) return;
     addItem(product, 1);
+  };
+
+  const handleOpenQuote = (product: Product) => {
+    openQuoteModal(
+      buildQuoteProductContext(product, {
+        productUrl: href(`/products/${toProductPathId(product.sku)}`),
+      })
+    );
   };
 
   const hasActiveFilters = !!(filters.min_price || filters.max_price || filters.search);
@@ -306,34 +317,53 @@ export default function CategoryProductsClient({
                       {product.description || ''}
                     </p>
 
-                    <div className="site-product-card-actions space-y-3">
+                    <div className="site-product-card-actions space-y-2.5">
                       {hasProductPrice(product) && (
                         <p className="whitespace-nowrap text-xl font-bold leading-none text-[var(--site-primary)]">{formatCurrency(product.price)}</p>
                       )}
-                      <div className="flex items-stretch gap-2">
-                        {hasProductPrice(product) ? (
+                      <div className="space-y-2">
+                        <div className="flex items-stretch gap-2">
+                          {hasProductPrice(product) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleAddToCart(product)}
+                              className="site-primary-action site-buy-action flex-1 whitespace-nowrap px-3 py-2 text-sm"
+                              title={t('common.addToCart')}
+                            >
+                              <ShoppingCartIcon className="mr-1 h-4 w-4 flex-shrink-0" />
+                              {t('common.addToCart')}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenQuote(product)}
+                              className="site-primary-action flex-1 gap-1.5 whitespace-nowrap px-3 py-2 text-center text-sm font-semibold"
+                              title={`${t('products.contactForQuote')} (${product.sku})`}
+                            >
+                              <EnvelopeIcon className="h-4 w-4 flex-shrink-0" />
+                              <span>{t('products.contactForQuote')}</span>
+                            </button>
+                          )}
+                          <Link
+                            href={href(`/products/${toProductPathId(product.sku)}`)}
+                            className="site-secondary-action w-10 flex-shrink-0"
+                            title={t('common.viewDetails')}
+                            aria-label={t('common.viewDetails')}
+                          >
+                            <EyeIcon className="h-5 w-5" />
+                          </Link>
+                        </div>
+                        {hasProductPrice(product) && (
                           <button
                             type="button"
-                            onClick={() => handleAddToCart(product)}
-                            className="site-primary-action site-buy-action flex-1 whitespace-nowrap px-3 py-2 text-sm"
-                            title={t('common.addToCart')}
+                            onClick={() => handleOpenQuote(product)}
+                            className="site-secondary-action h-8 w-full gap-1.5 whitespace-nowrap px-3 text-xs"
+                            title={`${t('product.requestQuote')} (${product.sku})`}
                           >
-                            <ShoppingCartIcon className="mr-1 h-4 w-4 flex-shrink-0" />
-                            {t('common.addToCart')}
+                            <EnvelopeIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span>{t('product.requestQuote')}</span>
                           </button>
-                        ) : (
-                          <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action flex-1 px-3 py-2 text-center text-sm font-semibold">
-                            {t('products.contactForQuote')}
-                          </Link>
                         )}
-                        <Link
-                          href={href(`/products/${toProductPathId(product.sku)}`)}
-                          className="site-secondary-action w-10 flex-shrink-0"
-                          title={t('common.viewDetails')}
-                          aria-label={t('common.viewDetails')}
-                        >
-                          <EyeIcon className="h-5 w-5" />
-                        </Link>
                       </div>
                     </div>
                   </div>
@@ -375,14 +405,12 @@ export default function CategoryProductsClient({
                     </div>
 
                     <div className="flex-shrink-0 text-left sm:text-right">
-                      <div className="text-xl font-bold text-[var(--site-primary)] mb-2">
-                        {hasProductPrice(product) ? formatCurrency(product.price) : (
-                          <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
-                            {t('products.contactForQuote')}
-                          </Link>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
+                      {hasProductPrice(product) && (
+                        <div className="text-xl font-bold text-[var(--site-primary)] mb-2">
+                          {formatCurrency(product.price)}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                         <Link
                           href={href(`/products/${toProductPathId(product.sku)}`)}
                           className="site-secondary-action h-9 w-9"
@@ -390,14 +418,36 @@ export default function CategoryProductsClient({
                         >
                           <EyeIcon className="h-5 w-5" />
                         </Link>
-                        {hasProductPrice(product) && (
+                        {hasProductPrice(product) ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleAddToCart(product)}
+                              className="site-primary-action site-buy-action h-9 gap-1.5 whitespace-nowrap px-3.5 text-sm"
+                              title={t('common.addToCart')}
+                            >
+                              <ShoppingCartIcon className="h-4 w-4 shrink-0" />
+                              <span>{t('common.addToCart')}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenQuote(product)}
+                              className="site-secondary-action h-9 gap-1.5 whitespace-nowrap px-3 text-sm"
+                              title={`${t('product.requestQuote')} (${product.sku})`}
+                            >
+                              <EnvelopeIcon className="h-4 w-4 shrink-0" />
+                              <span>{t('product.requestQuote')}</span>
+                            </button>
+                          </>
+                        ) : (
                           <button
-                            onClick={() => handleAddToCart(product)}
-                            className="site-primary-action px-4 py-2 text-sm"
-                            title={t('common.addToCart')}
+                            type="button"
+                            onClick={() => handleOpenQuote(product)}
+                            className="site-primary-action h-9 gap-1.5 whitespace-nowrap px-4 text-sm"
+                            title={`${t('products.contactForQuote')} (${product.sku})`}
                           >
-                            <ShoppingCartIcon className="h-4 w-4 mr-2" />
-                            {t('common.addToCart')}
+                            <EnvelopeIcon className="h-4 w-4 shrink-0" />
+                            <span>{t('products.contactForQuote')}</span>
                           </button>
                         )}
                       </div>

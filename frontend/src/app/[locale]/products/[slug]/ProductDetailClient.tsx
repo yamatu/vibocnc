@@ -34,6 +34,7 @@ import {
 import { queryKeys } from '@/lib/react-query';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
+import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 import { useRouter } from 'next/navigation';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { hasTranslationForLocale, localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
@@ -138,6 +139,8 @@ export default function ProductDetailClient({
   const shownLeadTime = resolveLeadTime(initialProduct?.lead_time, policy);
   const shownWarranty = resolveWarrantyPeriod(initialProduct?.warranty_period, policy);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => setHasMounted(true), []);
   const [quantity] = useState(1);
 
   const [shippingCountry, setShippingCountry] = useState('');
@@ -149,7 +152,8 @@ export default function ProductDetailClient({
   const countryInputRef = useRef<HTMLInputElement>(null);
   const countryDropdownRef = useRef<HTMLDivElement>(null);
 
-  const { addItem } = useCartStore();
+  const { addItem, itemCount: cartItemCount } = useCartStore();
+  const openQuoteModal = useQuoteModalStore((state) => state.openQuoteModal);
   const router = useRouter();
 
   // Fetch product details by SKU
@@ -319,6 +323,17 @@ export default function ProductDetailClient({
     window.open(`https://wa.me/8613301553506?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  const handleOpenQuoteModal = () => {
+    if (!product) return;
+    openQuoteModal(
+      buildQuoteProductContext(product, {
+        name: computedHeading,
+        quantity,
+        productUrl: localizedHref(`/products/${toProductPathId(product.sku)}`),
+      })
+    );
+  };
+
   const handleBuyNow = () => {
     if (!product || !hasProductPrice(product)) return;
     addItem(product, quantity);
@@ -411,9 +426,6 @@ export default function ProductDetailClient({
   ].filter(Boolean);
   const computedHeading = buildSemanticProductName(semanticProduct) || headingParts.join(' ').replace(/\s+/g, ' ').trim();
   const canPurchase = hasProductPrice(product);
-  // Keep this href identical during SSR and hydration. The SKU/model is enough
-  // for the sales team to identify the quote request without leaking a runtime URL.
-  const quoteEmailHref = `mailto:flora@vibocnc.com?subject=${encodeURIComponent(`Quote request: ${product.sku}`)}&body=${encodeURIComponent(`Hello, please provide price and lead time for ${computedHeading} (${product.sku}).`)}`;
 
   const getFallbackDescription = () => {
     const sku = product.sku || '';
@@ -544,49 +556,67 @@ export default function ProductDetailClient({
                 )}
               </div>
 
-              {/* Actions: stacked full-width on phones, PayPal first. */}
-              <div className="mt-5 grid grid-cols-1 gap-2.5 sm:mt-6 sm:flex sm:flex-wrap sm:gap-3">
-                {canPurchase && (
+              {/* Actions: balanced 2x2 grid for priced parts (purchase + quote/WhatsApp), 2-col for quote-only parts. */}
+              {canPurchase ? (
+                <div className="mt-5 grid grid-cols-1 gap-2.5 sm:mt-6 sm:grid-cols-2 sm:gap-3">
                   <button
                     type="button"
                     onClick={handleBuyNow}
                     aria-label={t('product.payWithPayPal')}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#FFC439] px-5 py-3 text-sm font-bold text-[#003087] shadow-sm transition-colors hover:bg-[#F2BA36] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003087] focus-visible:ring-offset-2 sm:w-auto"
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[#FFC439] px-4 text-sm font-bold text-[#003087] shadow-sm transition-colors hover:bg-[#F2BA36] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003087] focus-visible:ring-offset-2"
                   >
-                    <FaPaypal className="h-5 w-5" aria-hidden="true" />
+                    <FaPaypal className="h-5 w-5 shrink-0" aria-hidden="true" />
                     <span>{t('product.payWithPayPal')}</span>
                   </button>
-                )}
-                {canPurchase && (
                   <button
                     type="button"
                     onClick={handleAddToCart}
-                    className="site-primary-action site-buy-action w-full justify-center px-5 py-3 text-sm sm:w-auto"
+                    className="site-primary-action site-buy-action h-11 w-full justify-center gap-2 whitespace-nowrap px-4 text-sm"
                   >
-                    <ShoppingCartIcon className="h-5 w-5 mr-2" />
-                    {t('common.addToCart')}
+                    <ShoppingCartIcon className="h-5 w-5 shrink-0" />
+                    <span>{t('common.addToCart')}</span>
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleWhatsAppInquiry}
-                  className="inline-flex w-full items-center justify-center rounded-md border border-green-600 bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-green-700 sm:w-auto"
-                >
-                  <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                  {t('product.whatsApp')}
-                </button>
-                {!canPurchase && (
-                  <a
-                    href={quoteEmailHref}
-                    className="inline-flex w-full items-center justify-center rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50 sm:w-auto"
+                  <button
+                    type="button"
+                    onClick={handleOpenQuoteModal}
+                    className="site-primary-action h-11 w-full justify-center gap-2 whitespace-nowrap px-4 text-sm"
                   >
-                    <EnvelopeIcon className="mr-2 h-5 w-5" />
-                    {t('product.emailForQuote')}
-                  </a>
-                )}
-              </div>
+                    <EnvelopeIcon className="h-5 w-5 shrink-0" />
+                    <span>{t('product.requestQuote')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleWhatsAppInquiry}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-md border border-green-600 bg-green-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+                  >
+                    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    <span>{t('product.whatsApp')}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-5 grid grid-cols-1 gap-2.5 sm:mt-6 sm:grid-cols-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={handleOpenQuoteModal}
+                    className="site-primary-action h-12 w-full justify-center gap-2 whitespace-nowrap px-5 text-sm"
+                  >
+                    <EnvelopeIcon className="h-5 w-5 shrink-0" />
+                    <span>{t('products.contactForQuote')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleWhatsAppInquiry}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 whitespace-nowrap rounded-md border border-green-600 bg-green-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+                  >
+                    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    <span>{t('product.whatsApp')}</span>
+                  </button>
+                </div>
+              )}
 
               {/* Key specs */}
               <div className="site-subtle-card mt-5 grid grid-cols-2 gap-x-3 gap-y-3 p-3.5 sm:mt-6 sm:p-4">
@@ -940,6 +970,22 @@ export default function ProductDetailClient({
           )}
         </div>
       </div>
+
+      {/* Floating Quick-Quote Button (automatically shifts above FloatingCartButton when cart is non-empty) */}
+      <button
+        type="button"
+        onClick={handleOpenQuoteModal}
+        aria-label={`${t('product.requestQuote')}: ${product.sku}`}
+        title={`${t('product.requestQuote')} (${product.sku})`}
+        className={`fixed right-3 z-40 inline-flex items-center gap-2 rounded-full bg-slate-950 px-3.5 py-3 text-sm font-semibold text-white shadow-2xl ring-2 ring-orange-400/90 transition-all duration-200 hover:scale-105 hover:bg-[var(--site-primary)] active:scale-95 sm:right-6 sm:px-4 ${
+          hasMounted && cartItemCount > 0
+            ? 'bottom-[calc(env(safe-area-inset-bottom)+9rem)] sm:bottom-[11.5rem]'
+            : 'bottom-[calc(env(safe-area-inset-bottom)+5rem)] sm:bottom-[6.5rem]'
+        }`}
+      >
+        <EnvelopeIcon className="h-5 w-5 shrink-0 text-orange-300" />
+        <span className="hidden sm:inline">{t('product.getQuote')}</span>
+      </button>
     </Layout>
   );
 }

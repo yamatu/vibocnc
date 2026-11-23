@@ -7,9 +7,11 @@ import type { HomepageContent, Product } from '@/types';
 import {
   ShoppingCartIcon,
   EyeIcon,
+  EnvelopeIcon,
   ArrowRightIcon
 } from '@heroicons/react/24/outline';
 import { useCart } from '@/store/cart.store';
+import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { ProductService } from '@/services/product.service';
@@ -28,6 +30,7 @@ export function FeaturedProducts({
   const { locale, t, href } = usePublicI18n();
   const [hoveredProduct, setHoveredProduct] = useState<number | null>(null);
   const { addItem } = useCart();
+  const openQuoteModal = useQuoteModalStore((state) => state.openQuoteModal);
 
   const headerTitle = locale === 'en' ? content?.title || DEFAULT_FEATURED_PRODUCTS_SECTION_DATA.headerTitle : t('home.featured.title');
   const headerDescription = locale === 'en' ? content?.description || DEFAULT_FEATURED_PRODUCTS_SECTION_DATA.headerDescription : t('home.featured.description');
@@ -70,6 +73,14 @@ export function FeaturedProducts({
 
   const handleAddToCart = (product: Product) => {
     addItem(product, 1);
+  };
+
+  const handleOpenQuote = (product: Product) => {
+    openQuoteModal(
+      buildQuoteProductContext(product, {
+        productUrl: href(`/products/${toProductPathId(product.sku)}`),
+      })
+    );
   };
 
   return (
@@ -149,12 +160,23 @@ export function FeaturedProducts({
                   
                   {(product.stock_quantity ?? 0) > 0 && hasProductPrice(product) && (
                     <button
+                      type="button"
                       onClick={() => handleAddToCart(product)}
                       className="relative z-20 bg-orange-500 text-white p-3 rounded-full hover:bg-[var(--site-primary)] transition-colors"
+                      aria-label={`${t('common.addToCart')}: ${product.name}`}
                     >
                       <ShoppingCartIcon className="h-5 w-5" />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuote(product)}
+                    className="relative z-20 bg-[var(--site-primary)] text-white p-3 rounded-full hover:bg-slate-950 transition-colors"
+                    aria-label={`${t('product.requestQuote')}: ${product.sku}`}
+                    title={t('product.requestQuote')}
+                  >
+                    <EnvelopeIcon className="h-5 w-5" />
+                  </button>
                 </div>
 
                 {/* Badges */}
@@ -202,46 +224,67 @@ export function FeaturedProducts({
                 </div>
 
                 {/* Price and Actions */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <span className="text-2xl font-bold text-slate-950">
-                      {hasProductPrice(product) ? formatCurrency(product.price) : t('products.contactForQuote')}
-                    </span>
-                    {hasProductPrice(product) && product.compare_price && product.compare_price > product.price && (
-                      <span className="text-lg text-gray-500 line-through">
-                        {formatCurrency(product.compare_price)}
-                      </span>
-                    )}
-                  </div>
-
+                <div className="space-y-3 border-t border-slate-100 pt-4">
                   {hasProductPrice(product) && (
-                    <div className="ml-1 text-sm text-slate-600">
-                      {(product.stock_quantity ?? 0) > 0 ? t('common.inStock', { count: product.stock_quantity }) : t('common.outOfStock')}
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-bold text-slate-950">
+                          {formatCurrency(product.price)}
+                        </span>
+                        {product.compare_price && product.compare_price > product.price && (
+                          <span className="text-sm text-gray-500 line-through">
+                            {formatCurrency(product.compare_price)}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs font-medium text-slate-600">
+                        {(product.stock_quantity ?? 0) > 0 ? t('common.inStock', { count: product.stock_quantity }) : t('common.outOfStock')}
+                      </span>
                     </div>
                   )}
 
-                  {(product.stock_quantity ?? 0) > 0 && hasProductPrice(product) ? (
-                    <button
-                      onClick={() => handleAddToCart(product)}
-                      className="relative z-20 bg-orange-500 hover:bg-[var(--site-primary)] text-white px-4 py-2 rounded-md font-medium transition-colors duration-300"
-                    >
-                      {t('common.addToCart')}
-                    </button>
-                  ) : hasProductPrice(product) ? (
-                    <button
-                      disabled
-                      className="bg-gray-300 text-gray-500 px-4 py-2 rounded-lg font-medium cursor-not-allowed"
-                    >
-                      {t('common.outOfStock')}
-                    </button>
-                  ) : (
-                    <Link
-                      href={href(`/products/${toProductPathId(product.sku)}`)}
-                      className="relative z-20 rounded-md border border-slate-300 bg-white px-4 py-2 font-medium text-[var(--site-primary)] hover:bg-slate-50"
-                    >
-                      {t('products.contactForQuote')}
-                    </Link>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {hasProductPrice(product) ? (
+                      <>
+                        {(product.stock_quantity ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => handleAddToCart(product)}
+                            className="site-primary-action site-buy-action relative z-20 h-10 flex-1 gap-1.5 whitespace-nowrap px-3 text-sm"
+                          >
+                            <ShoppingCartIcon className="h-4 w-4 shrink-0" />
+                            <span>{t('common.addToCart')}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="h-10 flex-1 rounded-md bg-gray-200 px-3 text-sm font-medium text-gray-500 cursor-not-allowed"
+                          >
+                            {t('common.outOfStock')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenQuote(product)}
+                          className="site-secondary-action relative z-20 h-10 gap-1.5 whitespace-nowrap px-3 text-sm"
+                          title={`${t('product.requestQuote')} (${product.sku})`}
+                        >
+                          <EnvelopeIcon className="h-4 w-4 shrink-0" />
+                          <span>{t('product.requestQuote')}</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenQuote(product)}
+                        className="site-primary-action relative z-20 h-10 flex-1 gap-1.5 whitespace-nowrap px-4 text-sm"
+                      >
+                        <EnvelopeIcon className="h-4 w-4 shrink-0" />
+                        <span>{t('products.contactForQuote')}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </article>

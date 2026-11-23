@@ -6,11 +6,13 @@ import Link from 'next/link';
 import {
   ShoppingCartIcon,
   HeartIcon,
-  EyeIcon
+  EyeIcon,
+  EnvelopeIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
+import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 import type { Product } from '@/types';
 
 /* Product shape is shared with cart and API services. */
@@ -49,6 +51,7 @@ export default function ProductCard({
   const [isFavorite, setIsFavorite] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { addItem } = useCartStore();
+  const openQuoteModal = useQuoteModalStore((state) => state.openQuoteModal);
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -63,6 +66,12 @@ export default function ProductCard({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleOpenQuote = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openQuoteModal(buildQuoteProductContext(product));
   };
 
   const toggleFavorite = (e: React.MouseEvent) => {
@@ -145,38 +154,61 @@ export default function ProductCard({
         )}
 
         {/* Price */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-xl font-bold text-[var(--site-primary)]">
-              {hasProductPrice(product) ? formatCurrency(product.price) : 'Contact for quote'}
-            </span>
-            {hasProductPrice(product) && product.compare_price && product.compare_price > product.price && (
-              <span className="text-sm text-gray-500 line-through">
-                {formatCurrency(product.compare_price)}
+        {hasProductPrice(product) && (
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <span className="text-xl font-bold text-[var(--site-primary)]">
+                {formatCurrency(product.price)}
               </span>
-            )}
+              {product.compare_price && product.compare_price > product.price && (
+                <span className="text-sm text-gray-500 line-through">
+                  {formatCurrency(product.compare_price)}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Actions */}
-        <div className="flex items-center justify-between">
-          <Link
-             href={`/products/${toProductPathId(product.sku)}`}
-
-            className="inline-flex items-center px-3 py-2 border border-slate-300 text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 transition-colors"
-          >
-            <EyeIcon className="h-4 w-4 mr-1" />
-            View Details
-          </Link>
-
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            {hasProductPrice(product) ? (
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                disabled={isLoading}
+                className="site-primary-action site-buy-action h-9 flex-1 gap-1.5 whitespace-nowrap px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ShoppingCartIcon className="h-4 w-4 shrink-0" />
+                <span>{isLoading ? 'Adding...' : 'Add to Cart'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenQuote}
+                className="site-primary-action h-9 flex-1 gap-1.5 whitespace-nowrap px-3 text-sm"
+              >
+                <EnvelopeIcon className="h-4 w-4 shrink-0" />
+                <span>Contact for quote</span>
+              </button>
+            )}
+            <Link
+              href={`/products/${toProductPathId(product.sku)}`}
+              className="site-secondary-action h-9 w-9 shrink-0"
+              title="View Details"
+              aria-label={`View ${product.name} details`}
+            >
+              <EyeIcon className="h-4 w-4" />
+            </Link>
+          </div>
           {hasProductPrice(product) && (
             <button
-              onClick={handleAddToCart}
-              disabled={isLoading}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-500 hover:bg-[var(--site-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              type="button"
+              onClick={handleOpenQuote}
+              className="site-secondary-action h-8 w-full gap-1.5 whitespace-nowrap px-3 text-xs"
             >
-              <ShoppingCartIcon className="h-4 w-4 mr-1" />
-              {isLoading ? 'Adding...' : 'Add to Cart'}
+              <EnvelopeIcon className="h-3.5 w-3.5 shrink-0" />
+              <span>Request Quote</span>
             </button>
           )}
         </div>
