@@ -370,6 +370,7 @@ func (ac *AnalyticsController) UpdateSettings(c *gin.Context) {
 	// The middleware caches the tracking flag; drop it so a change takes
 	// effect immediately instead of after the cache TTL.
 	services.InvalidateTrackingCache()
+	_ = services.ClearRedisByPrefixes(c.Request.Context(), "cache:public:analytics:")
 	// Public pages embed the tracking snippet and are ISR-cached by Next.
 	services.TriggerNextRevalidateTags([]string{"analytics-config"})
 

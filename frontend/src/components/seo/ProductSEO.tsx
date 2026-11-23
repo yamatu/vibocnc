@@ -134,9 +134,10 @@ function toJsonLd(value: unknown): string {
 
 export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PUBLIC_SITE_URL, contentLocale, commercePolicy }: ProductSEOProps) {
   const { locale, t, href } = usePublicI18n();
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
   const policy = resolvePolicy(commercePolicy);
   const productPath = `/products/${toProductPathId(product.sku)}`;
-  const productUrl = `${baseUrl}${contentLocale === 'en' && locale !== 'en' ? productPath : href(productPath)}`;
+  const productUrl = `${normalizedBaseUrl}${contentLocale === 'en' && locale !== 'en' ? productPath : href(productPath)}`;
   const productId = `${productUrl}#product`;
   const brandLabel = getBrandLabel(product);
   const manufacturerName = getManufacturerName(product);
@@ -159,8 +160,8 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
   const imageSources = product.images?.map(img => typeof img === 'string' ? img : img.url) ||
     product.image_urls ||
     [];
-  const imageUrls = (imageSources.length > 0 ? imageSources : [getProductImageFallback(product, baseUrl)])
-    .map((url) => toAbsoluteUrl(url, baseUrl));
+  const imageUrls = (imageSources.length > 0 ? imageSources : [getProductImageFallback(product, normalizedBaseUrl)])
+    .map((url) => toAbsoluteUrl(url, normalizedBaseUrl));
 
   // Reviews & aggregate rating
   // Reviews transcribed from other channels without an order are shown on the
@@ -189,9 +190,23 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
 
   // Google flags any Product node lacking offers, review, or aggregateRating as
   // a critical error, and an Offer needs a price above zero. Quote-only records
-  // without approved reviews therefore omit the Product node entirely.
+  // without approved reviews omit the top-level Product node and publish rich
+  // entity metadata on ItemPage.mainEntity as Thing + additionalType=Product.
   const hasValidOffer = product.price > 0;
   const hasProductRichResultData = hasValidOffer || hasReviews;
+
+  const subjectOf = [
+    product.datasheet_url ? {
+      "@type": "DigitalDocument",
+      "name": `${product.sku} datasheet`,
+      "url": product.datasheet_url,
+    } : null,
+    product.manual_url ? {
+      "@type": "DigitalDocument",
+      "name": `${product.sku} manual`,
+      "url": product.manual_url,
+    } : null,
+  ].filter(Boolean);
 
   // Generate rich structured data for the product when the record supports it.
   const structuredData: { [key: string]: JsonLdValue } = {
@@ -240,9 +255,9 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         : "https://schema.org/BackOrder",
       "seller": {
         "@type": "Organization",
-        "@id": `${baseUrl}/#organization`,
+        "@id": `${normalizedBaseUrl}/#organization`,
         "name": "Vibocnc",
-        "url": baseUrl
+        "url": normalizedBaseUrl
       },
       // Shipping and return promises come from the admin-editable commerce
       // policy. A shipping rate of 0 means "not configured" (checkout prices
@@ -288,7 +303,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         "merchantReturnDays": policy.return_window_days,
         "returnMethod": "https://schema.org/ReturnByMail",
         "returnFees": mapReturnFees(policy),
-        "merchantReturnLink": `${baseUrl}/returns`
+        "merchantReturnLink": `${normalizedBaseUrl}/returns`
       }
     } : undefined
   };
@@ -325,19 +340,6 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     structuredData.additionalProperty = additionalProperties;
   }
 
-  const subjectOf = [
-    product.datasheet_url ? {
-      "@type": "DigitalDocument",
-      "name": `${product.sku} datasheet`,
-      "url": product.datasheet_url,
-    } : null,
-    product.manual_url ? {
-      "@type": "DigitalDocument",
-      "name": `${product.sku} manual`,
-      "url": product.manual_url,
-    } : null,
-  ].filter(Boolean);
-
   if (subjectOf.length > 0) {
     structuredData.subjectOf = subjectOf as JsonLdValue[];
   }
@@ -357,19 +359,19 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         "@type": "ListItem",
         "position": 1,
         "name": t('common.home'),
-        "item": `${baseUrl}${href('/')}`
+        "item": `${normalizedBaseUrl}${href('/')}`
       },
       {
         "@type": "ListItem",
         "position": 2,
         "name": t('nav.products'),
-        "item": `${baseUrl}${href('/products')}`
+        "item": `${normalizedBaseUrl}${href('/products')}`
       },
       ...(categoryBreadcrumb?.map((cat, index) => ({
         "@type": "ListItem",
         "position": index + 3,
         "name": cat.name,
-         "item": `${baseUrl}${href(`/categories/${cat.path || cat.slug}`)}`
+        "item": `${normalizedBaseUrl}${href(`/categories/${cat.path || cat.slug}`)}`
       })) || []),
       {
         "@type": "ListItem",
@@ -396,9 +398,34 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     "mainEntity": faqEntities
   };
 
+  const quoteOnlyEntity: { [key: string]: JsonLdValue } = {
+    "@type": "Thing",
+    "@id": productId,
+    "additionalType": "https://schema.org/Product",
+    "name": semanticName,
+    "alternateName": product.part_number && product.part_number !== product.sku ? product.part_number : undefined,
+    "identifier": [
+      { "@type": "PropertyValue", "propertyID": "SKU", "value": product.sku },
+      { "@type": "PropertyValue", "propertyID": "MPN", "value": product.part_number || product.sku },
+      ...(getBrandName(product)
+        ? [{ "@type": "PropertyValue", "propertyID": "Brand", "value": getBrandName(product) }]
+        : []),
+      { "@type": "PropertyValue", "propertyID": "Category", "value": semanticCategory },
+      { "@type": "PropertyValue", "propertyID": "Condition", "value": product.condition_type || "new" },
+      { "@type": "PropertyValue", "propertyID": "Warranty", "value": warranty },
+      { "@type": "PropertyValue", "propertyID": "LeadTime", "value": leadTime },
+      { "@type": "PropertyValue", "propertyID": "Pricing", "value": "Request for Quote (RFQ)" },
+    ],
+    "description": description,
+    "disambiguatingDescription": answerFirstSummary,
+    "image": imageUrls,
+    "url": productUrl,
+    ...(subjectOf.length > 0 ? { "subjectOf": subjectOf as JsonLdValue[] } : {}),
+  };
+
   const webPageData = {
     "@context": "https://schema.org",
-    "@type": "WebPage",
+    "@type": "ItemPage",
     "@id": `${productUrl}#webpage`,
     "url": productUrl,
     "name": semanticName,
@@ -409,15 +436,22 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     "isPartOf": {
       // Reference the site-wide WebSite node instead of an anonymous copy so
       // search engines merge the graph into one entity.
-      "@id": `${baseUrl}/#website`
+      "@id": `${normalizedBaseUrl}/#website`
     },
-    "about": hasProductRichResultData
+    "publisher": {
+      "@id": `${normalizedBaseUrl}/#organization`
+    },
+    "mainEntity": hasProductRichResultData
       ? { "@id": productId }
-      : {
-          "@type": "Thing",
-          "name": semanticName,
-          "identifier": product.sku,
-        },
+      : quoteOnlyEntity,
+    "about": { "@id": productId },
+    "potentialAction": !hasProductRichResultData
+      ? {
+          "@type": "CommunicateAction",
+          "name": `Request quote for ${product.sku}`,
+          "target": `${normalizedBaseUrl}${href('/contact')}?sku=${encodeURIComponent(product.sku)}&inquiry_type=quote`,
+        }
+      : undefined,
     "speakable": {
       "@type": "SpeakableSpecification",
       "cssSelector": ["h1", ".product-description", ".product-specs"]

@@ -27,6 +27,9 @@ const (
 	redisPrefixProductSKU      = "cache:public:product_sku:"
 	redisPrefixProductSKUQuery = "cache:public:product_sku_query:"
 	redisPrefixHomepage        = "cache:public:homepage:"
+	redisPrefixNews            = "cache:public:news:"
+	redisPrefixSitePages       = "cache:public:site_pages:"
+	redisPrefixAnalytics       = "cache:public:analytics:"
 )
 
 func getSiteURLForPurge() string {
@@ -166,6 +169,9 @@ func InvalidatePublicCaches(ctx context.Context, reason string, extraURLs []stri
 			redisPrefixProductSKU,
 			redisPrefixProductSKUQuery,
 			redisPrefixHomepage,
+			redisPrefixNews,
+			redisPrefixSitePages,
+			redisPrefixAnalytics,
 		); err != nil {
 			log.Printf("cache invalidation: redis clear failed (%s): %v", reason, err)
 		}

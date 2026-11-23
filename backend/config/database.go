@@ -187,6 +187,46 @@ func ConnectDatabase() {
 	// AI profile. This migration is idempotent and copies encrypted key material
 	// without decrypting or rotating it.
 	migrateLegacyAIAgentProfile()
+
+	// Ensure indexed virtual column sku_sanitized exists so tolerant SKU
+	// lookups use a B-Tree index instead of a full-table REGEXP_REPLACE scan.
+	ensureProductSKUSanitizedIndex()
+}
+
+func ensureProductSKUSanitizedIndex() {
+	if DB == nil || DB.Dialector.Name() != "mysql" || !DB.Migrator().HasTable(&models.Product{}) {
+		return
+	}
+	var colCount int64
+	if err := DB.Raw(
+		"SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'sku_sanitized'",
+	).Scan(&colCount).Error; err != nil {
+		log.Printf("ensureProductSKUSanitizedIndex: check column failed: %v", err)
+		return
+	}
+	if colCount == 0 {
+		if err := DB.Exec(`ALTER TABLE products
+			ADD COLUMN sku_sanitized VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+				GENERATED ALWAYS AS (
+					REPLACE(REPLACE(REPLACE(REPLACE(sku, '-', ''), '/', ''), ' ', ''), _utf8mb4 0xC2A0, '')
+				) VIRTUAL,
+			ALGORITHM=INPLACE`).Error; err != nil {
+			log.Printf("ensureProductSKUSanitizedIndex: add column failed: %v", err)
+			return
+		}
+	}
+	var idxCount int64
+	if err := DB.Raw(
+		"SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND INDEX_NAME = 'idx_products_sku_sanitized'",
+	).Scan(&idxCount).Error; err != nil {
+		log.Printf("ensureProductSKUSanitizedIndex: check index failed: %v", err)
+		return
+	}
+	if idxCount == 0 {
+		if err := DB.Exec(`ALTER TABLE products ADD INDEX idx_products_sku_sanitized (sku_sanitized), ALGORITHM=INPLACE, LOCK=NONE`).Error; err != nil {
+			log.Printf("ensureProductSKUSanitizedIndex: add index failed: %v", err)
+		}
+	}
 }
 
 func legacyAIAgentProfileFromSetting(setting models.AIAgentSetting) models.AIAgentProfile {

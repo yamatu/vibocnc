@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { getLocalizedMetadataPaths, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 
 export async function generateMetadata({ params }: { params: LocaleRouteParams }): Promise<Metadata> {
@@ -8,18 +8,12 @@ export async function generateMetadata({ params }: { params: LocaleRouteParams }
   const description = translatePublicMessage(locale, 'order.trackDescription');
   const socialTitle = `${title} | Vibocnc`;
 
+  const isIndexable = isIndexablePublicLocale(locale);
   return {
     title,
     description,
-    alternates: { canonical, languages },
-    robots: {
-      index: true,
-      follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-      },
-    },
+    alternates: { canonical, ...(isIndexable ? { languages } : {}) },
+    robots: buildPublicRobots(locale, true),
     openGraph: {
       title: socialTitle,
       description,

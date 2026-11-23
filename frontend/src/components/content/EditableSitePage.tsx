@@ -7,7 +7,7 @@ import MarkdownContent from '@/components/content/MarkdownContent';
 import { SitePageService } from '@/services/site-page.service';
 import { getSitePageDefault } from '@/lib/site-page-defaults';
 import { buildStaticPageMetadata } from '@/lib/seo';
-import { getLocalizedMetadataPaths } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, isIndexablePublicLocale } from '@/lib/i18n/server';
 import { localizePublicPath, type PublicLocale } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 
@@ -32,9 +32,11 @@ export async function buildEditablePageMetadata(pageKey: string, locale: PublicL
   if (!page) return { robots: { index: false, follow: false } };
   const metadata = buildStaticPageMetadata(`/${pageKey}`, 'meta_title' in page && page.meta_title ? page.meta_title : page.title, 'meta_description' in page && page.meta_description ? page.meta_description : page.summary, 'meta_keywords' in page ? page.meta_keywords : undefined);
   const { canonical, languages } = await getLocalizedMetadataPaths(locale, `/${pageKey}`);
+  const isIndexable = isIndexablePublicLocale(locale);
   return {
     ...metadata,
-    alternates: { canonical, languages },
+    robots: buildPublicRobots(locale, true),
+    alternates: { canonical, ...(isIndexable ? { languages } : {}) },
     openGraph: metadata.openGraph ? { ...metadata.openGraph, url: canonical } : undefined,
   };
 }

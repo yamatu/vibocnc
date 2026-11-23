@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { getRequestBaseUrl } from '@/lib/request-url'
 import { toProductPathId } from '@/lib/utils'
 import { renderLocalizedSitemap } from '@/lib/i18n/sitemap'
-import { fetchProductSitemapPage, sitemapLocales, type ProductSitemapEntry } from '@/lib/product-sitemap'
+import { INDEXABLE_PUBLIC_LOCALES } from '@/lib/i18n/config'
+import { fetchProductSitemapPage, type ProductSitemapEntry } from '@/lib/product-sitemap'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 1800 // 30 minutes
@@ -36,7 +37,7 @@ export async function GET(
           : product.stock_quantity === 0
             ? '0.6'
             : '0.8',
-      availableLocales: sitemapLocales(product),
+      availableLocales: INDEXABLE_PUBLIC_LOCALES,
       images: (product.images || []).map((url) => ({ url, title: product.name })),
     }))
 

@@ -10,7 +10,7 @@ import { withSiteName } from '@/lib/seo';
 import { toProductPathId } from '@/lib/utils';
 import ProductsPageClient from './ProductsPageClient';
 import ScrollRestorer from '@/components/common/ScrollRestorer';
-import { getLocalizedMetadataPaths, getLocalizedMetadataPathsWithQuery, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, getLocalizedMetadataPathsWithQuery, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { normalizeProductPageSize } from '@/lib/product-listing';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 import { localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
@@ -140,6 +140,7 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
   let title = 'Industrial Automation Parts & Components';
   let description = 'Industrial automation and CNC parts supplier since 2007. Browse current, legacy and obsolete components across 20+ brands with worldwide shipping.';
   const requestLocale = await resolveRouteLocale(routeParams);
+  const isIndexableLocale = isIndexablePublicLocale(requestLocale);
   const defaultMetadataPaths = await getLocalizedMetadataPathsWithQuery(requestLocale, '/products', paginationQuery.toString());
 
   if (requestLocale !== 'en') {
@@ -162,7 +163,7 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
       return {
         title,
         description,
-        robots: { index: true, follow: true },
+        robots: buildPublicRobots(requestLocale, true),
         keywords: [
           'CNC parts', 'industrial automation', 'servo motors', 'PCB boards',
           'I/O modules', 'control units', category.name,
@@ -175,7 +176,7 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
         },
         alternates: {
           canonical: catUrl,
-          languages: categoryMetadataPaths.languages,
+          ...(isIndexableLocale ? { languages: categoryMetadataPaths.languages } : {}),
         },
       };
     }
@@ -191,10 +192,10 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
       return {
         title,
         description,
-        robots: { index: true, follow: true },
+        robots: buildPublicRobots(requestLocale, true),
         keywords: `${brandCategory.name} parts, ${brandCategory.name} automation, industrial automation parts, CNC parts, Vibocnc`,
         openGraph: { title: withSiteName(title), description, type: 'website', url: brandMetadataPaths.canonical },
-        alternates: { canonical: brandMetadataPaths.canonical, languages: brandMetadataPaths.languages },
+        alternates: { canonical: brandMetadataPaths.canonical, ...(isIndexableLocale ? { languages: brandMetadataPaths.languages } : {}) },
       };
     }
   }
@@ -211,11 +212,12 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
   // indexable and compete with the product detail pages they link to. They
   // stay crawlable so crawlers still reach the products linked from them.
   const isDeepPage = page > 1;
+  const isNoindex = !isIndexableLocale || hasSearch || !!brand || pageSize !== 48 || isDeepPage;
 
   return {
     title,
     description,
-    robots: hasSearch || !!brand || pageSize !== 48 || isDeepPage
+    robots: isNoindex
       ? { index: false, follow: true }
       : { index: true, follow: true },
     keywords: [
@@ -230,7 +232,7 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
     },
     alternates: {
       canonical: defaultMetadataPaths.canonical,
-      languages: defaultMetadataPaths.languages,
+      ...(isNoindex ? {} : { languages: defaultMetadataPaths.languages }),
     },
   };
 }

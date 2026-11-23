@@ -10,13 +10,13 @@ import { withoutGeneratedContent } from '@/lib/product-content';
 import { ProductService } from '@/services/product.service';
 import ProductDetailClient from './ProductDetailClient';
 import { permanentRedirect, redirect, notFound } from 'next/navigation';
-import { getLocalizedMetadataPaths, resolveRouteLocale } from '@/lib/i18n/server';
+import { getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale } from '@/lib/i18n/server';
 import {
   getAvailableTranslationLocales,
   hasTranslationForLocale,
   localizeProductContent,
 } from '@/lib/i18n/content';
-import { DEFAULT_PUBLIC_LOCALE, PUBLIC_LOCALE_SELECTION_PARAM, localizePublicPath, normalizePublicLocale, type PublicLocale } from '@/lib/i18n/config';
+import { DEFAULT_PUBLIC_LOCALE, localizePublicPath, normalizePublicLocale, type PublicLocale } from '@/lib/i18n/config';
 import { buildProductSeoDescription, buildProductSeoKeywords, inferProductTypeLabel } from '@/lib/product-seo';
 
 const DEFAULT_SITE_NAME = 'Vibocnc';
@@ -171,7 +171,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     const socialTitle = withSiteName(title);
     const semanticCategory = inferProductTypeLabel(product);
     const semanticKeywords = buildProductSeoKeywords(product);
-    const indexable = hasRequestedTranslation && !product.seo_noindex;
+    const indexable = isIndexablePublicLocale(locale) && hasRequestedTranslation && !product.seo_noindex;
 
     return {
       title,
@@ -199,7 +199,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
         siteName: DEFAULT_SITE_NAME,
         images,
       },
-      alternates: { canonical: canonicalUrl, languages },
+      alternates: { canonical: canonicalUrl, ...(indexable ? { languages } : {}) },
       twitter: {
         card: 'summary_large_image',
         title: socialTitle,
@@ -255,9 +255,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const canonicalId = getCanonicalProductSlug(initialProduct, sku || '');
   if (canonicalId && locale !== DEFAULT_PUBLIC_LOCALE && !hasRequestedTranslation) {
     const canonicalPath = localizePublicPath(`/products/${canonicalId}`, DEFAULT_PUBLIC_LOCALE);
-    // Reset a saved locale on the intermediate request so browsers do not get
-    // redirected back to the untranslated URL by locale middleware.
-    permanentRedirect(`${canonicalPath}?${PUBLIC_LOCALE_SELECTION_PARAM}=${DEFAULT_PUBLIC_LOCALE}`);
+    // Untranslated localized product URLs permanently redirect to the English canonical URL.
+    permanentRedirect(canonicalPath);
   }
   if (canonicalId && canonicalId !== slug) {
     redirect(localizePublicPath(`/products/${canonicalId}`, hasRequestedTranslation ? locale : 'en'));

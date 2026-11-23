@@ -4,7 +4,7 @@ import { SITE_NAME, withSiteName, withoutSiteNameSuffix } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
 import { getArticleByPath } from '@/services/news.server';
 import ArticleDetailClient from '@/app/[locale]/news/[slug]/ArticleDetailClient';
-import { getLocalizedMetadataPaths, resolveRouteLocale } from '@/lib/i18n/server';
+import { getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale } from '@/lib/i18n/server';
 import {
   getAvailableTranslationLocales,
   hasTranslationForLocale,
@@ -59,11 +59,12 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const title = withoutSiteNameSuffix(article.meta_title?.trim() || article.title);
   const description = article.meta_description?.trim() || article.summary || `${article.title} - Vibocnc.`;
   const images = article.featured_image ? [article.featured_image] : [];
-  const canonical = hasRequestedTranslation ? canonicalUrl : `${getSiteUrl()}${path}`;
+  const indexable = isIndexablePublicLocale(locale) && hasRequestedTranslation;
+  const canonical = canonicalUrl;
   return {
     title, description, keywords: article.meta_keywords || undefined,
-    robots: { index: hasRequestedTranslation, follow: true, 'max-image-preview': 'large' },
-    alternates: { canonical, languages },
+    robots: { index: indexable, follow: true, 'max-image-preview': 'large' },
+    alternates: { canonical, ...(indexable ? { languages } : {}) },
     openGraph: { title: withSiteName(title), description, type: 'article', url: canonical, images, publishedTime: article.published_at || article.created_at, modifiedTime: article.updated_at },
     twitter: { card: 'summary_large_image', title: withSiteName(title), description, images },
   };

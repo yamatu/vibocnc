@@ -5,7 +5,7 @@ import { getSiteUrl } from '@/lib/url';
 import { buildHomeFaqEntries } from '@/lib/faq-content';
 import { getCommercePolicyCached } from '@/services/commerce-policy.server';
 import { buildStaticPageMetadata } from '@/lib/seo';
-import { getLocalizedMetadataPaths, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 
@@ -13,6 +13,7 @@ export async function generateMetadata({ params }: { params: LocaleRouteParams }
   const { locale, canonical, languages } = await getLocalizedMetadataPaths(await resolveRouteLocale(params), '/faq');
   const title = translatePublicMessage(locale, 'faq.title');
   const description = translatePublicMessage(locale, 'faq.description');
+  const isIndexable = isIndexablePublicLocale(locale);
   return {
     ...buildStaticPageMetadata(
     '/faq',
@@ -20,9 +21,9 @@ export async function generateMetadata({ params }: { params: LocaleRouteParams }
     description,
     'industrial automation parts FAQ, CNC parts support, PLC HMI servo drives, repair evaluation, worldwide shipping, warranty information, compatibility support',
   ),
-    alternates: { canonical, languages },
+    alternates: { canonical, ...(isIndexable ? { languages } : {}) },
     openGraph: { title, description, type: 'website', url: canonical },
-    robots: { index: true, follow: true },
+    robots: buildPublicRobots(locale, true),
   };
 }
 

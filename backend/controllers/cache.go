@@ -162,6 +162,9 @@ func (cc *CacheController) PurgeNow(c *gin.Context) {
 			"cache:public:product_sku:",
 			"cache:public:product_sku_query:",
 			"cache:public:homepage:",
+			"cache:public:news:",
+			"cache:public:site_pages:",
+			"cache:public:analytics:",
 		)
 	}
 

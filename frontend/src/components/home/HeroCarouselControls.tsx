@@ -16,8 +16,8 @@ const MIN_INITIAL_AUTOPLAY_DELAY_MS = 8000;
 
 function getDescriptiveCtaText(text: string, href: string, slideTitle: string): string {
   if (!/^(learn|read|view) more$/i.test(text.trim())) return text;
-  if (href === '/about') return 'About Vcocnc';
-  if (href === '/contact') return 'Contact Vcocnc';
+  if (href === '/about') return 'About Vibocnc';
+  if (href === '/contact') return 'Contact Vibocnc';
   if (href === '/categories') return 'Browse Product Categories';
   return `Explore ${slideTitle}`;
 }

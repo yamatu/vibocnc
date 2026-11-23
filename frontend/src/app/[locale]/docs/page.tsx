@@ -1,14 +1,15 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
 import { buildStaticPageMetadata } from '@/lib/seo';
-import { getLocalizedMetadataPaths, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 
 export async function generateMetadata({ params }: { params: LocaleRouteParams }): Promise<Metadata> {
   const { locale, canonical, languages } = await getLocalizedMetadataPaths(await resolveRouteLocale(params), '/docs');
   const title = translatePublicMessage(locale, 'docs.title');
   const metadata = buildStaticPageMetadata('/docs', title, 'Documentation and technical resources for Vibocnc industrial automation products.', 'industrial automation documentation, CNC manuals, PLC HMI servo drive resources, product documents, Vibocnc docs');
-  return { ...metadata, alternates: { canonical, languages }, openGraph: metadata.openGraph ? { ...metadata.openGraph, url: canonical } : undefined };
+  const isIndexable = isIndexablePublicLocale(locale);
+  return { ...metadata, robots: buildPublicRobots(locale, true), alternates: { canonical, ...(isIndexable ? { languages } : {}) }, openGraph: metadata.openGraph ? { ...metadata.openGraph, url: canonical } : undefined };
 }
 
 export default async function DocsPage({ params }: { params: LocaleRouteParams }) {

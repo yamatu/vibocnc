@@ -4,7 +4,7 @@ import { CategoryService } from '@/services/category.service'
 import { renderLocalizedSitemap } from '@/lib/i18n/sitemap'
 import { isCategoryIndexable } from '@/lib/category-listing'
 import type { Category } from '@/types'
-import { getAvailableTranslationLocales } from '@/lib/i18n/content'
+import { INDEXABLE_PUBLIC_LOCALES } from '@/lib/i18n/config'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 3600 // 1 hour
@@ -36,7 +36,7 @@ export async function GET() {
       lastModified: category.updated_at ? new Date(category.updated_at).toISOString() : undefined,
       changeFrequency: 'weekly',
       priority: category.parent_id ? '0.7' : '0.8',
-      availableLocales: getAvailableTranslationLocales(category.translations),
+      availableLocales: INDEXABLE_PUBLIC_LOCALES,
     }))
 
   const sitemap = renderLocalizedSitemap(baseUrl, categoryPages)

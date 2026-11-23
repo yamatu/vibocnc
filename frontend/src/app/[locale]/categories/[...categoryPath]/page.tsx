@@ -11,7 +11,7 @@ import { CategoryService } from '@/services/category.service';
 import { ProductService } from '@/services/product.service';
 import { getSiteUrl } from '@/lib/url';
 import { withSiteName } from '@/lib/seo';
-import { getLocalizedMetadataPaths, resolveRouteLocale } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale } from '@/lib/i18n/server';
 import { getAvailableTranslationLocales, hasTranslationForLocale, localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
 import { toProductPathId } from '@/lib/utils';
 import { localizePublicPath } from '@/lib/i18n/config';
@@ -243,9 +243,7 @@ export async function generateMetadata({ params, searchParams }: CategoryPathPag
       urlPath,
       getAvailableTranslationLocales(resolved.category.translations),
     );
-    const canonical = hasRequestedTranslation
-      ? localizedCanonical
-      : `${getSiteUrl()}${localizePublicPath(urlPath, 'en')}`;
+    const canonical = localizedCanonical;
     const brandName = getCategoryBrandName(category, breadcrumb);
     const displayName = getCategoryDisplayName(category, brandName);
     const commercePolicy = await getCommercePolicyCached();
@@ -254,13 +252,14 @@ export async function generateMetadata({ params, searchParams }: CategoryPathPag
     const title = buildCategoryTitle(displayName, brandName, !category.parent_id);
     const productCount = await resolveCategoryProductCount(resolved.category.id);
     const isIndexableCategory = isCategoryIndexable(resolved.category, productCount);
+    const isIndexable = isIndexablePublicLocale(locale) && hasRequestedTranslation && isIndexableCategory && !hasQueryVariant;
     const ogImage = category.image_url
       ? (/^https?:\/\//i.test(category.image_url) ? category.image_url : `${getSiteUrl()}${category.image_url.startsWith('/') ? '' : '/'}${category.image_url}`)
       : `${getSiteUrl()}/images/og-image.jpg`;
     return {
       title,
       description: metaDescription,
-      robots: { index: hasRequestedTranslation && isIndexableCategory && !hasQueryVariant, follow: true },
+      robots: buildPublicRobots(locale, isIndexable),
       openGraph: {
         title: withSiteName(title),
         description: metaDescription,
@@ -270,7 +269,7 @@ export async function generateMetadata({ params, searchParams }: CategoryPathPag
       },
       alternates: {
         canonical,
-        languages,
+        ...(isIndexable ? { languages } : {}),
       },
     };
   } catch {

@@ -47,7 +47,7 @@ export default function FooterSocialLinks() {
 
   return (
     <div className="mt-6">
-      <h3 className="text-sm font-semibold text-white">Follow Vcocnc</h3>
+      <h3 className="text-sm font-semibold text-white">Follow Vibocnc</h3>
       <div className="mt-3 flex min-h-10 items-center gap-2">
         {socialLinks.map(({ name, href, Icon, hoverClass }) => (
           <a
@@ -55,7 +55,7 @@ export default function FooterSocialLinks() {
             href={href}
             target="_blank"
             rel="me noopener noreferrer"
-            aria-label={`Follow Vcocnc on ${name}`}
+            aria-label={`Follow Vibocnc on ${name}`}
             title={name}
             className={`flex h-10 w-10 items-center justify-center rounded-md border border-gray-700 text-gray-300 transition-colors ${hoverClass}`}
           >

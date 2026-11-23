@@ -6,10 +6,13 @@ import { ReactQueryProvider } from "@/lib/react-query";
 import { Toaster } from "react-hot-toast";
 import { getSiteUrl } from "@/lib/url";
 import { SITE_NAME } from "@/lib/seo";
+import { generateOrganizationSchema } from "@/lib/structured-data";
+import { getSocialMediaURLs } from "@/lib/social-media";
+import { getPublicSocialMediaSettings } from "@/services/social-media.server";
 import { PublicI18nProvider } from "@/lib/i18n/PublicI18nProvider";
 import { getLocaleConfig, isPublicLocale, normalizePublicLocale } from "@/lib/i18n/config";
 import { getPublicMessageOverrides, translatePublicMessage } from "@/lib/i18n/messages";
-import type { LocaleRouteParams } from "@/lib/i18n/server";
+import { buildPublicRobots, type LocaleRouteParams } from "@/lib/i18n/server";
 import TrackingCode, { type PublicTrackingConfig } from "@/components/analytics/TrackingCode";
 import QuickQuoteModal from "@/components/quote/QuickQuoteModal";
 
@@ -88,17 +91,7 @@ export async function generateMetadata({ params }: { params: LocaleRouteParams }
       "CNC machine parts",
     ].join(", "),
     publisher: SITE_NAME,
-    robots: {
-      index: true,
-      follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        'max-video-preview': -1,
-        'max-image-preview': 'large',
-        'max-snippet': -1,
-      },
-    },
+    robots: buildPublicRobots(locale, true),
     openGraph: {
       type: "website",
       locale: getLocaleConfig(locale).hreflang.replace('-', '_'),
@@ -137,7 +130,11 @@ export default async function RootLayout({
   if (!isPublicLocale(rawLocale)) notFound();
   const locale = normalizePublicLocale(rawLocale);
   const localeConfig = getLocaleConfig(locale);
-  const trackingConfig = await getTrackingConfig();
+  const [trackingConfig, socialMediaSettings] = await Promise.all([
+    getTrackingConfig(),
+    getPublicSocialMediaSettings(),
+  ]);
+  const organizationSchema = generateOrganizationSchema(getSocialMediaURLs(socialMediaSettings));
 
   return (
     <html lang={localeConfig.hreflang} dir={localeConfig.dir} className={`scroll-smooth ${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
@@ -149,6 +146,12 @@ export default async function RootLayout({
         <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260629" />
         <link rel="manifest" href="/site.webmanifest" />
         <meta name="theme-color" content="#0b3e75" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(organizationSchema).replace(/</g, '\\u003c'),
+          }}
+        />
       </head>
       <body className="antialiased font-sans">
         <ReactQueryProvider>

@@ -15,12 +15,11 @@ import { applyHomepageDrafts } from '@/lib/homepage-drafts.server';
 import RepairCapabilitiesSection from '@/components/home/RepairCapabilitiesSection';
 import HomeBlogSection from '@/components/home/HomeBlogSection';
 import HomeBrandAuthoritySection, { HOMEPAGE_BRAND_FAQS } from '@/components/home/HomeBrandAuthoritySection';
-import { generateOrganizationSchema, generateWebsiteSchema } from '@/lib/structured-data';
+import { generateWebsiteSchema } from '@/lib/structured-data';
 import type { Article, HomepageContent } from '@/types';
 import { getSiteUrl } from '@/lib/url';
 import { DEFAULT_HERO_DATA } from '@/lib/homepage-defaults';
 import { EDITABLE_PAGE_SECTION_KEYS } from '@/lib/page-content';
-import { getSocialMediaURLs } from '@/lib/social-media';
 import { getPublicSocialMediaSettings } from '@/services/social-media.server';
 import { translatePublicMessage } from '@/lib/i18n/messages';
 import { getLocaleConfig, localizePublicPath, type PublicLocale } from '@/lib/i18n/config';
@@ -217,14 +216,11 @@ export default async function HomePage({
   isAdminPreview?: boolean;
 }) {
   const baseUrl = getSiteUrl();
-  const published = await getHomepageContentList({ fresh: isAdminPreview });
+  const [published, socialMediaSettings] = await Promise.all([
+    getHomepageContentList({ fresh: isAdminPreview }),
+    getPublicSocialMediaSettings({ fresh: isAdminPreview }),
+  ]);
   const list = isAdminPreview ? await applyHomepageDrafts(published) : published;
-  // Social links are non-critical footer content. Fetch them during admin
-  // preview for accurate structured-data review; public requests use the
-  // client-cached footer query so the first HTML response has one backend call.
-  const socialMediaSettings = isAdminPreview
-    ? await getPublicSocialMediaSettings({ fresh: true })
-    : null;
   const byKey: Record<string, HomepageContent | undefined> = Object.fromEntries(
     list.map((c) => [c.section_key, c]),
   );
@@ -265,8 +261,7 @@ export default async function HomePage({
     ? 'brand_carousel'
     : 'hero_section';
 
-  // Enhanced structured data using the new utility functions
-  const organizationSchema = generateOrganizationSchema(getSocialMediaURLs(socialMediaSettings));
+  // Organization is emitted once globally in [locale]/layout.tsx (#organization).
   const websiteSchema = generateWebsiteSchema();
   const localizedHomepagePath = localizePublicPath('/', locale);
   const homepageUrl = `${baseUrl}${localizedHomepagePath === '/' ? '' : localizedHomepagePath}`;
@@ -300,7 +295,6 @@ export default async function HomePage({
   const combinedStructuredData = {
     "@context": "https://schema.org",
     "@graph": [
-      organizationSchema,
       websiteSchema,
       homepageSchema,
     ]

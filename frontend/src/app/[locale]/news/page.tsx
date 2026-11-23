@@ -5,10 +5,35 @@ import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME, withSiteName } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
 import NewsPageClient from './NewsPageClient';
-import { getLocalizedMetadataPathsWithQuery, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { getLocalizedMetadataPathsWithQuery, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { localizeArticleOrDefault } from '@/lib/i18n/content';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
+import type { Article } from '@/types';
+
+function toPlainExcerpt(md?: string, maxLen = 180): string {
+  const text = String(md || '')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > maxLen ? `${text.slice(0, maxLen).trim()}...` : text;
+}
+
+function toSlimListArticle(article: Article): Article {
+  const summary = (article.summary || '').trim() || toPlainExcerpt(article.content);
+  return {
+    ...article,
+    summary,
+    // Drop full markdown body on list pages to shrink RSC HTML and prevent raw markdown leaking in list payloads.
+    content: '',
+  };
+}
 
 export async function generateMetadata({ params: routeParams, searchParams }: { params: LocaleRouteParams; searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }): Promise<Metadata> {
@@ -27,12 +52,13 @@ export async function generateMetadata({ params: routeParams, searchParams }: { 
   }
 
   const hasSearch = typeof search === 'string' && search.trim().length > 0;
+  const isNoindex = !isIndexablePublicLocale(locale) || hasSearch || page > 1;
   return {
     title,
     description,
     // Paged archives repeat page 1's headlines. They stay crawlable so the
     // article links are followed, but they are not indexable pages of their own.
-    robots: hasSearch || page > 1 ? { index: false, follow: true } : { index: true, follow: true },
+    robots: isNoindex ? { index: false, follow: true } : { index: true, follow: true },
     keywords: ['FANUC news', 'CNC articles', 'industrial automation', 'technical blog', search].filter(Boolean).join(', '),
     openGraph: {
       title: withSiteName(title),
@@ -42,7 +68,7 @@ export async function generateMetadata({ params: routeParams, searchParams }: { 
     },
     alternates: {
       canonical: canonicalUrl,
-      languages,
+      ...(isNoindex ? {} : { languages }),
     },
   };
 }
@@ -63,7 +89,7 @@ async function getServerSideData(searchParams: { [key: string]: string | string[
 
   return {
     articles: (data.data || [])
-      .map((article) => localizeArticleOrDefault(article, locale)),
+      .map((article) => toSlimListArticle(localizeArticleOrDefault(article, locale))),
     totalPages: data.total_pages || 1,
     total: data.total || 0,
     currentPage: page,
@@ -122,7 +148,7 @@ export default async function NewsPage({ params: routeParams, searchParams }: { 
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }}
       />
       <Suspense
         fallback={

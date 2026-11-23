@@ -5,10 +5,34 @@ import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME, withSiteName } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
 import NewsPageClient from '@/app/[locale]/news/NewsPageClient';
-import { getLocalizedMetadataPathsWithQuery, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { getLocalizedMetadataPathsWithQuery, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { localizeArticleOrDefault } from '@/lib/i18n/content';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
+import type { Article } from '@/types';
+
+function toPlainExcerpt(md?: string, maxLen = 180): string {
+  const text = String(md || '')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > maxLen ? `${text.slice(0, maxLen).trim()}...` : text;
+}
+
+function toSlimListArticle(article: Article): Article {
+  const summary = (article.summary || '').trim() || toPlainExcerpt(article.content);
+  return {
+    ...article,
+    summary,
+    content: '',
+  };
+}
 
 export async function generateMetadata({ params: routeParams, searchParams }: { params: LocaleRouteParams; searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
   const params = await searchParams;
@@ -20,14 +44,15 @@ export async function generateMetadata({ params: routeParams, searchParams }: { 
   const description = search
     ? `Search results for "${search}" in the Vibocnc industrial automation blog.`
     : translatePublicMessage(locale, 'news.blogDescription');
+  const isNoindex = !isIndexablePublicLocale(locale) || Boolean(search) || page > 1;
   return {
     title,
     description,
     keywords: ['industrial automation blog', 'CNC troubleshooting', 'PLC and HMI guides', 'servo drive repair', 'automation parts sourcing', 'FANUC Siemens Mitsubishi ABB technical articles', search].filter(Boolean).join(', '),
     // Paged archives repeat page 1's headlines. They stay crawlable so the
     // article links are followed, but they are not indexable pages of their own.
-    robots: search || page > 1 ? { index: false, follow: true } : { index: true, follow: true },
-    alternates: { canonical: url, languages },
+    robots: isNoindex ? { index: false, follow: true } : { index: true, follow: true },
+    alternates: { canonical: url, ...(isNoindex ? {} : { languages }) },
     openGraph: { title: withSiteName(title), description, type: 'website', url },
     twitter: { card: 'summary_large_image', title: withSiteName(title), description },
   };
@@ -47,7 +72,7 @@ export default async function BlogPage({ params: routeParams, searchParams }: { 
 
   const baseUrl = getSiteUrl();
   const articles = (data.data || [])
-    .map((article) => localizeArticleOrDefault(article, locale));
+    .map((article) => toSlimListArticle(localizeArticleOrDefault(article, locale)));
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'Blog',
@@ -73,7 +98,7 @@ export default async function BlogPage({ params: routeParams, searchParams }: { 
 
   const initialData = { articles, totalPages: data.total_pages || 1, total: data.total || 0, currentPage: page, searchQuery: search || '' };
   return <>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} />
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-800" /></div>}>
       <NewsPageClient initialData={initialData} searchParams={params} contentType="blog" />
     </Suspense>

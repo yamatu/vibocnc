@@ -3,7 +3,7 @@ import Link from 'next/link';
 import PublicLayout from '@/components/layout/PublicLayout';
 import CategoriesBrandAccordion from '@/components/categories/CategoriesBrandAccordion';
 import { CategoryService } from '@/services/category.service';
-import { getLocalizedMetadataPaths, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { localizeCategoryContent } from '@/lib/i18n/content';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { getSiteUrl } from '@/lib/url';
@@ -21,10 +21,12 @@ export async function generateMetadata({ params }: { params: LocaleRouteParams }
   }[locale as 'en' | 'zh'];
   const title = localized?.title || 'Industrial Automation Product Categories';
   const description = localized?.description || 'Browse multi-brand industrial automation parts by manufacturer and equipment type, including PLC, HMI, servo, drive, motor, power supply and control components.';
+  const isIndexable = isIndexablePublicLocale(locale);
   return {
     title,
     description,
-    alternates: { canonical, languages },
+    robots: buildPublicRobots(locale, true),
+    alternates: { canonical, ...(isIndexable ? { languages } : {}) },
     openGraph: { title: `${title} | ${SITE_NAME}`, description, type: 'website', url: canonical },
   };
 }

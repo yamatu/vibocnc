@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import ContactService from '@/services/contact.service';
@@ -19,53 +19,34 @@ import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { createPageText, type PageData } from '@/lib/page-content';
 import { CONTACT_PAGE_SCHEMA } from '@/lib/page-content-schema';
 
-const siteUrl = getSiteUrl();
+const siteUrl = getSiteUrl().replace(/\/+$/, '');
 
-const contactPageSchema = {
-  "@context": "https://schema.org",
-  "@type": "ContactPage",
-  "name": "Contact Vibocnc",
-  "description": "Get in touch with Vibocnc for multi-brand industrial automation parts, repair evaluation, technical support and quotes.",
-  "url": `${siteUrl}/contact`,
-  "mainEntity": {
-    "@type": "Organization",
-    "name": "Vibocnc",
-    "telephone": "+86-13301553506",
-    "email": "flora@vibocnc.com",
-    "address": {
-      "@type": "PostalAddress",
-      "addressLocality": "Kunshan",
-      "addressRegion": "Jiangsu",
-      "addressCountry": "CN"
-    },
-    "openingHoursSpecification": [
-      {
-        "@type": "OpeningHoursSpecification",
-        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-        "opens": "08:00",
-        "closes": "18:00"
-      },
-      {
-        "@type": "OpeningHoursSpecification",
-        "dayOfWeek": ["Saturday"],
-        "opens": "09:00",
-        "closes": "17:00"
-      }
-    ]
-  }
-};
+interface QueryPrefillPayload {
+  email: string;
+  sku: string;
+  productName: string;
+  inquiryType?: ContactCreateRequest['inquiry_type'];
+}
 
-const breadcrumbSchema = {
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
-    { "@type": "ListItem", "position": 2, "name": "Contact", "item": `${siteUrl}/contact` }
-  ]
-};
-
-function ContactContent({ data }: { data: PageData }) {
+function ContactQueryPrefill({ onPrefill }: { onPrefill: (payload: QueryPrefillPayload) => void }) {
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const email = (searchParams?.get('email') || '').trim();
+    const sku = (searchParams?.get('sku') || '').trim();
+    const productName = (searchParams?.get('product') || '').trim();
+    const rawType = (searchParams?.get('inquiry_type') || searchParams?.get('type') || '').trim().toLowerCase();
+    const inquiryType = rawType === 'parts' || rawType === 'repair' || rawType === 'support' || rawType === 'quote'
+      ? rawType
+      : undefined;
+    if (!email && !sku && !productName && !inquiryType) return;
+    onPrefill({ email, sku, productName, inquiryType });
+  }, [searchParams, onPrefill]);
+
+  return null;
+}
+
+export default function ContactPageClient({ data }: { data: PageData }) {
   const { locale, t, href } = usePublicI18n();
   const text = createPageText(CONTACT_PAGE_SCHEMA, data, locale, (key) => t(key));
   const heroImage = text('heroImage');
@@ -85,21 +66,11 @@ function ContactContent({ data }: { data: PageData }) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Prefill email / SKU / product from query string (e.g., /contact?sku=...&product=...&inquiry_type=quote)
-  useEffect(() => {
-    const email = (searchParams?.get('email') || '').trim();
-    const sku = (searchParams?.get('sku') || '').trim();
-    const productName = (searchParams?.get('product') || '').trim();
-    const rawType = (searchParams?.get('inquiry_type') || searchParams?.get('type') || '').trim().toLowerCase();
-    const nextInquiryType = rawType === 'parts' || rawType === 'repair' || rawType === 'support' || rawType === 'quote'
-      ? rawType
-      : undefined;
-    if (!email && !sku && !productName && !nextInquiryType) return;
-
+  const handleQueryPrefill = useCallback(({ email, sku, productName, inquiryType }: QueryPrefillPayload) => {
     setFormData((prev) => {
       const next = { ...prev };
       if (email) next.email = email;
-      if (nextInquiryType) next.inquiry_type = nextInquiryType;
+      if (inquiryType) next.inquiry_type = inquiryType;
       if (sku || productName) {
         next.inquiry_type = 'quote';
         if (!prev.subject) {
@@ -120,7 +91,7 @@ function ContactContent({ data }: { data: PageData }) {
       }
       return next;
     });
-  }, [searchParams]);
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({
@@ -154,16 +125,68 @@ function ContactContent({ data }: { data: PageData }) {
     }
   };
 
+  const contactUrl = `${siteUrl}${href('/contact')}`;
+  const contactPageSchema = {
+    "@context": "https://schema.org",
+    "@type": "ContactPage",
+    "@id": `${contactUrl}#webpage`,
+    "name": "Contact Vibocnc",
+    "description": "Get in touch with Vibocnc for multi-brand industrial automation parts, repair evaluation, technical support and quotes.",
+    "url": contactUrl,
+    "mainEntity": {
+      "@type": "Organization",
+      "@id": `${siteUrl}/#organization`,
+      "name": "Vibocnc",
+      "url": siteUrl,
+      "telephone": text('phone'),
+      "email": text('email'),
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Kunshan",
+        "addressRegion": "Jiangsu",
+        "addressCountry": "CN"
+      },
+      "openingHoursSpecification": [
+        {
+          "@type": "OpeningHoursSpecification",
+          "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+          "opens": "08:00",
+          "closes": "18:00"
+        },
+        {
+          "@type": "OpeningHoursSpecification",
+          "dayOfWeek": ["Saturday"],
+          "opens": "09:00",
+          "closes": "17:00"
+        }
+      ]
+    }
+  };
+
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": t('common.home'), "item": `${siteUrl}${href('/')}` },
+      { "@type": "ListItem", "position": 2, "name": t('nav.contact'), "item": contactUrl },
+    ]
+  };
+
   return (
     <PublicLayout>
+      {/* Keep useSearchParams isolated in a zero-UI Suspense child so the full Contact page & JSON-LD SSR cleanly */}
+      <Suspense fallback={null}>
+        <ContactQueryPrefill onPrefill={handleQueryPrefill} />
+      </Suspense>
+
       {/* Contact Page Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@graph": [{ ...contactPageSchema, mainEntity: { ...contactPageSchema.mainEntity, telephone: text('phone'), email: text('email') }, url: `${siteUrl}${href('/contact')}` }, { ...breadcrumbSchema, itemListElement: [
-          { "@type": "ListItem", "position": 1, "name": t('common.home'), "item": `${siteUrl}${href('/')}` },
-          { "@type": "ListItem", "position": 2, "name": t('nav.contact'), "item": `${siteUrl}${href('/contact')}` },
-        ] }] }) }}
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({ "@context": "https://schema.org", "@graph": [contactPageSchema, breadcrumbSchema] }).replace(/</g, '\\u003c')
+        }}
       />
+
       {/* Hero Section */}
       <section className="site-page-hero py-24" style={heroStyle}>
         <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -421,13 +444,5 @@ function ContactContent({ data }: { data: PageData }) {
         </div>
       </section>
     </PublicLayout>
-  );
-}
-
-export default function ContactPageClient({ data }: { data: PageData }) {
-  return (
-    <Suspense fallback={<div className="flex items-center justify-center py-10" aria-busy="true"><div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--site-primary)]" /></div>}>
-      <ContactContent data={data} />
-    </Suspense>
   );
 }

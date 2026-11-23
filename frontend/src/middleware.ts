@@ -4,13 +4,10 @@ import {
   DEFAULT_PUBLIC_LOCALE,
   PUBLIC_LOCALE_COOKIE,
   PUBLIC_LOCALE_SELECTION_PARAM,
-  detectPublicLocale,
   getLocaleFromPathname,
   isPublicLocale,
-  isAutomaticLocaleRedirectAllowed,
   isLocalizablePublicPath,
   localizePublicPath,
-  normalizePublicLocale,
   stripLocaleFromPathname,
 } from '@/lib/i18n/config';
 import { PUBLIC_CONTENT_SIGNAL_POLICY } from '@/lib/robots';
@@ -18,51 +15,6 @@ import { PUBLIC_CONTENT_SIGNAL_POLICY } from '@/lib/robots';
 // Define protected routes
 const protectedRoutes = ['/admin'];
 const authRoutes = ['/admin/login', '/admin/forgot-password'];
-
-// List of search engine crawlers
-const SEARCH_ENGINE_BOTS = [
-  'googlebot',
-  'bingbot',
-  'slurp', // Yahoo
-  'duckduckbot',
-  'baiduspider',
-  'yandexbot',
-  'facebookexternalhit',
-  'twitterbot',
-  'linkedinbot',
-  'whatsapp',
-  'telegrambot',
-  // AI search engine bots
-  'gptbot',
-  'chatgpt-user',
-  'perplexitybot',
-  'claudebot',
-  'anthropic-ai',
-  'google-extended',
-  'applebot',
-  'cohere-ai',
-];
-
-function isSearchEngineCrawler(userAgent: string): boolean {
-  const ua = userAgent.toLowerCase();
-  return SEARCH_ENGINE_BOTS.some(bot => ua.includes(bot));
-}
-
-const GEO_COUNTRY_HEADERS = [
-  'x-vercel-ip-country',
-  'cf-ipcountry',
-  'cloudfront-viewer-country',
-  'x-country-code',
-  'x-geo-country',
-] as const;
-
-function getRequestCountry(request: NextRequest): string | null {
-  for (const headerName of GEO_COUNTRY_HEADERS) {
-    const value = request.headers.get(headerName)?.split(',')[0].trim();
-    if (value) return value;
-  }
-  return null;
-}
 
 function saveLocalePreference(response: NextResponse, request: NextRequest, locale: string): void {
   response.cookies.set(PUBLIC_LOCALE_COOKIE, locale, {
@@ -189,7 +141,6 @@ export async function middleware(request: NextRequest) {
   // though client-side JavaScript can no longer see the token.
   const rawToken = request.cookies.get('admin_token')?.value;
   const token = isAdminTokenUsable(rawToken) ? rawToken : undefined;
-  const userAgent = request.headers.get('user-agent') || '';
 
   const requestedLocale = request.nextUrl.searchParams.get(PUBLIC_LOCALE_SELECTION_PARAM);
   if (isPublicLocale(requestedLocale) && isLocalizablePublicPath(pathname)) {
@@ -209,30 +160,9 @@ export async function middleware(request: NextRequest) {
   }
 
 
-  const rawSavedLocale = request.cookies.get(PUBLIC_LOCALE_COOKIE)?.value;
-  const savedLocale = isPublicLocale(rawSavedLocale) ? normalizePublicLocale(rawSavedLocale) : null;
-  const isCrawler = isSearchEngineCrawler(userAgent);
-  const detectedLocale = detectPublicLocale(
-    request.headers.get('accept-language'),
-    getRequestCountry(request),
-  );
-  const preferredLocale = savedLocale || detectedLocale;
-  const automaticLocale = preferredLocale;
-  if (
-    !pathLocale
-    && isAutomaticLocaleRedirectAllowed(pathname)
-    && automaticLocale !== DEFAULT_PUBLIC_LOCALE
-    && isLocalizablePublicPath(pathname)
-    && !isCrawler
-    && request.nextUrl.searchParams.get('admin_preview') !== '1'
-  ) {
-    const url = request.nextUrl.clone();
-    url.pathname = localizePublicPath(pathname, automaticLocale);
-    const response = NextResponse.redirect(url, 307);
-    saveLocalePreference(response, request, preferredLocale);
-    preventLocaleRedirectCaching(response);
-    return response;
-  }
+  // Unprefixed public routes always serve the canonical English storefront.
+  // Visitors who prefer another UI language switch explicitly via the header
+  // or mobile language selector (`?site_locale=<locale>` or `/<locale>/...`).
 
   const requestHostname = getRequestHostname(request);
   const canonicalHostname = getCanonicalHostname();

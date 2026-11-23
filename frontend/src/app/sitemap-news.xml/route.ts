@@ -2,12 +2,10 @@ import { NextResponse } from 'next/server'
 import { getRequestBaseUrl } from '@/lib/request-url'
 import { getAllPublishedArticles } from '@/lib/article-sitemap'
 import { renderLocalizedSitemap } from '@/lib/i18n/sitemap'
-import { getAvailableTranslationLocales } from '@/lib/i18n/content'
-import { PUBLIC_LOCALES } from '@/lib/i18n/config'
+import { INDEXABLE_PUBLIC_LOCALES } from '@/lib/i18n/config'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 3600 // 1 hour
-const ALL_PUBLIC_LOCALES = PUBLIC_LOCALES.map((locale) => locale.code)
 
 function latestArticleModifiedAt(articles: Awaited<ReturnType<typeof getAllPublishedArticles>>): string | undefined {
   const timestamps = articles
@@ -30,7 +28,7 @@ export async function GET() {
         lastModified: latestArticleModifiedAt(articles),
         changeFrequency: 'daily',
         priority: '0.8',
-        availableLocales: ALL_PUBLIC_LOCALES,
+        availableLocales: INDEXABLE_PUBLIC_LOCALES,
       },
       // Individual article pages
       ...articles.map((article) => ({
@@ -42,7 +40,7 @@ export async function GET() {
             : undefined,
         changeFrequency: 'weekly',
         priority: article.is_featured ? '0.8' : '0.7',
-        availableLocales: getAvailableTranslationLocales(article.translations),
+        availableLocales: INDEXABLE_PUBLIC_LOCALES,
       })),
     ]
 

@@ -283,14 +283,11 @@ try {
   }) || '';
   if (!response.ok) errors.push(`HTTP ${response.status}`);
   if (!rootBlock) errors.push('English homepage entry is missing');
-  if (!new RegExp(`hreflang=["']en["'][^>]+href=["']${canonicalOrigin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(rootBlock)) {
-    errors.push('English homepage sitemap alternate is incorrect');
+  if (/<loc>[^<]*\/(?:zh|es|de|fr|it|pt|ja|ko|ru|ar)(?:\/|<)/i.test(xml)) {
+    errors.push('non-English fallback URLs are still listed in sitemap-static.xml');
   }
-  if (!new RegExp(`hreflang=["']x-default["'][^>]+href=["']${canonicalOrigin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(rootBlock)) {
-    errors.push('x-default homepage sitemap alternate is incorrect');
-  }
-  if (/hreflang=["'](?:zh-CN|es|de|fr|it|pt|ja|ko|ru|ar)["']/i.test(rootBlock)) {
-    errors.push('mixed-language localized homepages are still advertised in the sitemap');
+  if (/hreflang=["'](?:zh-CN|es|de|fr|it|pt|ja|ko|ru|ar)["']/i.test(xml)) {
+    errors.push('mixed-language localized alternates are still advertised in sitemap-static.xml');
   }
   console.log(`${errors.length ? 'FAIL' : 'PASS'} /sitemap-static.xml status=${response.status} English-home-only=${Boolean(rootBlock)}`);
   for (const error of errors) console.log(`  - ${error}`);
@@ -554,6 +551,29 @@ try {
     errors.push(`Googlebot received a non-English canonical (${canonicalHref || 'missing'})`);
   }
   console.log(`${errors.length ? 'FAIL' : 'PASS'} homepage Googlebot language stability status=${response.status} lang=${actualLang || 'none'}`);
+  for (const error of errors) console.log(`  - ${error}`);
+  failed ||= errors.length > 0;
+} catch (error) {
+  console.log(`FAIL homepage Googlebot language stability: ${error instanceof Error ? error.message : String(error)}`);
+  failed = true;
+}
+
+try {
+  const response = await fetch(`${targetOrigin}/`, {
+    redirect: 'manual',
+    headers: {
+      cookie: 'vibocnc_locale=zh',
+      'accept-language': 'zh-CN,zh;q=0.9',
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
+    },
+  });
+  const html = await response.text();
+  const errors = [];
+  const actualLang = html.match(/<html\b[^>]*\blang=["']([^"']+)["']/i)?.[1] || '';
+  if (!response.ok) errors.push(`HTTP ${response.status}`);
+  if (response.headers.get('location')) errors.push(`browser visitor was auto-redirected (${response.headers.get('location')})`);
+  if (actualLang !== 'en') errors.push(`expected default English homepage for browser visitor, got lang=${actualLang || 'none'}`);
+  console.log(`${errors.length ? 'FAIL' : 'PASS'} homepage English-default browser visit status=${response.status} lang=${actualLang || 'none'}`);
   for (const error of errors) console.log(`  - ${error}`);
   failed ||= errors.length > 0;
 } catch (error) {

@@ -4,7 +4,7 @@ import { SITE_NAME, withSiteName, withoutSiteNameSuffix } from '@/lib/seo';
 import { NewsService } from '@/services/news.service';
 import { getArticleBySlug } from '@/services/news.server';
 import ArticleDetailClient from './ArticleDetailClient';
-import { getLocalizedMetadataPaths, resolveRouteLocale } from '@/lib/i18n/server';
+import { getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale } from '@/lib/i18n/server';
 import {
   getAvailableTranslationLocales,
   hasTranslationForLocale,
@@ -72,12 +72,13 @@ export async function generateMetadata({
 
   const images = article.featured_image ? [article.featured_image] : [];
 
-  const canonical = hasRequestedTranslation ? canonicalUrl : `${getSiteUrl()}${publicPath}`;
+  const indexable = isIndexablePublicLocale(locale) && hasRequestedTranslation;
+  const canonical = canonicalUrl;
   return {
     title: metaTitle,
     description: metaDescription,
     keywords: metaKeywords,
-    robots: { index: hasRequestedTranslation, follow: true, 'max-image-preview': 'large' },
+    robots: { index: indexable, follow: true, 'max-image-preview': 'large' },
     openGraph: {
       title: socialTitle,
       description: metaDescription,
@@ -88,7 +89,7 @@ export async function generateMetadata({
       modifiedTime: article.updated_at,
       ...(article.author?.full_name ? { authors: [article.author.full_name] } : {}),
     },
-    alternates: { canonical, languages },
+    alternates: { canonical, ...(indexable ? { languages } : {}) },
     twitter: {
       card: 'summary_large_image',
       title: socialTitle,

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import PublicLayout from '@/components/layout/PublicLayout';
 import RepairRequestForm from '@/components/repair/RepairRequestForm';
-import { getLocalizedMetadataPaths, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
+import { buildPublicRobots, getLocalizedMetadataPaths, isIndexablePublicLocale, resolveRouteLocale, type LocaleRouteParams } from '@/lib/i18n/server';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { getRepairPageCopy } from '@/lib/i18n/repair';
 import { getSiteUrl } from '@/lib/url';
@@ -12,11 +12,13 @@ export async function generateMetadata({ params }: { params: LocaleRouteParams }
   const copy = getRepairPageCopy(locale);
   const title = copy.title;
   const description = copy.description;
+  const isIndexable = isIndexablePublicLocale(locale);
   return {
     title,
     description,
     keywords: 'industrial electronics repair, automation repair service, servo drive repair, HMI repair, PLC repair, CNC board repair',
-    alternates: { canonical, languages },
+    robots: buildPublicRobots(locale, true),
+    alternates: { canonical, ...(isIndexable ? { languages } : {}) },
     openGraph: { title: withSiteName(title), description, type: 'website', url: canonical },
   };
 }

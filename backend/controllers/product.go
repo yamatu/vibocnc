@@ -27,6 +27,22 @@ var imagesTableOnce sync.Once
 var imagesTableExists bool
 var faqsTableOnce sync.Once
 var faqsTableExists bool
+var skuSanitizedColOnce sync.Once
+var skuSanitizedColExists bool
+
+func hasSKUSanitizedColumn(db *gorm.DB) bool {
+	skuSanitizedColOnce.Do(func() {
+		if db != nil && db.Dialector.Name() == "mysql" {
+			var count int64
+			if err := db.Raw(
+				"SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'sku_sanitized'",
+			).Scan(&count).Error; err == nil && count > 0 {
+				skuSanitizedColExists = true
+			}
+		}
+	})
+	return skuSanitizedColExists
+}
 
 func hasImagesTable() bool {
 	imagesTableOnce.Do(func() {
@@ -142,10 +158,16 @@ func findProductBySKUInternal(sku string) (models.Product, error) {
 				// (incl. NBSP), so slug-derived candidates like "FP0-E16RS-A-(B)"
 				// resolve stored SKUs like "FP0-E16RS-A -(B)" (sanitizeSKUForCompare).
 				sanitized := sanitizeSKUForCompare(normalized)
-				if err4 := withPublicProductPreloads(db).
-					Where("REGEXP_REPLACE(sku, '[-/[:space:]]+', '') = ?", sanitized).
-					Order("updated_at DESC").
-					First(&product).Error; err4 != nil {
+				if sanitized == "" {
+					return product, gorm.ErrRecordNotFound
+				}
+				q4 := withPublicProductPreloads(db)
+				if hasSKUSanitizedColumn(db) {
+					q4 = q4.Where("sku_sanitized = ?", sanitized)
+				} else {
+					q4 = q4.Where("REGEXP_REPLACE(sku, '[-/[:space:]]+', '') = ?", sanitized)
+				}
+				if err4 := q4.Order("updated_at DESC").First(&product).Error; err4 != nil {
 					return product, err4
 				}
 			}
@@ -330,8 +352,18 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 	query.Count(&total)
 
 	// Get products
+	// When listing a category by created_at (default storefront category view),
+	// MySQL can pick idx_products_active_created and scan 200k+ newer rows from
+	// other brands before finding older brands like FANUC (~800ms+). Forcing
+	// idx_products_category_active_created keeps every category page ~15-55ms.
+	findQuery := query
+	if isPublic && categoryID != "" && search == "" && brand == "" && isFeatured == "" &&
+		aiSEOStatus == "" && seoNoIndex == "" && priceStatus == "" && orderColumn == "created_at" &&
+		db.Dialector.Name() == "mysql" {
+		findQuery = query.Session(&gorm.Session{}).Table("products FORCE INDEX (idx_products_category_active_created)")
+	}
 	var products []models.Product
-	if err := query.Offset(offset).Limit(pageSize).Find(&products).Error; err != nil {
+	if err := findQuery.Offset(offset).Limit(pageSize).Find(&products).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: "Failed to fetch products",

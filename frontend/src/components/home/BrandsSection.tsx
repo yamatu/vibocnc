@@ -97,7 +97,7 @@ export default function BrandsSection({ content }: { content?: HomepageContent |
                 <span className="flex h-10 items-center">
                   <Image
                     src={(brand.logo || bundledBrandLogo(brand.name)) as string}
-                    alt=""
+                    alt={`${brand.name} logo`}
                     width={120}
                     height={40}
                     unoptimized

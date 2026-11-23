@@ -15,6 +15,11 @@ export const PUBLIC_LOCALES = [
 export type PublicLocale = (typeof PUBLIC_LOCALES)[number]['code'];
 
 export const DEFAULT_PUBLIC_LOCALE: PublicLocale = 'en';
+// English is the sole search-indexed version. Other UI locales remain
+// selectable by visitors through the language switcher, but are marked
+// noindex and excluded from sitemaps and hreflang alternates so English
+// pages do not compete with mixed-language fallback copies.
+export const INDEXABLE_PUBLIC_LOCALES: readonly PublicLocale[] = [DEFAULT_PUBLIC_LOCALE];
 export const PUBLIC_LOCALE_COOKIE = 'vibocnc_locale';
 export const PUBLIC_LOCALE_SELECTION_PARAM = 'site_locale';
 
@@ -60,11 +65,11 @@ export function isLimitedTranslationPublicPath(pathname: string): boolean {
   ));
 }
 
-export function isAutomaticLocaleRedirectAllowed(pathname: string): boolean {
-  const normalized = stripLocaleFromPathname(pathname || '/');
-  return !AUTO_LOCALE_REDIRECT_EXCLUDED_PATHS.some((path) => (
-    normalized === path || normalized.startsWith(`${path}/`)
-  ));
+export function isAutomaticLocaleRedirectAllowed(_pathname: string): boolean {
+  // Always serve English at unprefixed URLs by default; visitors switch
+  // languages explicitly via the language selector instead of being
+  // auto-redirected by Accept-Language, IP country, or a saved cookie.
+  return false;
 }
 
 export function isPublicLocale(value?: string | null): value is PublicLocale {
@@ -168,11 +173,15 @@ export function localizePublicPath(href: string, locale: PublicLocale): string {
 export function buildLanguageAlternates(
   baseUrl: string,
   pathname: string,
-  availableLocales: readonly PublicLocale[] = PUBLIC_LOCALES.map((locale) => locale.code),
+  availableLocales: readonly PublicLocale[] = INDEXABLE_PUBLIC_LOCALES,
 ): Record<string, string> {
   const cleanBase = baseUrl.replace(/\/+$/, '');
   const cleanPath = stripLocaleFromPathname(pathname || '/');
-  const allowedLocales = new Set<PublicLocale>([DEFAULT_PUBLIC_LOCALE, ...availableLocales]);
+  const indexableSet = new Set<PublicLocale>(INDEXABLE_PUBLIC_LOCALES);
+  const allowedLocales = new Set<PublicLocale>([
+    DEFAULT_PUBLIC_LOCALE,
+    ...availableLocales.filter((code) => indexableSet.has(code)),
+  ]);
   const languages = Object.fromEntries(
     PUBLIC_LOCALES.filter((locale) => allowedLocales.has(locale.code)).map((locale) => [
       locale.hreflang,
