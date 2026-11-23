@@ -5,6 +5,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import PublicLayout from '@/components/layout/PublicLayout';
 import CategoryProductsClient from '@/components/categories/CategoryProductsClient';
 import CategorySidebarTree from '@/components/categories/CategorySidebarTree';
+import CategorySubcategoriesBar from '@/components/categories/CategorySubcategoriesBar';
 import ScrollRestorer from '@/components/common/ScrollRestorer';
 import { CategoryService } from '@/services/category.service';
 import { ProductService } from '@/services/product.service';
@@ -189,6 +190,12 @@ function getCategoryMetaDescription(
   }
 
   return trimMetaDescription(`Browse ${categoryName} from Vibocnc. Quality ${titleSuffix}, tested with ${warranty} warranty and fast shipping ${shipScope} via ${carriers}.`);
+}
+
+function isOtherBucketSubcategory(category: { slug?: string; name?: string }): boolean {
+  const slug = String(category.slug || '').toLowerCase();
+  const name = String(category.name || '').toLowerCase();
+  return slug.endsWith('-other-parts') || slug === 'other-parts' || /\bother parts\b/.test(name);
 }
 
 async function resolveCategoryProductCount(categoryId: number): Promise<number> {
@@ -448,7 +455,23 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
   const visibleSubcategories = (matchedTreeNode?.children || [])
     .filter((child) => !isInternalCategory(child) && Number(child.product_count || 0) > 0)
     .map((child) => localizeCategoryContent(child, locale))
-    .sort((a, b) => Number(b.product_count || 0) - Number(a.product_count || 0));
+    .sort((a, b) => {
+      const aOther = isOtherBucketSubcategory(a);
+      const bOther = isOtherBucketSubcategory(b);
+      const aCount = Number(a.product_count || 0);
+      const bCount = Number(b.product_count || 0);
+      if (aOther !== bOther) {
+        if (aOther && bCount >= 10) return 1;
+        if (bOther && aCount >= 10) return -1;
+      }
+      return bCount - aCount;
+    });
+  const subcategoryBarItems = visibleSubcategories.map((child) => ({
+    id: child.id,
+    name: child.name,
+    href: localizePublicPath(`/categories/${child.path || child.slug}`, locale),
+    count: Number(child.product_count || 0),
+  }));
   const categoryItemList = (initialPage?.data || []).map((item) => ({
     name: item.name || item.sku,
     url: `${baseUrl}${localizePublicPath(`/products/${toProductPathId(item.sku)}`, locale)}`,
@@ -483,51 +506,48 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
       />
       <ScrollRestorer storageKey="category-scroll-y" />
       <div className="site-page-shell min-h-screen">
-        {/* Hero */}
-        <div className="site-page-hero py-12">
+        {/* Compact Hero */}
+        <div className="site-page-hero py-6 md:py-8">
           <div className="site-hero-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center">
-              <div className="site-hero-kicker mb-5">{translatePublicMessage(locale, 'categories.kicker')}</div>
-              <h1 className="text-3xl md:text-5xl font-bold mb-3">{categoryDisplayName}</h1>
-              {resolved.category.description && (
-                <p className="text-base md:text-lg text-blue-100 max-w-4xl mx-auto leading-relaxed">{resolved.category.description}</p>
-              )}
-              <div className="mt-5">
-                <nav className="flex justify-center" aria-label="Breadcrumb">
-                  <ol className="flex items-center flex-wrap gap-x-2 gap-y-1 text-blue-100">
-                    <li>
-                      <a href={localizePublicPath('/', locale)} className="hover:text-white transition-colors">
-                        {translatePublicMessage(locale, 'common.home')}
+              <nav className="mb-2 flex justify-center" aria-label="Breadcrumb">
+                <ol className="flex items-center flex-wrap gap-x-1.5 gap-y-1 text-xs sm:text-sm text-blue-100">
+                  <li>
+                    <a href={localizePublicPath('/', locale)} className="hover:text-white transition-colors">
+                      {translatePublicMessage(locale, 'common.home')}
+                    </a>
+                  </li>
+                  {(resolved.breadcrumb || []).map((bc: any) => (
+                    <li key={bc.id} className="flex items-center">
+                      <span className="mx-1.5">/</span>
+                      <a
+                        href={localizePublicPath(bc.path ? `/categories/${bc.path}` : `/categories/${bc.slug}`, locale)}
+                        className={
+                          bc.id === resolved!.category.id
+                            ? 'text-white font-medium'
+                            : 'hover:text-white transition-colors'
+                        }
+                      >
+                        {bc.name}
                       </a>
                     </li>
-                    {(resolved.breadcrumb || []).map((bc: any) => (
-                      <li key={bc.id} className="flex items-center">
-                        <span className="mx-2">/</span>
-                        <a
-                          href={localizePublicPath(bc.path ? `/categories/${bc.path}` : `/categories/${bc.slug}`, locale)}
-                          className={
-                            bc.id === resolved!.category.id
-                              ? 'text-white font-medium'
-                              : 'hover:text-white transition-colors'
-                          }
-                        >
-                          {bc.name}
-                        </a>
-                      </li>
-                    ))}
-                  </ol>
-                </nav>
-              </div>
+                  ))}
+                </ol>
+              </nav>
+              <h1 className="text-2xl md:text-4xl font-bold mb-2">{categoryDisplayName}</h1>
+              {resolved.category.description && (
+                <p className="text-sm md:text-base text-blue-100 max-w-4xl mx-auto leading-relaxed">{resolved.category.description}</p>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[256px_minmax(0,1fr)]">
-            {/* Left sidebar */}
-            <aside className="min-w-0">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[256px_minmax(0,1fr)]">
+            {/* Left sidebar (rendered below products on mobile so listings stay above the fold) */}
+            <aside className="min-w-0 order-2 lg:order-1">
               <div className="site-panel p-4 lg:sticky lg:top-28">
-                <div className="mb-3 border-b border-slate-200 pb-3 text-sm font-semibold uppercase tracking-wide text-slate-900">{translatePublicMessage(locale, 'nav.categories')}</div>
+                <div className="mb-2.5 border-b border-slate-200 pb-2.5 text-sm font-semibold uppercase tracking-wide text-slate-900">{translatePublicMessage(locale, 'nav.categories')}</div>
                 <CategorySidebarTree
                   tree={tree}
                   activeCategoryId={resolved.category.id}
@@ -539,25 +559,14 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
             </aside>
 
             {/* Products & structured sourcing overview */}
-            <section className="min-w-0">
-              {visibleSubcategories.length > 0 && (
-                <div className="site-panel mb-6 p-4">
-                  <h2 className="mb-3 text-sm font-semibold text-slate-900">
-                    Browse {categoryDisplayName} Subcategories
-                  </h2>
-                  <div className="flex flex-wrap gap-2">
-                    {visibleSubcategories.map((child) => (
-                      <Link
-                        key={child.id}
-                        href={localizePublicPath(`/categories/${child.path || child.slug}`, locale)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-800 transition-colors"
-                      >
-                        <span>{child.name}</span>
-                        <span className="text-xs text-slate-500">({child.product_count})</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+            <section className="min-w-0 order-1 lg:order-2">
+              {subcategoryBarItems.length > 0 && (
+                <CategorySubcategoriesBar
+                  displayName={categoryDisplayName}
+                  subcategories={subcategoryBarItems}
+                  locale={locale}
+                  initialLimit={8}
+                />
               )}
 
               <Suspense

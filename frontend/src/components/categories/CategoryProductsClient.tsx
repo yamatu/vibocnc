@@ -171,27 +171,68 @@ export default function CategoryProductsClient({
 
   return (
     <div>
-      {/* Toolbar */}
-      <div className="site-toolbar mb-6 p-3 sm:p-4">
-        <div className="flex flex-col gap-3 sm:gap-4">
-          {/* Top row */}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:items-center">
-            <div className="min-w-0">
-              <span className="text-sm text-slate-700">
-                {pagination ? (
-                  pagination.total > 0 ? (
-                    <>Showing {((pagination.page - 1) * pagination.page_size) + 1}-{Math.min(pagination.page * pagination.page_size, pagination.total)} of {pagination.total} products</>
-                  ) : (
-                    <>0 products</>
-                  )
+      {/* Compact Single-Row Toolbar */}
+      <div className="site-toolbar mb-4 px-3.5 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-700">
+            <span>
+              {pagination ? (
+                pagination.total > 0 ? (
+                  <>
+                    Showing {((pagination.page - 1) * pagination.page_size) + 1}-
+                    {Math.min(pagination.page * pagination.page_size, pagination.total)} of{' '}
+                    <span className="font-medium text-slate-900">{pagination.total.toLocaleString()}</span> products
+                  </>
                 ) : (
-                  <>{t('common.loading')}</>
-                )}
-                {hasActiveFilters && <span className="text-slate-500"> (filtered)</span>}
+                  <>0 products</>
+                )
+              ) : (
+                <>{t('common.loading')}</>
+              )}
+              {hasActiveFilters && <span className="text-slate-500"> (filtered)</span>}
+            </span>
+            {pagination && pagination.total_pages > 1 && (
+              <span className="text-xs text-slate-500">
+                Page {pagination.page} / {pagination.total_pages}
               </span>
-            </div>
+            )}
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="site-link-accent text-xs font-semibold"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
 
-            {/* View Mode */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={sortValue}
+              onChange={handleSortChange}
+              aria-label="Sort products"
+              className="site-select px-2.5 py-1.5 text-xs sm:text-sm"
+            >
+              <option value="name">{t('products.sortNameAsc')}</option>
+              <option value="name_desc">{t('products.sortNameDesc')}</option>
+              <option value="price_asc">{t('products.sortPriceAsc')}</option>
+              <option value="price_desc">{t('products.sortPriceDesc')}</option>
+              <option value="created_at">{t('products.sortNewest')}</option>
+            </select>
+
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="site-secondary-action px-3 py-1.5 text-xs sm:text-sm"
+            >
+              <AdjustmentsHorizontalIcon className="h-4 w-4 mr-1.5" />
+              Filters
+              {hasActiveFilters && (
+                <span className="ml-1.5 site-chip">
+                  Active
+                </span>
+              )}
+            </button>
+
             <div className="flex items-center overflow-hidden rounded-md border border-slate-300 bg-white">
               <button
                 onClick={() => setViewMode('grid')}
@@ -211,58 +252,12 @@ export default function CategoryProductsClient({
               </button>
             </div>
           </div>
-
-          {/* Bottom row */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 sm:flex-none">
-              <select
-                value={sortValue}
-                onChange={handleSortChange}
-                className="site-select min-w-0 flex-1 px-3 py-2 text-sm sm:flex-none"
-              >
-                <option value="name">{t('products.sortNameAsc')}</option>
-                <option value="name_desc">{t('products.sortNameDesc')}</option>
-                <option value="price_asc">{t('products.sortPriceAsc')}</option>
-                <option value="price_desc">{t('products.sortPriceDesc')}</option>
-                <option value="created_at">{t('products.sortNewest')}</option>
-              </select>
-
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="site-secondary-action px-4 py-2 text-sm"
-              >
-                <AdjustmentsHorizontalIcon className="h-4 w-4 mr-2" />
-                Filters
-                {hasActiveFilters && (
-                  <span className="ml-2 site-chip">
-                    Active
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <div className="ml-auto flex min-w-0 items-center gap-3">
-              {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="site-link-accent text-sm"
-                >
-                  Clear all filters
-                </button>
-              )}
-              {pagination && pagination.total_pages > 0 && (
-                <div className="text-sm text-slate-500">
-                  Page {pagination.page} of {pagination.total_pages}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="site-panel p-6 mb-6">
+        <div className="site-panel p-5 mb-4">
           <ProductFilters
             filters={filters}
             categories={[]}

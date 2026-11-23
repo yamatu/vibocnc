@@ -3,7 +3,12 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryNavigationNode } from '@/types';
-import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { localizeCategoryContent } from '@/lib/i18n/content';
 import { CategoryService } from '@/services/category.service';
@@ -23,6 +28,37 @@ function nodeHref(node: CategoryNavigationNode): string {
   return `/categories/${node.path || node.slug}`;
 }
 
+function countTreeNodes(nodes: CategoryNavigationNode[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    count += 1;
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      count += countTreeNodes(node.children);
+    }
+  }
+  return count;
+}
+
+function filterTreeByQuery(
+  nodes: CategoryNavigationNode[],
+  query: string,
+): CategoryNavigationNode[] {
+  const out: CategoryNavigationNode[] = [];
+  for (const node of nodes) {
+    const matchesSelf = node.name.toLowerCase().includes(query);
+    const filteredChildren =
+      Array.isArray(node.children) && node.children.length > 0
+        ? filterTreeByQuery(node.children, query)
+        : [];
+    if (matchesSelf) {
+      out.push(node);
+    } else if (filteredChildren.length > 0) {
+      out.push({ ...node, children: filteredChildren });
+    }
+  }
+  return out;
+}
+
 export default function CategorySidebarTree({
   tree,
   activeCategoryId,
@@ -35,6 +71,7 @@ export default function CategorySidebarTree({
   const [fullTree, setFullTree] = useState<CategoryNavigationNode[] | null>(null);
   const [loadingFullTree, setLoadingFullTree] = useState(false);
   const [showAllRoots, setShowAllRoots] = useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
   const fetchPromiseRef = useRef<Promise<CategoryNavigationNode[] | null> | null>(null);
 
   const displayTree = useMemo(() => {
@@ -49,6 +86,13 @@ export default function CategorySidebarTree({
   const [openIds, setOpenIds] = useState<Set<number>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const normalizedQuery = filterQuery.trim().toLowerCase();
+  const totalLoadedNodes = useMemo(() => countTreeNodes(displayTree), [displayTree]);
+  const visibleTree = useMemo(() => {
+    if (!normalizedQuery) return displayTree;
+    return filterTreeByQuery(fullTree || displayTree, normalizedQuery);
+  }, [displayTree, fullTree, normalizedQuery]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
@@ -146,7 +190,9 @@ export default function CategorySidebarTree({
   const renderNode = (node: CategoryNavigationNode, depth: number) => {
     const hasLoadedChildren = Array.isArray(node.children) && node.children.length > 0;
     const hasExpandableChildren = hasLoadedChildren || Number(node.child_count || 0) > 0;
-    const isOpen = hasLoadedChildren && (openIds.has(node.id) || (!hydrated && trail.includes(node.id)));
+    const isOpen =
+      hasLoadedChildren &&
+      (Boolean(normalizedQuery) || openIds.has(node.id) || (!hydrated && trail.includes(node.id)));
     const isActive = node.id === activeCategoryId;
 
     return (
@@ -194,13 +240,44 @@ export default function CategorySidebarTree({
   };
 
   const effectiveTotalRoots = fullTree?.length ?? totalRootCount ?? displayTree.length;
-  const hasMoreRoots = !showAllRoots && effectiveTotalRoots > displayTree.length;
+  const hasMoreRoots = !normalizedQuery && !showAllRoots && effectiveTotalRoots > displayTree.length;
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
+      {totalLoadedNodes > 20 && (
+        <div className="relative">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            placeholder={locale === 'zh' ? '快速筛选分类...' : 'Quick filter categories...'}
+            aria-label="Quick filter categories"
+            className="w-full rounded-md border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-7 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[var(--site-primary)] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[var(--site-primary)]"
+          />
+          {filterQuery && (
+            <button
+              type="button"
+              onClick={() => setFilterQuery('')}
+              aria-label="Clear category filter"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <XMarkIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       <div ref={scrollRef} className="max-h-[65vh] space-y-1 overflow-y-auto overscroll-contain">
-        {prioritizeCategoryTrail(displayTree, trail).map((n) => renderNode(n, 0))}
+        {visibleTree.length > 0 ? (
+          prioritizeCategoryTrail(visibleTree, trail).map((n) => renderNode(n, 0))
+        ) : (
+          <div className="px-2 py-4 text-center text-xs text-slate-500">
+            {locale === 'zh' ? '未找到匹配分类。' : 'No matching categories.'}
+          </div>
+        )}
       </div>
+
       <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
         {hasMoreRoots && (
           <button
