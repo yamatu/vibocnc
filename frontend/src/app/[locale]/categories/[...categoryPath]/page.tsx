@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
 import PublicLayout from '@/components/layout/PublicLayout';
 import CategoryProductsClient from '@/components/categories/CategoryProductsClient';
@@ -14,13 +15,25 @@ import { getAvailableTranslationLocales, hasTranslationForLocale, localizeCatego
 import { toProductPathId } from '@/lib/utils';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { translatePublicMessage } from '@/lib/i18n/messages';
-import type { Category, CategoryNavigationNode, CommercePolicySetting, PaginationResponse, Product } from '@/types';
-import { categoryFiltersFromParams } from '@/lib/category-listing';
+import type { CommercePolicySetting, PaginationResponse, Product } from '@/types';
+import {
+  buildCompactSidebarTree,
+  categoryFiltersFromParams,
+  findCategoryNodeById,
+  hasNonCanonicalCategoryQueryParams,
+  isCategoryIndexable,
+  isInternalCategory,
+  toClientCategory,
+  toSlimListingProduct,
+} from '@/lib/category-listing';
+import {
+  buildVibocncCategoryGeoOverview,
+  type VibocncFaqEntry,
+} from '@/lib/category-geo';
 import {
   FALLBACK_COMMERCE_POLICY,
   commercePolicyCarriers,
   commercePolicyDestinationCountries,
-  commercePolicyReturnShippingText,
   resolveWarrantyPeriod,
 } from '@/lib/commerce-policy';
 import { getCommercePolicyCached } from '@/services/commerce-policy.server';
@@ -48,30 +61,18 @@ const legacyCategoryRedirects: Record<string, string> = {
 const brandDisplayNames: Record<string, string> = {
   fanuc: 'FANUC',
   mitsubishi: 'Mitsubishi',
+  siemens: 'Siemens',
   ab: 'AB',
+  abb: 'ABB',
+  omron: 'OMRON',
+  yaskawa: 'Yaskawa',
   huawei: 'Huawei',
   sick: 'SICK',
   tamagawa: 'Tamagawa',
+  keyence: 'KEYENCE',
+  'schneider-electric': 'Schneider Electric',
+  'bosch-rexroth': 'Bosch Rexroth',
 };
-
-// Listing cards only need summary fields; trimming the description keeps the
-// server-rendered page payload small.
-function toListingProduct(product: Product): Product {
-  const description = String(product.short_description || product.description || '');
-  return { ...product, description: description.length > 240 ? `${description.slice(0, 237)}...` : description, faqs: undefined, reviews: undefined, translations: undefined } as Product;
-}
-
-function toNavigationCategory(category: Category): CategoryNavigationNode {
-  return {
-    id: category.id,
-    name: category.name,
-    slug: category.slug,
-    path: category.path,
-    sort_order: category.sort_order,
-    product_count: category.product_count,
-    children: category.children?.map(toNavigationCategory),
-  };
-}
 
 function getCategoryBrandName(category: any, breadcrumb?: any[]): string {
   const rootCategory = breadcrumb?.[0] || category;
@@ -115,9 +116,13 @@ function trimMetaDescription(value: string, maxLength = 158): string {
 // unless they already carry it, so the H1 and title name the full product family.
 function getCategoryDisplayName(category: any, brandName: string): string {
   const name = String(category?.name || '').trim();
-  if (!category?.parent_id) return `${brandName} Parts`;
+  if (!category?.parent_id) {
+    if (isInternalCategory(category)) return name || 'Category';
+    return /\bparts\b/i.test(name) ? name : `${brandName} Parts`;
+  }
   const compact = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
-  return compact(name).includes(compact(brandName)) ? name : `${brandName} ${name}`;
+  const compactBrand = compact(brandName);
+  return compactBrand && compact(name).includes(compactBrand) ? name : `${brandName} ${name}`;
 }
 
 function buildCategoryTitle(displayName: string, brandName: string, isRoot: boolean): string {
@@ -127,13 +132,32 @@ function buildCategoryTitle(displayName: string, brandName: string, isRoot: bool
   return candidates.find((candidate) => candidate.length <= 58) || trimMetaText(displayName, 58);
 }
 
-// Category-specific meta description templates
+function hasRichCategoryDescription(
+  description: string | undefined,
+  displayName: string,
+  brandName: string,
+): boolean {
+  const cleaned = String(description || '').replace(/\s+/g, ' ').trim();
+  if (cleaned.length < 70) return false;
+  const compact = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const compactDesc = compact(cleaned);
+  if (compactDesc === compact(displayName)) return false;
+  if (compactDesc === compact(`${brandName} industrial automation parts`)) return false;
+  return true;
+}
+
+// Prefer rich category descriptions from the database; only fall back to
+// keyword templates when stored copy is empty or short boilerplate.
 function getCategoryMetaDescription(
   categoryName: string,
   baseDescription: string | undefined,
   brandName: string,
   commercePolicy?: CommercePolicySetting,
 ): string {
+  if (hasRichCategoryDescription(baseDescription, categoryName, brandName)) {
+    return trimMetaDescription(baseDescription!);
+  }
+
   const name = categoryName.toLowerCase();
   const titleSuffix = getCategoryTitleSuffix(brandName);
   // The warranty / delivery promise is admin-editable, never hard-coded here.
@@ -164,54 +188,41 @@ function getCategoryMetaDescription(
     if (name.includes(key)) return trimMetaDescription(template);
   }
 
-  if (baseDescription && baseDescription.length > 50) return trimMetaDescription(baseDescription);
-
   return trimMetaDescription(`Browse ${categoryName} from Vibocnc. Quality ${titleSuffix}, tested with ${warranty} warranty and fast shipping ${shipScope} via ${carriers}.`);
 }
 
-/**
- * The category FAQ copy is defined once and used twice: as visible page content
- * and as FAQPage structured data. Google only grants the FAQ rich result when
- * the answers are actually visible, so the two must stay in sync.
- */
-function buildCategoryFaqEntries(
-  categoryName: string,
-  policy: CommercePolicySetting,
-): Array<{ question: string; answer: string }> {
-  const warranty = resolveWarrantyPeriod(undefined, policy);
-  const carriers = commercePolicyCarriers(policy).join(', ');
-  const destinations = commercePolicyDestinationCountries(policy);
-  const shipScope = destinations.length === 0 ? 'worldwide' : `to ${destinations.join(', ')}`;
-  return [
-    {
-      question: `Where can I buy ${categoryName} online?`,
-      answer: `You can buy quality-tested ${categoryName} online at Vibocnc (vibocnc.com). We support ${warranty} warranty terms, ${policy.return_window_text} returns and express shipping ${shipScope} via ${carriers}.`,
-    },
-    {
-      question: `Do you offer warranty on ${categoryName}?`,
-      answer: `Yes, ${categoryName} supplied by Vibocnc include ${warranty} warranty support. Every part is quality checked before shipment, and ${commercePolicyReturnShippingText(policy)} if a return is required within ${policy.return_window_text}.`,
-    },
-    {
-      question: `How fast is shipping for ${categoryName}?`,
-      answer: `We ship ${shipScope} via ${carriers}. Orders are handled in ${policy.shipping_handling_time_text} and transit time is typically ${policy.shipping_transit_time_text}, subject to customs and local service availability.`,
-    },
-    {
-      question: `How do I confirm the right part number for my machine?`,
-      answer: `Send the machine builder, controller model, amplifier or drive reference and the alarm code to flora@vibocnc.com, or use the product enquiry form. Our team verifies interchangeability before dispatch so a compatible ${categoryName} is shipped the first time.`,
-    },
-  ];
+async function resolveCategoryProductCount(categoryId: number): Promise<number> {
+  try {
+    const tree = await CategoryService.getCategories();
+    const matched = findCategoryNodeById(tree, categoryId);
+    if (matched && typeof matched.product_count === 'number') {
+      return matched.product_count;
+    }
+  } catch {
+    // Fall through to product count lookup
+  }
+  try {
+    const page = await ProductService.getProducts({
+      category_id: String(categoryId),
+      include_descendants: 'true',
+      is_active: 'true',
+      page: 1,
+      page_size: 1,
+    });
+    return Number(page.total || 0);
+  } catch {
+    return 0;
+  }
 }
 
 export async function generateMetadata({ params, searchParams }: CategoryPathPageProps): Promise<Metadata> {
   try {
     const { categoryPath } = await params;
     const resolvedSearchParams = (await searchParams) || {};
-    const rawPage = Array.isArray(resolvedSearchParams.page) ? resolvedSearchParams.page[0] : resolvedSearchParams.page;
-    const currentPage = Math.max(1, Number.parseInt(rawPage || '1', 10) || 1);
-    // Deep pages of a category repeat page 1's product copy across thousands of
-    // filtered listings. They stay crawlable so crawlers can still follow the
-    // product links, but they must not be indexed in their own right.
-    const isDeepPage = currentPage > 1;
+    // Deep pages and filtered/sorted query variants repeat page 1's copy across
+    // thousands of combinations. They stay crawlable (follow) so bots can still
+    // reach product links, but must not be indexed in their own right.
+    const hasQueryVariant = hasNonCanonicalCategoryQueryParams(resolvedSearchParams);
     const locale = await resolveRouteLocale(params);
     const path = (categoryPath || []).join('/');
     const resolved = await CategoryService.getCategoryByPath(path);
@@ -234,13 +245,15 @@ export async function generateMetadata({ params, searchParams }: CategoryPathPag
     const metaDescription = getCategoryMetaDescription(displayName, category.description, brandName, commercePolicy);
     // The root layout appends "| Vibocnc"; buildCategoryTitle keeps room for it.
     const title = buildCategoryTitle(displayName, brandName, !category.parent_id);
+    const productCount = await resolveCategoryProductCount(resolved.category.id);
+    const isIndexableCategory = isCategoryIndexable(resolved.category, productCount);
     const ogImage = category.image_url
       ? (/^https?:\/\//i.test(category.image_url) ? category.image_url : `${getSiteUrl()}${category.image_url.startsWith('/') ? '' : '/'}${category.image_url}`)
       : `${getSiteUrl()}/images/og-image.jpg`;
     return {
       title,
       description: metaDescription,
-      robots: { index: hasRequestedTranslation && !isDeepPage, follow: true },
+      robots: { index: hasRequestedTranslation && isIndexableCategory && !hasQueryVariant, follow: true },
       openGraph: {
         title: withSiteName(title),
         description: metaDescription,
@@ -257,12 +270,29 @@ export async function generateMetadata({ params, searchParams }: CategoryPathPag
     return {
       title: 'Category',
       description: 'Browse industrial automation parts by category.',
+      robots: { index: false, follow: false },
     };
   }
 }
 
 // CollectionPage + FAQ + ItemList JSON-LD for category pages
-function CategoryStructuredData({ category, breadcrumb, baseUrl, locale, commercePolicy, items }: { category: any; breadcrumb: any[]; baseUrl: string; locale: Awaited<ReturnType<typeof resolveRouteLocale>>; commercePolicy: CommercePolicySetting; items?: Array<{ name: string; url: string }> }) {
+function CategoryStructuredData({
+  category,
+  breadcrumb,
+  baseUrl,
+  locale,
+  commercePolicy,
+  faqEntries,
+  items,
+}: {
+  category: any;
+  breadcrumb: any[];
+  baseUrl: string;
+  locale: Awaited<ReturnType<typeof resolveRouteLocale>>;
+  commercePolicy: CommercePolicySetting;
+  faqEntries: VibocncFaqEntry[];
+  items?: Array<{ name: string; url: string }>;
+}) {
   const urlPath = category.path ? `/categories/${category.path}` : `/categories/${category.slug}`;
   const categoryUrl = `${baseUrl}${localizePublicPath(urlPath, locale)}`;
   const brandName = getCategoryBrandName(category, breadcrumb);
@@ -296,19 +326,20 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl, locale, commerc
     }
   };
 
-  const faqEntries = buildCategoryFaqEntries(catName, commercePolicy);
-  const faqData = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": faqEntries.map((entry) => ({
-      "@type": "Question",
-      "name": entry.question,
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": entry.answer
-      }
-    }))
-  };
+  const faqData = faqEntries.length > 0
+    ? {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": faqEntries.map((entry) => ({
+        "@type": "Question",
+        "name": entry.question,
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": entry.answer
+        }
+      }))
+    }
+    : null;
 
   // ItemList of the products rendered in the grid on this page.
   const itemListData = items && items.length > 0
@@ -327,20 +358,24 @@ function CategoryStructuredData({ category, breadcrumb, baseUrl, locale, commerc
     }
     : null;
 
+  const serialize = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
+
   return (
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionData) }}
+        dangerouslySetInnerHTML={{ __html: serialize(collectionData) }}
       />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqData) }}
-      />
+      {faqData && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serialize(faqData) }}
+        />
+      )}
       {itemListData && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListData) }}
+          dangerouslySetInnerHTML={{ __html: serialize(itemListData) }}
         />
       )}
     </>
@@ -379,9 +414,12 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
     breadcrumb: (resolved.breadcrumb || []).map((item: any) => localizeCategoryContent(item, categoryContentLocale)),
   };
 
-  const tree = (await CategoryService.getCategories())
-    .map((item) => localizeCategoryContent(item, locale))
-    .map(toNavigationCategory);
+  const rawTree = await CategoryService.getCategories();
+  const matchedTreeNode = findCategoryNodeById(rawTree, resolved.category.id);
+  const localizedRawTree = rawTree.map((item) => localizeCategoryContent(item, locale));
+  const { tree, totalRootCount } = buildCompactSidebarTree(localizedRawTree, resolved.category.id, {
+    topRootLimit: 24,
+  });
   const breadcrumbIds = (resolved.breadcrumb || [])
     .map((c: any) => Number(c.id))
     .filter((n: number) => Number.isFinite(n) && n > 0);
@@ -392,7 +430,6 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
   const commercePolicy = await getCommercePolicyCached();
   const categoryBrandName = getCategoryBrandName(resolved.category, resolved.breadcrumb || []);
   const categoryDisplayName = getCategoryDisplayName(resolved.category, categoryBrandName);
-  const categoryFaqEntries = buildCategoryFaqEntries(categoryDisplayName, commercePolicy);
 
   // The first page of products is rendered on the server so crawlers that do
   // not execute JavaScript still see the catalogue; the client takes over for
@@ -400,14 +437,38 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
   let initialPage: PaginationResponse<Product> | undefined;
   try {
     const listed = await ProductService.getProducts(categoryFiltersFromParams(resolved.category.id, searchParamsResolved));
-    initialPage = { ...listed, data: (listed.data || []).map((item) => toListingProduct(localizeProductContent(item, locale))) };
+    initialPage = { ...listed, data: (listed.data || []).map((item) => toSlimListingProduct(localizeProductContent(item, locale))) };
   } catch {
     initialPage = undefined;
   }
+  const productCount =
+    typeof matchedTreeNode?.product_count === 'number'
+      ? matchedTreeNode.product_count
+      : Number(initialPage?.total || 0);
+  const visibleSubcategories = (matchedTreeNode?.children || [])
+    .filter((child) => !isInternalCategory(child) && Number(child.product_count || 0) > 0)
+    .map((child) => localizeCategoryContent(child, locale))
+    .sort((a, b) => Number(b.product_count || 0) - Number(a.product_count || 0));
   const categoryItemList = (initialPage?.data || []).map((item) => ({
     name: item.name || item.sku,
     url: `${baseUrl}${localizePublicPath(`/products/${toProductPathId(item.sku)}`, locale)}`,
   }));
+
+  const isCanonicalPage = !hasNonCanonicalCategoryQueryParams(searchParamsResolved);
+  const geoOverview =
+    !isInternalCategory(resolved.category) && productCount > 0 && isCanonicalPage
+      ? buildVibocncCategoryGeoOverview({
+          category: resolved.category,
+          displayName: categoryDisplayName,
+          brandName: categoryBrandName,
+          productCount,
+          subcategories: visibleSubcategories,
+          sampleProducts: initialPage?.data || [],
+          commercePolicy,
+          locale,
+        })
+      : null;
+  const categoryFaqEntries = geoOverview?.faqEntries || [];
 
   return (
     <PublicLayout>
@@ -417,6 +478,7 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
         baseUrl={baseUrl}
         locale={locale}
         commercePolicy={commercePolicy}
+        faqEntries={categoryFaqEntries}
         items={categoryItemList}
       />
       <ScrollRestorer storageKey="category-scroll-y" />
@@ -428,7 +490,7 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
               <div className="site-hero-kicker mb-5">{translatePublicMessage(locale, 'categories.kicker')}</div>
               <h1 className="text-3xl md:text-5xl font-bold mb-3">{categoryDisplayName}</h1>
               {resolved.category.description && (
-                <p className="text-lg md:text-xl text-blue-100 max-w-3xl mx-auto leading-relaxed">{resolved.category.description}</p>
+                <p className="text-base md:text-lg text-blue-100 max-w-4xl mx-auto leading-relaxed">{resolved.category.description}</p>
               )}
               <div className="mt-5">
                 <nav className="flex justify-center" aria-label="Breadcrumb">
@@ -470,13 +532,34 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
                   tree={tree}
                   activeCategoryId={resolved.category.id}
                   defaultOpenIds={breadcrumbIds}
+                  totalRootCount={totalRootCount}
                   storageKey="category-sidebar-open-ids"
                 />
               </div>
             </aside>
 
-            {/* Products */}
+            {/* Products & structured sourcing overview */}
             <section className="min-w-0">
+              {visibleSubcategories.length > 0 && (
+                <div className="site-panel mb-6 p-4">
+                  <h2 className="mb-3 text-sm font-semibold text-slate-900">
+                    Browse {categoryDisplayName} Subcategories
+                  </h2>
+                  <div className="flex flex-wrap gap-2">
+                    {visibleSubcategories.map((child) => (
+                      <Link
+                        key={child.id}
+                        href={localizePublicPath(`/categories/${child.path || child.slug}`, locale)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-800 transition-colors"
+                      >
+                        <span>{child.name}</span>
+                        <span className="text-xs text-slate-500">({child.product_count})</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center py-12">
@@ -484,27 +567,114 @@ export default async function CategoryPathPage({ params, searchParams }: Categor
                   </div>
                 }
               >
-                <CategoryProductsClient category={resolved.category} initialSearchParams={searchParamsResolved} initialPage={initialPage} />
+                <CategoryProductsClient category={toClientCategory(resolved.category)} initialSearchParams={searchParamsResolved} initialPage={initialPage} />
               </Suspense>
+
+              {/* Structured Sourcing & Lifecycle Overview (SEO + GEO) */}
+              {geoOverview && (
+                <article
+                  id="category-sourcing-overview"
+                  className="site-panel mt-8 p-6 space-y-6"
+                  aria-labelledby="category-sourcing-heading"
+                >
+                  <div>
+                    <h2 id="category-sourcing-heading" className="text-xl font-semibold text-slate-900">
+                      {categoryDisplayName}: Sourcing &amp; Lifecycle Overview
+                    </h2>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                      {geoOverview.leadStatement}
+                    </p>
+                  </div>
+
+                  {/* Quick-reference catalog specification grid */}
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    {geoOverview.factRows.map((row) => (
+                      <div key={row.term}>
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {row.term}
+                        </dt>
+                        <dd className="mt-1 text-sm font-medium text-slate-900">{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  {/* MRO procurement & interchangeability guidance */}
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">
+                      MRO Procurement &amp; Interchangeability Notes
+                    </h3>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {geoOverview.procurementNotes.map((note) => (
+                        <div
+                          key={note.heading}
+                          className="rounded-lg border border-slate-200 bg-white p-4"
+                        >
+                          <h4 className="text-sm font-semibold text-slate-900">{note.heading}</h4>
+                          <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{note.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Featured part numbers */}
+                  {geoOverview.featuredParts.length > 0 && (
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900">
+                        Featured {categoryDisplayName} Part Numbers
+                      </h3>
+                      {geoOverview.seriesPrefixes.length > 0 && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Indexed series prefixes: {geoOverview.seriesPrefixes.join(' · ')}
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {geoOverview.featuredParts.map((part) => (
+                          <Link
+                            key={part.sku}
+                            href={part.href}
+                            className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-800 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-900 transition-colors"
+                          >
+                            {part.sku}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-4 text-sm text-slate-700">
+                    Sourcing a multi-line plant BOM or discontinued {categoryBrandName} assembly? Email your part list to{' '}
+                    <a href="mailto:flora@vibocnc.com" className="font-semibold text-[var(--site-primary)] underline">
+                      flora@vibocnc.com
+                    </a>{' '}
+                    or submit an inquiry via{' '}
+                    <Link href={localizePublicPath('/contact', locale)} className="font-semibold text-[var(--site-primary)] underline">
+                      Vibocnc RFQ Support
+                    </Link>
+                    .
+                  </div>
+                </article>
+              )}
 
               {/* Visible FAQ: same questions and answers as the FAQPage markup
                   above. Google only shows the FAQ rich result when the content
                   is actually on the page. */}
-              <section className="site-panel mt-8 p-6" aria-labelledby="category-faq-heading">
-                <h2 id="category-faq-heading" className="text-xl font-semibold text-slate-900">
-                  {categoryDisplayName}: frequently asked questions
-                </h2>
-                <div className="mt-4 divide-y divide-slate-200">
-                  {categoryFaqEntries.map((entry) => (
-                    <details key={entry.question} className="group py-4">
-                      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">
-                        {entry.question}
-                      </summary>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-700">{entry.answer}</p>
-                    </details>
-                  ))}
-                </div>
-              </section>
+              {categoryFaqEntries.length > 0 && (
+                <section className="site-panel mt-8 p-6" aria-labelledby="category-faq-heading">
+                  <h2 id="category-faq-heading" className="text-xl font-semibold text-slate-900">
+                    {categoryDisplayName}: Procurement &amp; Compatibility FAQ
+                  </h2>
+                  <div className="mt-4 divide-y divide-slate-200">
+                    {categoryFaqEntries.map((entry) => (
+                      <details key={entry.question} className="group py-4" open>
+                        <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900 marker:hidden">
+                          {entry.question}
+                        </summary>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-700">{entry.answer}</p>
+                      </details>
+                    ))}
+                  </div>
+                </section>
+              )}
             </section>
           </div>
         </div>

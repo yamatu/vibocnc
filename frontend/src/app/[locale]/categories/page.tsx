@@ -8,6 +8,7 @@ import { localizeCategoryContent } from '@/lib/i18n/content';
 import { localizePublicPath } from '@/lib/i18n/config';
 import { getSiteUrl } from '@/lib/url';
 import { SITE_NAME } from '@/lib/seo';
+import { compareCategoriesByPopularity, isInternalCategory, toCompactNavigationNode } from '@/lib/category-listing';
 import type { Category, CategoryNavigationNode } from '@/types';
 
 export const revalidate = 3600;
@@ -30,18 +31,6 @@ export async function generateMetadata({ params }: { params: LocaleRouteParams }
 
 function categoryPath(category: Pick<Category, 'path' | 'slug'>): string {
   return `/categories/${category.path || category.slug}`;
-}
-
-function toNavigationCategory(category: Category): CategoryNavigationNode {
-  return {
-    id: category.id,
-    name: category.name,
-    slug: category.slug,
-    path: category.path,
-    sort_order: category.sort_order,
-    product_count: category.product_count,
-    children: category.children?.map(toNavigationCategory),
-  };
 }
 
 export default async function CategoriesPage({ params }: { params: LocaleRouteParams }) {
@@ -75,11 +64,19 @@ export default async function CategoriesPage({ params }: { params: LocaleRoutePa
         otherBrands: 'More brands & categories',
         viewAll: 'View all products',
       };
+
   let categories: CategoryNavigationNode[] = [];
   try {
-    categories = (await CategoryService.getCategories())
+    const activeRoots = (await CategoryService.getCategories())
+      .filter((category) => !isInternalCategory(category) && Number(category.product_count || 0) > 0)
       .map((category) => localizeCategoryContent(category, locale))
-      .map(toNavigationCategory);
+      .sort(compareCategoriesByPopularity);
+
+    // Preload subcategories only for the initially expanded top brand; all
+    // other brand accordions lazily load subcategories on click.
+    categories = activeRoots.map((category, index) =>
+      toCompactNavigationNode(category, { includeChildren: index === 0 }),
+    );
   } catch (error) {
     console.error('Failed to load categories index:', error);
   }

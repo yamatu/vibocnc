@@ -1,17 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronDoubleLeftIcon,
-  ChevronDoubleRightIcon
+  ChevronDoubleRightIcon,
 } from '@heroicons/react/24/outline';
 
 interface PaginationProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  getPageHref?: (page: number) => string;
   showFirstLast?: boolean;
   showPageNumbers?: boolean;
   maxVisiblePages?: number;
@@ -19,15 +21,65 @@ interface PaginationProps {
   className?: string;
 }
 
+interface PageControlProps {
+  href?: string;
+  rel?: string;
+  disabled?: boolean;
+  isCurrent?: boolean;
+  onClick: () => void;
+  className: string;
+  ariaLabel?: string;
+  children: ReactNode;
+}
+
+function PageControl({
+  href,
+  rel,
+  disabled,
+  isCurrent,
+  onClick,
+  className,
+  ariaLabel,
+  children,
+}: PageControlProps) {
+  if (href && !disabled && !isCurrent) {
+    return (
+      <Link
+        href={href}
+        rel={rel}
+        prefetch={false}
+        className={className}
+        aria-label={ariaLabel}
+      >
+        {children}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || isCurrent}
+      className={className}
+      aria-label={ariaLabel}
+      aria-current={isCurrent ? 'page' : undefined}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function Pagination({
   currentPage,
   totalPages,
   onPageChange,
+  getPageHref,
   showFirstLast = true,
   showPageNumbers = true,
   maxVisiblePages = 5,
   showJump = false,
-  className = ''
+  className = '',
 }: PaginationProps) {
   const [jumpValue, setJumpValue] = useState(String(currentPage));
 
@@ -35,38 +87,34 @@ export default function Pagination({
     setJumpValue(String(currentPage));
   }, [currentPage]);
 
+  if (totalPages <= 1) return null;
+
   const getVisiblePages = () => {
     const pages: (number | string)[] = [];
-    
+
     if (totalPages <= maxVisiblePages) {
-      // Show all pages if total is less than max visible
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Calculate start and end pages
       let start = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
       const end = Math.min(totalPages, start + maxVisiblePages - 1);
-      
-      // Adjust start if we're near the end
+
       if (end - start + 1 < maxVisiblePages) {
         start = Math.max(1, end - maxVisiblePages + 1);
       }
-      
-      // Add first page and ellipsis if needed
+
       if (start > 1) {
         pages.push(1);
         if (start > 2) {
           pages.push('...');
         }
       }
-      
-      // Add visible pages
+
       for (let i = start; i <= end; i++) {
         pages.push(i);
       }
-      
-      // Add ellipsis and last page if needed
+
       if (end < totalPages) {
         if (end < totalPages - 1) {
           pages.push('...');
@@ -74,7 +122,7 @@ export default function Pagination({
         pages.push(totalPages);
       }
     }
-    
+
     return pages;
   };
 
@@ -88,20 +136,22 @@ export default function Pagination({
 
   const canGoPrevious = currentPage > 1;
   const canGoNext = currentPage < totalPages;
-
-  if (totalPages <= 1) return null;
+  const prevPage = Math.max(1, currentPage - 1);
+  const nextPage = Math.min(totalPages, currentPage + 1);
 
   return (
     <nav className={`flex items-center justify-between ${className}`} aria-label="Pagination">
       <div className="flex-1 flex justify-between sm:hidden">
         {/* Mobile pagination */}
-        <button
-          onClick={() => handlePageClick(currentPage - 1)}
+        <PageControl
+          href={canGoPrevious ? getPageHref?.(prevPage) : undefined}
+          rel="prev"
           disabled={!canGoPrevious}
+          onClick={() => handlePageClick(prevPage)}
           className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
-        </button>
+        </PageControl>
         {showJump ? (
           <div className="relative inline-flex items-center gap-2 px-2 py-2 text-sm text-gray-700">
             <span className="text-xs text-gray-600">Page</span>
@@ -131,13 +181,15 @@ export default function Pagination({
             Page {currentPage} of {totalPages}
           </span>
         )}
-        <button
-          onClick={() => handlePageClick(currentPage + 1)}
+        <PageControl
+          href={canGoNext ? getPageHref?.(nextPage) : undefined}
+          rel="next"
           disabled={!canGoNext}
+          onClick={() => handlePageClick(nextPage)}
           className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
-        </button>
+        </PageControl>
       </div>
 
       <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
@@ -175,72 +227,87 @@ export default function Pagination({
             ) : null}
 
             <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-            {/* First page button */}
-            {showFirstLast && (
-              <button
-                onClick={() => handlePageClick(1)}
-                disabled={currentPage === 1}
-                className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="First page"
-              >
-                <ChevronDoubleLeftIcon className="h-5 w-5" />
-              </button>
-            )}
+              {/* First page */}
+              {showFirstLast && (
+                <PageControl
+                  href={currentPage > 1 ? getPageHref?.(1) : undefined}
+                  disabled={currentPage === 1}
+                  onClick={() => handlePageClick(1)}
+                  className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  ariaLabel="First page"
+                >
+                  <ChevronDoubleLeftIcon className="h-5 w-5" />
+                </PageControl>
+              )}
 
-            {/* Previous page button */}
-            <button
-              onClick={() => handlePageClick(currentPage - 1)}
-              disabled={!canGoPrevious}
-              className={`relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed ${
-                !showFirstLast ? 'rounded-l-md' : ''
-              }`}
-              aria-label="Previous page"
-            >
-              <ChevronLeftIcon className="h-5 w-5" />
-            </button>
-
-            {/* Page numbers */}
-            {showPageNumbers && visiblePages.map((page, index) => (
-              <button
-                key={index}
-                onClick={() => handlePageClick(page)}
-                disabled={page === '...'}
-                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                  page === currentPage
-                    ? 'z-10 bg-blue-50 border-blue-700 text-[var(--site-primary)]'
-                    : page === '...'
-                    ? 'border-gray-300 bg-white text-gray-700 cursor-default'
-                    : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+              {/* Previous page */}
+              <PageControl
+                href={canGoPrevious ? getPageHref?.(prevPage) : undefined}
+                rel="prev"
+                disabled={!canGoPrevious}
+                onClick={() => handlePageClick(prevPage)}
+                className={`relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  !showFirstLast ? 'rounded-l-md' : ''
                 }`}
-                aria-label={page === '...' ? 'More pages' : `Go to page ${page}`}
-                aria-current={page === currentPage ? 'page' : undefined}
+                ariaLabel="Previous page"
               >
-                {page}
-              </button>
-            ))}
+                <ChevronLeftIcon className="h-5 w-5" />
+              </PageControl>
 
-            {/* Next page button */}
-            <button
-              onClick={() => handlePageClick(currentPage + 1)}
-              disabled={!canGoNext}
-              className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Next page"
-            >
-              <ChevronRightIcon className="h-5 w-5" />
-            </button>
+              {/* Page numbers */}
+              {showPageNumbers &&
+                visiblePages.map((page, index) =>
+                  typeof page === 'number' ? (
+                    <PageControl
+                      key={`page-${page}`}
+                      href={page !== currentPage ? getPageHref?.(page) : undefined}
+                      isCurrent={page === currentPage}
+                      onClick={() => handlePageClick(page)}
+                      className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                        page === currentPage
+                          ? 'z-10 bg-blue-50 border-blue-700 text-[var(--site-primary)]'
+                          : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+                      }`}
+                      ariaLabel={`Go to page ${page}`}
+                    >
+                      {page}
+                    </PageControl>
+                  ) : (
+                    <span
+                      key={`ellipsis-${index}`}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 cursor-default"
+                      aria-hidden="true"
+                    >
+                      {page}
+                    </span>
+                  ),
+                )}
 
-            {/* Last page button */}
-            {showFirstLast && (
-              <button
-                onClick={() => handlePageClick(totalPages)}
-                disabled={currentPage === totalPages}
-                className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="Last page"
+              {/* Next page */}
+              <PageControl
+                href={canGoNext ? getPageHref?.(nextPage) : undefined}
+                rel="next"
+                disabled={!canGoNext}
+                onClick={() => handlePageClick(nextPage)}
+                className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                ariaLabel="Next page"
               >
-                <ChevronDoubleRightIcon className="h-5 w-5" />
-              </button>
-            )}
-          </nav>
+                <ChevronRightIcon className="h-5 w-5" />
+              </PageControl>
+
+              {/* Last page */}
+              {showFirstLast && (
+                <PageControl
+                  href={currentPage < totalPages ? getPageHref?.(totalPages) : undefined}
+                  disabled={currentPage === totalPages}
+                  onClick={() => handlePageClick(totalPages)}
+                  className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  ariaLabel="Last page"
+                >
+                  <ChevronDoubleRightIcon className="h-5 w-5" />
+                </PageControl>
+              )}
+            </nav>
           </div>
         </div>
       </div>

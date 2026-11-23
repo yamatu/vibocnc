@@ -3,7 +3,8 @@ import { permanentRedirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { ProductService } from '@/services/product.service';
 import { CategoryService } from '@/services/category.service';
-import type { Category, Product } from '@/types';
+import type { Category, CategoryNavigationNode, Product } from '@/types';
+import { buildCompactSidebarTree, toSlimListingProduct } from '@/lib/category-listing';
 import { getSiteUrl } from '@/lib/url';
 import { withSiteName } from '@/lib/seo';
 import { toProductPathId } from '@/lib/utils';
@@ -22,7 +23,8 @@ type ProductsPageServerData = {
   products: Product[];
   totalPages: number;
   total: number;
-  categories: Category[];
+  categories: CategoryNavigationNode[];
+  totalCategoryRoots: number;
   currentPage: number;
   pageSize: number;
   selectedCategory: string;
@@ -233,19 +235,7 @@ export async function generateMetadata({ params: routeParams, searchParams }: {
   };
 }
 
-// The sidebar tree only renders names and nesting. The raw tree carries every
-// language's translations per node, which would be serialized into the page.
-function toFilterTreeNode(category: Category): Category {
-  return {
-    id: category.id,
-    name: category.name,
-    slug: category.slug,
-    path: category.path,
-    parent_id: category.parent_id,
-    product_count: category.product_count,
-    children: category.children?.map(toFilterTreeNode),
-  } as Category;
-}
+// Compact sidebar tree & slim product helpers live in @/lib/category-listing.
 
 // Server-side data fetching for SEO
 async function getServerSideData(searchParams: PageSearchParams, locale: PublicLocale): Promise<ProductsPageServerData> {
@@ -270,14 +260,23 @@ async function getServerSideData(searchParams: PageSearchParams, locale: PublicL
       CategoryService.getCategories(),
     ]);
 
+    const parsedCategoryId = categoryId ? Number.parseInt(categoryId, 10) : null;
+    const localizedCategories = (categories || []).map((category) => localizeCategoryContent(category, locale));
+    const { tree: compactCategories, totalRootCount } = buildCompactSidebarTree(
+      localizedCategories,
+      Number.isFinite(parsedCategoryId) ? parsedCategoryId : null,
+      { topRootLimit: 24 },
+    );
+
     return {
       // The catalogue must keep every active product visible in every
       // language. Translated fields override the English record when they
       // exist; missing translations fall back to the canonical product data.
-      products: (productsData.data || []).map((product) => localizeProductContent(product, locale)),
+      products: (productsData.data || []).map((product) => toSlimListingProduct(localizeProductContent(product, locale))),
       totalPages: Math.max(1, Math.ceil((productsData.total || 0) / pageSize)),
       total: productsData.total || 0,
-      categories: (categories || []).map((category) => toFilterTreeNode(localizeCategoryContent(category, locale))),
+      categories: compactCategories,
+      totalCategoryRoots: totalRootCount,
       currentPage: page,
       pageSize,
       selectedCategory: categoryId || '',
@@ -292,6 +291,7 @@ async function getServerSideData(searchParams: PageSearchParams, locale: PublicL
       totalPages: 1,
       total: 0,
       categories: [],
+      totalCategoryRoots: 0,
       currentPage: 1,
       pageSize,
       selectedCategory: '',

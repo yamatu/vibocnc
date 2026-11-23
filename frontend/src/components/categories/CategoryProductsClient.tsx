@@ -6,7 +6,6 @@ import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ProductService } from '@/services/product.service';
-import { CategoryService } from '@/services/category.service';
 import { queryKeys } from '@/lib/react-query';
 import ProductFilters from '@/components/products/ProductFilters';
 import Pagination from '@/components/common/Pagination';
@@ -23,7 +22,8 @@ import {
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
-import { localizeCategoryContent, localizeProductContent } from '@/lib/i18n/content';
+import { localizeProductContent } from '@/lib/i18n/content';
+import { DEFAULT_PRODUCT_PAGE_SIZE } from '@/lib/product-listing';
 import type { Category, PaginationResponse, Product } from '@/types';
 import { categoryFiltersFromParams, sameCategoryFilters, type CategoryProductFilters } from '@/lib/category-listing';
 
@@ -62,12 +62,6 @@ export default function CategoryProductsClient({
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch all categories for filters
-  const { data: categoriesResponse } = useQuery({
-    queryKey: queryKeys.categories.all(),
-    queryFn: () => CategoryService.getCategories(),
-  });
-
   const products = (productsResponse?.data || []).map((product) => localizeProductContent(product, locale));
   const pagination = productsResponse ? {
     page: productsResponse.page,
@@ -75,23 +69,30 @@ export default function CategoryProductsClient({
     total: productsResponse.total,
     total_pages: productsResponse.total_pages
   } : null;
-  const categories = (categoriesResponse || []).map((item) => localizeCategoryContent(item, locale));
 
-  // Update URL when filters change
-  const updateURL = (newFilters: typeof filters) => {
+  const buildCategoryUrl = (targetFilters: CategoryProductFilters): string => {
     const params = new URLSearchParams();
 
-    Object.entries(newFilters).forEach(([key, value]) => {
+    Object.entries(targetFilters).forEach(([key, value]) => {
       if (value && value !== '' && key !== 'category_id' && key !== 'is_active' && key !== 'include_descendants') {
-        if (key === 'page' && value === 1) return;
+        if (key === 'page' && Number(value) <= 1) return;
+        if (key === 'page_size' && Number(value) === DEFAULT_PRODUCT_PAGE_SIZE) return;
+        if (key === 'sort_by' && value === 'created_at' && targetFilters.sort_dir === 'desc') return;
+        if (key === 'sort_dir' && value === 'desc' && targetFilters.sort_by === 'created_at') return;
         params.set(key, value.toString());
       }
     });
 
     const base = href(`/categories/${category.path || category.slug}`);
-    const newURL = `${base}${params.toString() ? `?${params.toString()}` : ''}`;
-    router.push(newURL, { scroll: false });
+    return `${base}${params.toString() ? `?${params.toString()}` : ''}`;
   };
+
+  // Update URL when filters change
+  const updateURL = (newFilters: typeof filters) => {
+    router.push(buildCategoryUrl(newFilters), { scroll: false });
+  };
+
+  const getPageHref = (page: number) => buildCategoryUrl({ ...filters, page });
 
   const handleFilterChange = (newFilters: Partial<typeof filters>) => {
     const updatedFilters = {
@@ -134,7 +135,7 @@ export default function CategoryProductsClient({
   const clearFilters = () => {
     const clearedFilters: CategoryProductFilters = {
       page: 1,
-      page_size: 48,
+      page_size: DEFAULT_PRODUCT_PAGE_SIZE,
       category_id: String(category.id),
       include_descendants: 'true',
       sort_by: 'created_at',
@@ -178,7 +179,11 @@ export default function CategoryProductsClient({
             <div className="min-w-0">
               <span className="text-sm text-slate-700">
                 {pagination ? (
-                  <>Showing {((pagination.page - 1) * pagination.page_size) + 1}-{Math.min(pagination.page * pagination.page_size, pagination.total)} of {pagination.total} products</>
+                  pagination.total > 0 ? (
+                    <>Showing {((pagination.page - 1) * pagination.page_size) + 1}-{Math.min(pagination.page * pagination.page_size, pagination.total)} of {pagination.total} products</>
+                  ) : (
+                    <>0 products</>
+                  )
                 ) : (
                   <>{t('common.loading')}</>
                 )}
@@ -245,7 +250,7 @@ export default function CategoryProductsClient({
                   Clear all filters
                 </button>
               )}
-              {pagination && (
+              {pagination && pagination.total_pages > 0 && (
                 <div className="text-sm text-slate-500">
                   Page {pagination.page} of {pagination.total_pages}
                 </div>
@@ -260,7 +265,7 @@ export default function CategoryProductsClient({
         <div className="site-panel p-6 mb-6">
           <ProductFilters
             filters={filters}
-            categories={categories}
+            categories={[]}
             onFilterChange={handleFilterChange}
             showCategoryFilter={false}
           />
@@ -306,8 +311,6 @@ export default function CategoryProductsClient({
                       {product.description || ''}
                     </p>
 
-                    {/* Price on its own row: a shared price/button row let the price shrink
-                        under the buttons on narrow cards (global .flex > * { min-width: 0 }). */}
                     <div className="site-product-card-actions space-y-3">
                       {hasProductPrice(product) && (
                         <p className="whitespace-nowrap text-xl font-bold leading-none text-[var(--site-primary)]">{formatCurrency(product.price)}</p>
@@ -379,10 +382,10 @@ export default function CategoryProductsClient({
                     <div className="flex-shrink-0 text-left sm:text-right">
                       <div className="text-xl font-bold text-[var(--site-primary)] mb-2">
                         {hasProductPrice(product) ? formatCurrency(product.price) : (
-                              <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
-                                {t('products.contactForQuote')}
-                              </Link>
-                            )}
+                          <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-primary-action inline-flex max-w-full px-3 py-2 text-center text-sm font-semibold">
+                            {t('products.contactForQuote')}
+                          </Link>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <Link
@@ -417,6 +420,7 @@ export default function CategoryProductsClient({
                 currentPage={pagination.page}
                 totalPages={pagination.total_pages}
                 onPageChange={handlePageChange}
+                getPageHref={getPageHref}
                 showJump
               />
             </div>

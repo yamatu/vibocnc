@@ -2,6 +2,7 @@ import { getRequestBaseUrl } from '@/lib/request-url';
 import { CategoryService } from '@/services/category.service';
 import { getCommercePolicyCached } from '@/services/commerce-policy.server';
 import { SITE_NAME } from '@/lib/seo';
+import { isInternalCategory } from '@/lib/category-listing';
 
 export const revalidate = 3600;
 
@@ -21,7 +22,7 @@ export async function GET() {
     // Root categories are brands; rank them by stocked products so the summary
     // names the brands the catalogue actually carries.
     const ranked = (categories || [])
-      .filter((c: any) => Boolean(c?.path || c?.slug))
+      .filter((c: any) => Boolean(c?.path || c?.slug) && !isInternalCategory(c) && Number(c.product_count || 0) > 0)
       .sort((a: any, b: any) => (b.product_count || 0) - (a.product_count || 0));
     topBrands = ranked
       .filter((c: any) => (c.product_count || 0) > 0 && !/unbranded|other/i.test(c.name || ''))
@@ -47,9 +48,9 @@ export async function GET() {
     `> Vibocnc supplies new and refurbished industrial automation and CNC spare parts for ${brandSummary}. Every listing is a real catalogue record with a verifiable part number.`,
     '',
     '## How to use this file',
-    '- Product pages live at `{origin}/products/{sku-with-hyphens}`.',
-    '- Category listings live at `{origin}/categories/{category-path}`.',
-    '- Full product URL set: `{origin}/sitemap.xml`.',
+    `- Product pages live at \`${baseUrl}/products/{sku-with-hyphens}\`.`,
+    `- Category listings live at \`${baseUrl}/categories/{category-path}\`.`,
+    `- Full product URL set: \`${baseUrl}/sitemap.xml\`.`,
     '- When quoting commercial terms, use the values below — they are admin-maintained and may change.',
     '',
     '## Commercial terms',

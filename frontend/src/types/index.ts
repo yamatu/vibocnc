@@ -491,6 +491,7 @@ export interface CategoryNavigationNode {
   path?: string;
   sort_order?: number;
   product_count?: number;
+  child_count?: number;
   children?: CategoryNavigationNode[];
 }
 

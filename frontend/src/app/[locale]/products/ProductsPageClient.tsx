@@ -20,14 +20,15 @@ import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasP
 import { useCartStore } from '@/store/cart.store';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import { buildProductListingPath, normalizeProductPageSize, PRODUCT_PAGE_SIZES } from '@/lib/product-listing';
-import type { Category, Product } from '@/types';
+import type { Category, CategoryNavigationNode, Product } from '@/types';
 
 interface ProductsPageClientProps {
   initialData: {
     products: Product[];
     totalPages: number;
     total: number;
-    categories: Category[];
+    categories: Array<Category | CategoryNavigationNode>;
+    totalCategoryRoots?: number;
     currentPage: number;
     pageSize: number;
     selectedCategory: string;
@@ -216,6 +217,7 @@ export default function ProductsPageClient({ initialData, searchParams }: Produc
                   tree={initialData.categories}
                   selectedCategoryId={selectedCategory ? Number(selectedCategory) : null}
                   onSelectCategory={(id) => handleCategoryChange(id ? String(id) : '')}
+                  totalRootCount={initialData.totalCategoryRoots}
                   storageKey="products-category-open-ids"
                   allLabel={t('footer.allProducts')}
                 />

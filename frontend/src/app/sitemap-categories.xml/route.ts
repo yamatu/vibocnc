@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getRequestBaseUrl } from '@/lib/request-url'
 import { CategoryService } from '@/services/category.service'
 import { renderLocalizedSitemap } from '@/lib/i18n/sitemap'
+import { isCategoryIndexable } from '@/lib/category-listing'
 import type { Category } from '@/types'
 import { getAvailableTranslationLocales } from '@/lib/i18n/content'
 
@@ -10,7 +11,7 @@ export const revalidate = 3600 // 1 hour
 
 export async function GET() {
   const baseUrl = await getRequestBaseUrl()
-  
+
   let categories: Category[] = []
   try {
     categories = await CategoryService.getCategories()
@@ -29,12 +30,12 @@ export async function GET() {
   walk(categories)
 
   const categoryPages = flat
-    .filter((c) => c && (c.path || c.slug))
+    .filter((c) => c && (c.path || c.slug) && isCategoryIndexable(c, Number(c.product_count || 0)))
     .map((category) => ({
       pathname: `/categories/${category.path || category.slug}`,
       lastModified: category.updated_at ? new Date(category.updated_at).toISOString() : undefined,
       changeFrequency: 'weekly',
-      priority: '0.8',
+      priority: category.parent_id ? '0.7' : '0.8',
       availableLocales: getAvailableTranslationLocales(category.translations),
     }))
 
