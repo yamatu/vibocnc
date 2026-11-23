@@ -146,6 +146,10 @@ func CacheTTLSitemap() time.Duration {
 	return getTTLSeconds("CACHE_TTL_SITEMAP_SECONDS", 600)
 }
 
+func CacheTTLShipping() time.Duration {
+	return getTTLSeconds("CACHE_TTL_SHIPPING_SECONDS", 600)
+}
+
 func CacheTTLContent() time.Duration {
 	return getTTLSeconds("CACHE_TTL_CONTENT_SECONDS", 300)
 }

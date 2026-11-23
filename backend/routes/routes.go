@@ -106,9 +106,9 @@ func SetupRoutes(r *gin.Engine) {
 			public.HEAD("/products/default-image/:sku", watermarkController.DefaultProductImage)
 
 			// Shipping (public)
-			public.GET("/shipping/countries", shippingRateController.PublicCountries)
+			public.GET("/shipping/countries", middleware.CachePublicGET(middleware.CacheTTLShipping(), "cache:public:shipping_countries:"), shippingRateController.PublicCountries)
 			public.GET("/shipping/quote", shippingRateController.PublicQuote)
-			public.GET("/shipping/free-countries", shippingRateController.PublicFreeShippingCountries)
+			public.GET("/shipping/free-countries", middleware.CachePublicGET(middleware.CacheTTLShipping(), "cache:public:shipping_countries:"), shippingRateController.PublicFreeShippingCountries)
 
 			// Product detail endpoints are also cached (same TTL as product list)
 			public.GET("/products/:id", middleware.CachePublicGET(middleware.CacheTTLProducts(), "cache:public:product:"), productController.GetProduct)

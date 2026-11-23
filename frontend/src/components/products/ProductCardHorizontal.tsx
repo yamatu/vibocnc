@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ShoppingCartIcon, EyeIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
-import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
+import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, isDefaultProductImageUrl, withDefaultImageWidth, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
 import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 
@@ -30,7 +30,7 @@ export default function ProductCardHorizontal({ product }: { product: Product })
   const { addItem } = useCartStore();
   const openQuoteModal = useQuoteModalStore((state) => state.openQuoteModal);
 
-  const imageUrl = getProductImageUrl(product.image_urls || product.images || [], getDefaultProductImageWithSku(product.sku));
+  const imageUrl = withDefaultImageWidth(getProductImageUrl(product.image_urls || product.images || [], getDefaultProductImageWithSku(product.sku, '/images/placeholder.svg', 400)), 400);
   const href = `/products/${toProductPathId(product.sku)}`;
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -51,7 +51,7 @@ export default function ProductCardHorizontal({ product }: { product: Product })
   };
 
   return (
-    <Link
+    <Link prefetch={false}
       href={href}
       className="site-product-card group flex"
     >
@@ -62,6 +62,7 @@ export default function ProductCardHorizontal({ product }: { product: Product })
               src={imageUrl}
               alt={product.name}
               fill
+              unoptimized={isDefaultProductImageUrl(imageUrl)}
               sizes="(max-width: 640px) 44vw, 240px"
               className="object-cover object-center"
             />

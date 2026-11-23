@@ -399,40 +399,7 @@ func (pc *ProductController) GetProducts(c *gin.Context) {
 // getDescendantCategoryIDs returns a slice containing rootID and all its descendants' IDs.
 // It uses an in-memory walk to avoid DB-specific recursion requirements.
 func getDescendantCategoryIDs(db *gorm.DB, rootID uint) ([]uint, error) {
-	// Load only what we need.
-	type row struct {
-		ID       uint
-		ParentID *uint
-	}
-	var rows []row
-	if err := db.Model(&models.Category{}).Select("id,parent_id").Find(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	children := make(map[uint][]uint)
-	for _, r := range rows {
-		if r.ParentID == nil {
-			continue
-		}
-		children[*r.ParentID] = append(children[*r.ParentID], r.ID)
-	}
-
-	// DFS with cycle protection.
-	visited := make(map[uint]bool)
-	out := make([]uint, 0)
-	var walk func(id uint)
-	walk = func(id uint) {
-		if visited[id] {
-			return
-		}
-		visited[id] = true
-		out = append(out, id)
-		for _, kid := range children[id] {
-			walk(kid)
-		}
-	}
-	walk(rootID)
-	return out, nil
+	return services.GetDescendantCategoryIDsCached(db, rootID)
 }
 
 // LookupSEO fetches SEO/content suggestion by SKU without requiring an existing product

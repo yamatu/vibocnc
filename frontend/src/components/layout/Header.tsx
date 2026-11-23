@@ -129,7 +129,7 @@ export function Header() {
                 getDefaultProductImageWithSku(p.sku)
               );
               return (
-                <Link
+                <Link prefetch={false}
                   key={p.id}
               href={href(`/products/${toProductPathId(p.sku)}`)}
                   onClick={handleSuggestionClick}
@@ -154,7 +154,7 @@ export function Header() {
                 </Link>
               );
             })}
-            <Link
+            <Link prefetch={false}
               href={href(`/products?search=${encodeURIComponent(searchQuery.trim())}`)}
               onClick={handleSuggestionClick}
               className="site-link-accent block text-center text-sm py-2"
@@ -200,7 +200,7 @@ export function Header() {
         <div className="flex items-center justify-between gap-2 py-3 min-[360px]:gap-3 sm:gap-4 sm:py-4">
           {/* Logo */}
           <div className="flex flex-shrink-0 items-center">
-            <Link href={href('/')} className="flex items-center space-x-3">
+            <Link prefetch={false} href={href('/')} className="flex items-center space-x-3">
               {/* Keep the only high-priority image on the homepage reserved for the Hero LCP. */}
               <Image
                 src="/images/vibocnc-logo.png"
@@ -227,7 +227,7 @@ export function Header() {
                 );
               }
               return (
-                <Link
+                <Link prefetch={false}
                   key={item.key}
                   href={href(item.href)}
                   className={cn(
@@ -308,28 +308,28 @@ export function Header() {
 
                 {userMenuOpen && (
                   <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
-                    <Link
+                    <Link prefetch={false}
                       href="/account"
                       onClick={() => setUserMenuOpen(false)}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
                       {t('header.myAccount')}
                     </Link>
-                    <Link
+                    <Link prefetch={false}
                       href="/account/orders"
                       onClick={() => setUserMenuOpen(false)}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
                       {t('header.myOrders')}
                     </Link>
-                    <Link
+                    <Link prefetch={false}
                       href="/account/tickets"
                       onClick={() => setUserMenuOpen(false)}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     >
                       {t('header.supportTickets')}
                     </Link>
-                    <Link
+                    <Link prefetch={false}
                       href={href('/track-order')}
                       onClick={() => setUserMenuOpen(false)}
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -348,19 +348,19 @@ export function Header() {
               </div>
             ) : (
               <div className="hidden items-center space-x-2 xl:flex">
-                <Link
+                <Link prefetch={false}
                   href="/login"
                   className="px-3 py-2 text-sm font-medium text-slate-700 hover:text-orange-600 transition-colors"
                 >
                   {t('header.login')}
                 </Link>
-                <Link
+                <Link prefetch={false}
                   href="/register"
                   className="px-3 py-2 text-sm font-semibold text-white bg-[var(--site-primary)] rounded-md hover:bg-orange-600 transition-colors"
                 >
                   {t('header.register')}
                 </Link>
-                <Link
+                <Link prefetch={false}
                   href={href('/track-order')}
                   className="px-3 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
                 >
@@ -397,7 +397,7 @@ export function Header() {
                 return <MobileCategoriesMenu key={item.key} onNavigate={() => setMobileMenuOpen(false)} />;
               }
               return (
-                <Link
+                <Link prefetch={false}
                   key={item.key}
                   href={href(item.href)}
                   className="block text-slate-700 hover:text-orange-600 font-medium py-2"
@@ -431,7 +431,7 @@ export function Header() {
 
             {/* Mobile Track Order */}
             <div className="pt-4 border-t border-gray-200">
-              <Link
+              <Link prefetch={false}
                 href={href('/track-order')}
                 className="block w-full text-center px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
                 onClick={() => setMobileMenuOpen(false)}
@@ -442,14 +442,14 @@ export function Header() {
 
             {!isAuthenticated && (
               <div className="grid grid-cols-2 gap-3 border-t border-gray-200 pt-4">
-                <Link
+                <Link prefetch={false}
                   href="/login"
                   className="px-4 py-2 text-center text-sm font-medium text-slate-700 transition-colors hover:text-orange-600"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {t('header.login')}
                 </Link>
-                <Link
+                <Link prefetch={false}
                   href="/register"
                   className="rounded-md bg-[var(--site-primary)] px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-orange-600"
                   onClick={() => setMobileMenuOpen(false)}
@@ -542,7 +542,7 @@ function CategoriesDropdown() {
       onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setMenuOpen(false); }}
       onKeyDown={(event) => { if (event.key === 'Escape') { setMenuOpen(false); event.stopPropagation(); } }}
     >
-      <Link
+      <Link prefetch={false}
         href={href('/categories')}
         aria-expanded={menuOpen}
         aria-controls="desktop-category-menu"
@@ -684,7 +684,7 @@ function MobileCategoryTree({
               <span className="w-5" />
             )}
 
-            <Link
+            <Link prefetch={false}
               href={href(`/categories/${cat.path || cat.slug}`)}
               className="block text-sm text-slate-700 hover:text-orange-600 py-0.5"
               onClick={onNavigate}

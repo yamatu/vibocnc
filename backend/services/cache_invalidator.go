@@ -159,6 +159,9 @@ func InvalidatePublicCaches(ctx context.Context, reason string, extraURLs []stri
 		return
 	}
 
+	// 0) In-memory hierarchy snapshot
+	InvalidateCategoryDescendantsCache()
+
 	// 1) Origin (Redis) cache
 	if s.AutoClearRedisOnMutation {
 		if err := ClearRedisByPrefixes(

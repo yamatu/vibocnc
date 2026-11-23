@@ -124,6 +124,8 @@ const nextConfig: NextConfig = {
   },
 
   images: {
+    deviceSizes: [640, 750, 828, 1080, 1200],
+    imageSizes: [64, 128, 256, 384],
     // Cache generated responsive variants so the Hero LCP is not reprocessed
     // on every deployment request or repeat crawl.
     minimumCacheTTL: 86400,

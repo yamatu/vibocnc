@@ -127,7 +127,7 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
                   {category.product_count.toLocaleString()} {copy.products}
                 </span>
               )}
-              <Link
+              <Link prefetch={false}
                 href={href(`/categories/${category.path || category.slug}`)}
                 onClick={(event) => event.stopPropagation()}
                 className="shrink-0 text-sm font-bold text-[var(--site-primary)] hover:text-orange-700"
@@ -143,7 +143,7 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
                   <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {children.map((child) => (
                       <li key={child.id}>
-                        <Link
+                        <Link prefetch={false}
                           href={href(`/categories/${child.path || child.slug}`)}
                           className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-800 transition hover:border-[var(--site-primary)] hover:text-[var(--site-primary)]"
                         >
@@ -156,7 +156,7 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
                     ))}
                   </ul>
                 ) : (
-                  <Link href={href(`/categories/${category.path || category.slug}`)} className="text-sm font-bold text-[var(--site-primary)] hover:text-orange-700">
+                  <Link prefetch={false} href={href(`/categories/${category.path || category.slug}`)} className="text-sm font-bold text-[var(--site-primary)] hover:text-orange-700">
                     {copy.viewAll} →
                   </Link>
                 )}
@@ -171,7 +171,7 @@ export default function CategoriesBrandAccordion({ categories, copy }: Categorie
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{copy.otherBrands}</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {others.map((category) => (
-              <Link
+              <Link prefetch={false}
                 key={category.id}
                 href={href(`/categories/${category.path || category.slug}`)}
                 className="rounded-full border border-slate-200 px-3.5 py-1.5 text-sm font-medium text-slate-700 transition hover:border-[var(--site-primary)] hover:text-[var(--site-primary)]"

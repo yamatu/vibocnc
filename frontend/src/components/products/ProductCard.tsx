@@ -10,7 +10,7 @@ import {
   EnvelopeIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
-import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
+import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, isDefaultProductImageUrl, withDefaultImageWidth, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
 import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 import type { Product } from '@/types';
@@ -82,18 +82,19 @@ export default function ProductCard({
   };
 
   // Use image_urls array directly from API response
-  const imageUrl = getProductImageUrl(product.image_urls || [], getDefaultProductImageWithSku(product.sku));
+  const imageUrl = withDefaultImageWidth(getProductImageUrl(product.image_urls || [], getDefaultProductImageWithSku(product.sku, '/images/placeholder.svg', 400)), 400);
 
   return (
     <div className={`bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-lg transition-shadow duration-200 ${className}`}>
       <div className="relative">
         {/* Product Image */}
-        <Link href={`/products/${toProductPathId(product.sku)}`} className="block">
+        <Link prefetch={false} href={`/products/${toProductPathId(product.sku)}`} className="block">
           <div className="relative aspect-[4/3] w-full overflow-hidden rounded-t-lg bg-slate-100">
             <Image
               src={imageUrl}
               alt={product.name}
               fill
+              unoptimized={isDefaultProductImageUrl(imageUrl)}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               className="object-contain object-center p-2"
             />
@@ -131,7 +132,7 @@ export default function ProductCard({
 
       {/* Product Info */}
       <div className="p-4">
-        <Link href={`/products/${toProductPathId(product.sku)}`}>
+        <Link prefetch={false} href={`/products/${toProductPathId(product.sku)}`}>
           <h3 className="text-lg font-medium text-slate-950 mb-2 line-clamp-2 hover:text-[var(--site-primary)] transition-colors cursor-pointer">
             {product.name}
           </h3>
@@ -192,7 +193,7 @@ export default function ProductCard({
                 <span>Contact for quote</span>
               </button>
             )}
-            <Link
+            <Link prefetch={false}
               href={`/products/${toProductPathId(product.sku)}`}
               className="site-secondary-action h-9 w-9 shrink-0"
               title="View Details"

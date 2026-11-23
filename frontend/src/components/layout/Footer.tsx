@@ -110,7 +110,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-6">
           {/* Company Info */}
           <div className="lg:col-span-2">
-            <Link
+            <Link prefetch={false}
               href={href('/')}
               aria-label="Vibocnc home"
               className="mb-6 flex items-center space-x-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
@@ -182,7 +182,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
             <ul className="space-y-2">
               {footerNavigation.brands.map((item) => (
                 <li key={item.name}>
-                  <Link
+                  <Link prefetch={false}
                     href={href(item.href)}
                     className="text-slate-300 hover:text-orange-200 transition-colors duration-200"
                   >
@@ -199,7 +199,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
             <ul className="space-y-2">
               {footerNavigation.products.map((item) => (
                 <li key={item.name}>
-                  <Link
+                  <Link prefetch={false}
                     href={href(item.href)}
                     className="text-slate-300 hover:text-orange-200 transition-colors duration-200"
                   >
@@ -216,7 +216,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
             <ul className="space-y-2">
               {footerNavigation.company.map((item) => (
                 <li key={item.name}>
-                  <Link
+                  <Link prefetch={false}
                     href={href(item.href)}
                     className="text-slate-300 hover:text-orange-200 transition-colors duration-200"
                   >
@@ -233,7 +233,7 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
             <ul className="space-y-2">
               {footerNavigation.support.map((item) => (
                 <li key={item.name}>
-                  <Link
+                  <Link prefetch={false}
                     href={href(item.href)}
                     className="text-slate-300 hover:text-orange-200 transition-colors duration-200"
                   >
@@ -290,28 +290,28 @@ export function Footer({ initialSocialSettings }: { initialSocialSettings?: Soci
             </div>
 
             <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 md:mt-0">
-              <Link
+              <Link prefetch={false}
                 href={href('/privacy')}
                 className="text-slate-400 hover:text-white text-sm transition-colors duration-200"
               >
                 {t('footer.privacy')}
               </Link>
-              <Link
+              <Link prefetch={false}
                 href={href('/terms')}
                 className="text-slate-400 hover:text-white text-sm transition-colors duration-200"
               >
                 {t('footer.terms')}
               </Link>
-              <Link
+              <Link prefetch={false}
                 href="/sitemap.xml"
                 className="text-slate-400 hover:text-white text-sm transition-colors duration-200"
               >
                 {t('footer.sitemap')}
               </Link>
-              <Link href={href('/repair-request')} className="text-slate-400 hover:text-white text-sm transition-colors duration-200">
+              <Link prefetch={false} href={href('/repair-request')} className="text-slate-400 hover:text-white text-sm transition-colors duration-200">
                 {t('nav.repair')}
               </Link>
-              <Link
+              <Link prefetch={false}
                 href={href('/categories')}
                 className="text-slate-400 hover:text-white text-sm transition-colors duration-200"
               >

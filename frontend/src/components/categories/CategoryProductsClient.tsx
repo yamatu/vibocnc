@@ -10,7 +10,7 @@ import { queryKeys } from '@/lib/react-query';
 import ProductFilters from '@/components/products/ProductFilters';
 import Pagination from '@/components/common/Pagination';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
-import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
+import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, isDefaultProductImageUrl, withDefaultImageWidth, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
 import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 import {
@@ -290,12 +290,10 @@ export default function CategoryProductsClient({
               {products.map((product) => (
                 <div key={product.id} className="site-product-card">
                   <div className="relative">
-                    <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-media block aspect-[4/3] w-full">
+                    <Link prefetch={false} href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-media block aspect-[4/3] w-full">
                       <Image
-                        src={getProductImageUrl(
-                          (product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []),
-                          getDefaultProductImageWithSku(product.sku)
-                        )}
+                        src={withDefaultImageWidth(getProductImageUrl((product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []), getDefaultProductImageWithSku(product.sku, '/images/placeholder.svg', 400)), 400)}
+                        unoptimized={isDefaultProductImageUrl(getProductImageUrl((product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []), getDefaultProductImageWithSku(product.sku)))}
                         alt={`${product.name} - ${product.sku}`}
                         width={300}
                         height={300}
@@ -308,7 +306,7 @@ export default function CategoryProductsClient({
 
                   <div className="site-product-card-body p-4">
                     <h3 className="text-base font-semibold text-slate-950 mb-2 line-clamp-2 min-h-[3rem]">
-                      <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-title">
+                      <Link prefetch={false} href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-title">
                         {product.name}
                       </Link>
                     </h3>
@@ -344,7 +342,7 @@ export default function CategoryProductsClient({
                               <span>{t('products.contactForQuote')}</span>
                             </button>
                           )}
-                          <Link
+                          <Link prefetch={false}
                             href={href(`/products/${toProductPathId(product.sku)}`)}
                             className="site-secondary-action w-10 flex-shrink-0"
                             title={t('common.viewDetails')}
@@ -375,12 +373,10 @@ export default function CategoryProductsClient({
               {products.map((product) => (
                 <div key={product.id} className="site-product-card p-4 sm:p-6">
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                    <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="flex-shrink-0">
+                    <Link prefetch={false} href={href(`/products/${toProductPathId(product.sku)}`)} className="flex-shrink-0">
                       <Image
-                        src={getProductImageUrl(
-                          (product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []),
-                          getDefaultProductImageWithSku(product.sku)
-                        )}
+                        src={withDefaultImageWidth(getProductImageUrl((product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []), getDefaultProductImageWithSku(product.sku, '/images/placeholder.svg', 400)), 400)}
+                        unoptimized={isDefaultProductImageUrl(getProductImageUrl((product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []), getDefaultProductImageWithSku(product.sku)))}
                         alt={`${product.name} - ${product.sku}`}
                         width={120}
                         height={120}
@@ -392,7 +388,7 @@ export default function CategoryProductsClient({
 
                     <div className="flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-slate-950 mb-1">
-                        <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-title">
+                        <Link prefetch={false} href={href(`/products/${toProductPathId(product.sku)}`)} className="site-product-title">
                           {product.name}
                         </Link>
                       </h3>
@@ -411,7 +407,7 @@ export default function CategoryProductsClient({
                         </div>
                       )}
                       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                        <Link
+                        <Link prefetch={false}
                           href={href(`/products/${toProductPathId(product.sku)}`)}
                           className="site-secondary-action h-9 w-9"
                           title={t('common.viewDetails')}

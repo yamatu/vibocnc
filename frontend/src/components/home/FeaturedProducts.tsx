@@ -12,7 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useCart } from '@/store/cart.store';
 import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
-import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
+import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, isDefaultProductImageUrl, withDefaultImageWidth, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { ProductService } from '@/services/product.service';
 import { queryKeys } from '@/lib/react-query';
@@ -124,18 +124,19 @@ export function FeaturedProducts({
               {/* Product Image */}
               <div className="relative h-64 overflow-hidden">
                 {(() => {
-                  const src = getProductImageUrl((product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []), getDefaultProductImageWithSku(product.sku));
+                  const src = withDefaultImageWidth(getProductImageUrl((product.image_urls && product.image_urls.length > 0) ? product.image_urls : (product.images || []), getDefaultProductImageWithSku(product.sku, '/images/placeholder.svg', 400)), 400);
                   return (
                     <>
                       <Image
                         src={src}
                         alt={product.name}
+                        unoptimized={isDefaultProductImageUrl(src)}
                         width={640}
                         height={512}
                         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                         className="h-full w-full object-contain p-3 motion-safe:group-hover:scale-105 transition-transform duration-500"
                       />
-                      <Link
+                      <Link prefetch={false}
                         href={href(`/products/${toProductPathId(product.sku)}`)}
                         className="absolute inset-0 z-10"
                         aria-label={`${product.name} — ${product.sku}`}
@@ -150,7 +151,7 @@ export function FeaturedProducts({
                 <div className={`absolute inset-0 bg-slate-950/55 flex items-center justify-center space-x-4 transition-opacity duration-300 ${
                   hoveredProduct === product.id ? 'opacity-100' : 'opacity-0'
                 }`}>
-                  <Link
+                  <Link prefetch={false}
                     href={href(`/products/${toProductPathId(product.sku)}`)}
                     className="relative z-20 bg-white text-slate-900 p-3 rounded-full hover:bg-slate-100 transition-colors"
                     aria-label={`${t('common.learnMore')}: ${product.name}`}
@@ -202,7 +203,7 @@ export function FeaturedProducts({
                 </div>
 
                 <h3 className="text-lg font-semibold text-slate-950 mb-2 line-clamp-2">
-                  <Link href={href(`/products/${toProductPathId(product.sku)}`)} className="relative z-20 hover:text-[var(--site-primary)]">
+                  <Link prefetch={false} href={href(`/products/${toProductPathId(product.sku)}`)} className="relative z-20 hover:text-[var(--site-primary)]">
                     {product.name}
                   </Link>
                 </h3>
@@ -293,7 +294,7 @@ export function FeaturedProducts({
 
         {/* View All Products CTA */}
         <div className="text-center">
-          <Link
+          <Link prefetch={false}
             href={href(ctaHref)}
             className="inline-flex items-center space-x-2 bg-slate-950 hover:bg-orange-600 text-white px-8 py-4 rounded-md text-lg font-semibold transition-colors duration-300"
           >

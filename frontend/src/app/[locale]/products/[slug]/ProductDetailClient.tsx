@@ -32,7 +32,7 @@ import {
   resolveWarrantyPeriod,
 } from '@/lib/commerce-policy';
 import { queryKeys } from '@/lib/react-query';
-import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, hasProductPrice, toProductPathId } from '@/lib/utils';
+import { formatCurrency, getDefaultProductImageWithSku, getProductImageUrl, isDefaultProductImageUrl, withDefaultImageWidth, hasProductPrice, toProductPathId } from '@/lib/utils';
 import { useCartStore } from '@/store/cart.store';
 import { buildQuoteProductContext, useQuoteModalStore } from '@/store/quote-modal.store';
 import { useRouter } from 'next/navigation';
@@ -369,7 +369,7 @@ export default function ProductDetailClient({
             <div className="text-center">
               <h1 className="text-2xl font-bold text-slate-950 mb-4">{t('product.notFound')}</h1>
               <p className="text-slate-600 mb-8">{t('product.notFoundDescription')}</p>
-              <Link
+              <Link prefetch={false}
                 href={localizedHref('/products')}
                 className="site-primary-action px-4 py-2 text-sm"
               >
@@ -488,14 +488,14 @@ export default function ProductDetailClient({
           <div className="max-w-7xl mx-auto px-3 py-2.5 sm:px-6 sm:py-4 lg:px-8">
             {/* One line on phones: links keep their width, the product name truncates. */}
             <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 sm:gap-2 sm:text-sm">
-              <Link href={localizedHref('/')} className="site-link-accent shrink-0">{t('common.home')}</Link>
+              <Link prefetch={false} href={localizedHref('/')} className="site-link-accent shrink-0">{t('common.home')}</Link>
               <span aria-hidden="true" className="shrink-0 text-slate-300">/</span>
-              <Link href={localizedHref('/products')} className="site-link-accent shrink-0">{t('nav.products')}</Link>
+              <Link prefetch={false} href={localizedHref('/products')} className="site-link-accent shrink-0">{t('nav.products')}</Link>
               <span aria-hidden="true" className="shrink-0 text-slate-300">/</span>
               {product.category && (
                 <>
                   {categoryHref ? (
-                    <Link href={localizedHref(categoryHref)} className="site-link-accent max-w-[40vw] shrink-0 truncate sm:max-w-none">
+                    <Link prefetch={false} href={localizedHref(categoryHref)} className="site-link-accent max-w-[40vw] shrink-0 truncate sm:max-w-none">
                       {product.category.name}
                     </Link>
                   ) : (
@@ -901,14 +901,14 @@ export default function ProductDetailClient({
             <section>
               <h2 className="mb-3 text-lg font-semibold text-slate-950 sm:mb-4 sm:text-xl">{t('product.explore')}</h2>
               <div className="site-detail-panel p-4 sm:p-6 flex flex-wrap gap-2 text-[13px] sm:gap-3 sm:text-sm">
-                <Link
+                <Link prefetch={false}
                   href={localizedHref('/products')}
                   className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2"
                 >
                   {t('product.browseAll')}
                 </Link>
                 {categoryHref && (
-                  <Link
+                  <Link prefetch={false}
                     href={localizedHref(categoryHref)}
                     className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2"
                   >
@@ -916,17 +916,17 @@ export default function ProductDetailClient({
                   </Link>
                 )}
                 {product.brand && (
-                  <Link
+                  <Link prefetch={false}
                     href={localizedHref(`/products?brand=${encodeURIComponent(product.brand)}`)}
                     className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2"
                   >
                     {t('product.moreBrand', { brand: product.brand })}
                   </Link>
                 )}
-                <Link href={localizedHref('/repair-request')} className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2">
+                <Link prefetch={false} href={localizedHref('/repair-request')} className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2">
                   {t('nav.repair')}
                 </Link>
-                <Link href={localizedHref('/blog')} className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2">
+                <Link prefetch={false} href={localizedHref('/blog')} className="site-secondary-action px-3 py-1.5 sm:px-4 sm:py-2">
                   {t('nav.blog')}
                 </Link>
               </div>
@@ -942,10 +942,8 @@ export default function ProductDetailClient({
                   <div key={relatedProduct.id} className="site-product-card min-w-0 p-3 sm:p-4">
                     <div className="site-product-media aspect-[4/3] w-full overflow-hidden rounded-md">
                       <Image
-                        src={getProductImageUrl(
-                          (relatedProduct.image_urls && relatedProduct.image_urls.length > 0) ? relatedProduct.image_urls : (relatedProduct.images || []),
-                          getDefaultProductImageWithSku(relatedProduct.sku)
-                        )}
+                        src={withDefaultImageWidth(getProductImageUrl((relatedProduct.image_urls && relatedProduct.image_urls.length > 0) ? relatedProduct.image_urls : (relatedProduct.images || []), getDefaultProductImageWithSku(relatedProduct.sku, '/images/placeholder.svg', 400)), 400)}
+                        unoptimized={isDefaultProductImageUrl(getProductImageUrl((relatedProduct.image_urls && relatedProduct.image_urls.length > 0) ? relatedProduct.image_urls : (relatedProduct.images || []), getDefaultProductImageWithSku(relatedProduct.sku)))}
                         alt={relatedProduct.name}
                         width={200}
                         height={200}
@@ -953,7 +951,7 @@ export default function ProductDetailClient({
                       />
                     </div>
                     <div className="mt-2">
-                      <Link
+                      <Link prefetch={false}
                         href={hasTranslationForLocale(relatedProduct.translations, locale)
                           ? localizedHref(`/products/${toProductPathId(relatedProduct.sku)}`)
                           : `/products/${toProductPathId(relatedProduct.sku)}`}

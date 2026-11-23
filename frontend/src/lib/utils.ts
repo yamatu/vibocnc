@@ -175,11 +175,29 @@ export function getProductImageUrl(imageUrls: ImageInput, fallback: string = '/i
 }
 
 // Default image for products without images (watermarked with SKU when backend is configured)
-export function getDefaultProductImageWithSku(sku?: string, fallback: string = '/images/placeholder.svg'): string {
+export function getDefaultProductImageWithSku(
+  sku?: string,
+  fallback: string = '/images/placeholder.svg',
+  width?: 400 | 800,
+): string {
   const s = String(sku || '').trim();
   if (!s) return fallback;
   const safeSku = s.replace(/[\\/]+/g, '-').replace(/\s+/g, '-');
-  return `/api/v1/public/products/default-image/${encodeURIComponent(safeSku)}?sku=${encodeURIComponent(s)}`;
+  const wParam = width ? `&w=${width}` : '';
+  return `/api/v1/public/products/default-image/${encodeURIComponent(safeSku)}?sku=${encodeURIComponent(s)}${wParam}`;
+}
+
+export function isDefaultProductImageUrl(url?: string | null): boolean {
+  if (!url) return false;
+  return url.includes('/api/v1/public/products/default-image');
+}
+
+export function withDefaultImageWidth(url: string, width: 400 | 800): string {
+  if (!isDefaultProductImageUrl(url)) return url;
+  if (/[?&]w=\d+/.test(url)) {
+    return url.replace(/([?&])w=\d+/, `$1w=${width}`);
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}w=${width}`;
 }
 
 // Get specific product image URL by index

@@ -6,6 +6,10 @@ services:
       - "--default-authentication-plugin=mysql_native_password"
       - "--character-set-server=utf8mb4"
       - "--collation-server=utf8mb4_unicode_ci"
+      - "--performance-schema=OFF"
+      - "--innodb-buffer-pool-size=512M"
+      - "--table-open-cache=1000"
+      - "--max-connections=100"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-vibocnc_sales}
@@ -228,11 +232,13 @@ services:
       REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
       # ISR pages + fetch data cache are kept in a bounded in-memory LRU
       # (frontend/cache-handler.js), never written to the container disk.
-      NEXT_CACHE_MAX_MB: ${NEXT_CACHE_MAX_MB:-256}
+      NEXT_CACHE_MAX_MB: ${NEXT_CACHE_MAX_MB:-96}
       # Without a heap ceiling V8 grows lazily until the kernel OOM-kills it.
-      NODE_OPTIONS: ${FRONTEND_NODE_OPTIONS:---max-old-space-size=768}
-    # Heap (768m) + cached page buffers (256m, off-heap) + runtime overhead.
-    mem_limit: ${FRONTEND_MEM_LIMIT:-1536m}
+      NODE_OPTIONS: ${FRONTEND_NODE_OPTIONS:---max-old-space-size=512}
+      UV_THREADPOOL_SIZE: "2"
+      VIPS_CONCURRENCY: "1"
+    # Heap (512m) + cached page buffers (96m) + runtime overhead.
+    mem_limit: ${FRONTEND_MEM_LIMIT:-1024m}
     # A crashing Node process must not leave multi-GB core files in the container.
     ulimits:
       core: 0

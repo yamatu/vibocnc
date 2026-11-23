@@ -105,6 +105,7 @@ func (wc *WatermarkController) UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	services.InvalidateWatermarkRuntimeCache()
 	wc.GetSettings(c)
 }
 
@@ -166,7 +167,7 @@ func (wc *WatermarkController) DefaultProductImage(c *gin.Context) {
 		sku = "PRODUCT"
 	}
 	db := config.GetDB()
-	s, err := services.GetOrCreateWatermarkSetting(db)
+	s, err := services.GetCachedWatermarkSetting(db)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to load settings", Error: err.Error()})
 		return
@@ -175,15 +176,21 @@ func (wc *WatermarkController) DefaultProductImage(c *gin.Context) {
 	if s.Enabled {
 		baseID = s.BaseMediaAssetID
 	}
-	imageBytes, mimeType, etag, err := services.RenderWatermarkedImage(db, services.WatermarkRequest{BaseAssetID: baseID, Text: sku, Position: s.WatermarkPosition})
+	targetWidth := services.NormalizeDefaultImageWidth(c.Query("w"))
+	imageBytes, mimeType, etag, err := services.RenderWatermarkedImageSized(db, services.WatermarkRequest{BaseAssetID: baseID, Text: sku, Position: s.WatermarkPosition}, targetWidth)
 	if err != nil && baseID != nil {
-		imageBytes, mimeType, etag, err = services.RenderWatermarkedImage(db, services.WatermarkRequest{Text: sku, Position: s.WatermarkPosition})
+		imageBytes, mimeType, etag, err = services.RenderWatermarkedImageSized(db, services.WatermarkRequest{Text: sku, Position: s.WatermarkPosition}, targetWidth)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{Success: false, Message: "Failed to generate image", Error: err.Error()})
 		return
 	}
+	quotedETag := fmt.Sprintf("\"%s\"", etag)
 	c.Header("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000")
-	c.Header("ETag", fmt.Sprintf("\"%s\"", etag))
+	c.Header("ETag", quotedETag)
+	if inm := strings.TrimSpace(c.GetHeader("If-None-Match")); inm != "" && (inm == quotedETag || inm == "W/"+quotedETag || strings.Trim(inm, "\"") == etag) {
+		c.Status(http.StatusNotModified)
+		return
+	}
 	c.Data(http.StatusOK, mimeType, imageBytes)
 }
