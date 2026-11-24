@@ -1,6 +1,7 @@
 'use client';
 
 import { Product, Category, CommercePolicySetting } from '@/types';
+import type { MerchantShippingQuoteItem } from '@/services/shipping.server';
 import { toProductPathId } from '@/lib/utils';
 import { usePublicI18n } from '@/lib/i18n/PublicI18nProvider';
 import {
@@ -41,6 +42,7 @@ interface ProductSEOProps {
    * seeded defaults are used so the page never publishes an empty promise.
    */
   commercePolicy?: CommercePolicySetting;
+  merchantShippingQuotes?: MerchantShippingQuoteItem[];
 }
 
 function resolvePolicy(policy?: CommercePolicySetting): CommercePolicySetting {
@@ -132,7 +134,7 @@ function toJsonLd(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PUBLIC_SITE_URL, contentLocale, commercePolicy }: ProductSEOProps) {
+export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PUBLIC_SITE_URL, contentLocale, commercePolicy, merchantShippingQuotes = [] }: ProductSEOProps) {
   const { locale, t, href } = usePublicI18n();
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
   const policy = resolvePolicy(commercePolicy);
@@ -259,11 +261,36 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         "name": "Vibocnc",
         "url": normalizedBaseUrl
       },
-      // Shipping and return promises come from the admin-editable commerce
-      // policy. A shipping rate of 0 means "not configured" (checkout prices
-      // shipping per country and weight), so no rate is claimed in that case:
-      // publishing $0 would advertise free shipping that checkout does not give.
-      ...(Number(policy.shipping_rate_amount) > 0 ? {
+      "priceValidUntil": "2027-12-31",
+      ...(merchantShippingQuotes.length > 0 ? {
+      "shippingDetails": merchantShippingQuotes.map((q) => ({
+        "@type": "OfferShippingDetails",
+        "shippingRate": {
+          "@type": "MonetaryAmount",
+          "value": Number(q.shipping_fee || 0).toFixed(2),
+          "currency": q.currency || policy.shipping_currency || "USD"
+        },
+        "shippingDestination": {
+          "@type": "DefinedRegion",
+          "addressCountry": q.country_code
+        },
+        "deliveryTime": {
+          "@type": "ShippingDeliveryTime",
+          "handlingTime": {
+            "@type": "QuantitativeValue",
+            "minValue": q.handling_days_min || policy.shipping_handling_days_min || 1,
+            "maxValue": q.handling_days_max || policy.shipping_handling_days_max || 2,
+            "unitCode": "DAY"
+          },
+          "transitTime": {
+            "@type": "QuantitativeValue",
+            "minValue": q.transit_days_min || policy.shipping_transit_days_min || 4,
+            "maxValue": q.transit_days_max || policy.shipping_transit_days_max || 5,
+            "unitCode": "DAY"
+          }
+        }
+      })),
+      } : Number(policy.shipping_rate_amount) > 0 ? {
       "shippingDetails": {
         "@type": "OfferShippingDetails",
         "shippingRate": {
@@ -271,8 +298,6 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
           "value": policy.shipping_rate_amount || 0,
           "currency": policy.shipping_currency || "USD"
         },
-        // An empty destination list means worldwide coverage; schema.org treats
-        // an omitted shippingDestination as unconstrained rather than wrong.
         ...(destinationCountries.length > 0 ? {
           "shippingDestination": destinationCountries.map((country) => ({
             "@type": "DefinedRegion",
@@ -298,7 +323,9 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
       } : {}),
       "hasMerchantReturnPolicy": {
         "@type": "MerchantReturnPolicy",
-        "applicableCountry": returnCountry,
+        "applicableCountry": merchantShippingQuotes.length > 0
+          ? merchantShippingQuotes.map((q) => q.country_code)
+          : [returnCountry],
         "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
         "merchantReturnDays": policy.return_window_days,
         "returnMethod": "https://schema.org/ReturnByMail",

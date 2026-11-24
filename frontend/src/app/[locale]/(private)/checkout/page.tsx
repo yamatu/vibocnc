@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -75,18 +76,15 @@ export default function CheckoutPage() {
   const shippingCountry = watch('shipping_country');
   const [sameAsShipping, setSameAsShipping] = useState(false);
 
-  const totalWeightKg = items.reduce((sum, it) => sum + (Number(it.product.weight || 0) * Number(it.quantity || 0)), 0);
+  const totalWeightKg = items.reduce((sum, it) => {
+    const rawWeight = Number((it.product as { weight?: number | null }).weight || 0);
+    const unitWeight = rawWeight > 0 ? rawWeight : 0.5;
+    return sum + unitWeight * Number(it.quantity || 0);
+  }, 0);
 
-  // Check authentication - redirect to login if not authenticated
+  // Guest checkout is enabled: prefill details only when signed in.
   useEffect(() => {
-    if (!isAuthenticated) {
-      toast.error('Please login to continue with checkout');
-      router.push('/login?returnUrl=/checkout');
-      return;
-    }
-
-    // Auto-fill form with customer data
-    if (customer) {
+    if (isAuthenticated && customer) {
       setValue('customer_name', customer.full_name);
       setValue('customer_email', customer.email);
       setValue('customer_phone', customer.phone || '');
@@ -107,6 +105,9 @@ export default function CheckoutPage() {
         ]);
         if (!alive) return;
         setShippingCountries(countries);
+        if (Array.isArray(countries) && countries.some((c: { country_code: string }) => String(c.country_code || '').toUpperCase() === 'US')) {
+          setValue('shipping_country', 'US', { shouldValidate: false });
+        }
         setFreeShippingCountryCodes(freeCountries.map((c) => c.country_code));
       } catch {
         if (!alive) return;
@@ -118,7 +119,7 @@ export default function CheckoutPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [setValue]);
 
   useEffect(() => {
     let alive = true;
@@ -150,16 +151,10 @@ export default function CheckoutPage() {
 
   // Auto-fill billing address when "Same as shipping" is checked
   useEffect(() => {
-    if (sameAsShipping && shippingAddress) {
-      const billingInput = document.querySelector('textarea[name="billing_address"]') as HTMLTextAreaElement;
-      if (billingInput) {
-        billingInput.value = shippingAddress;
-        // Trigger form update
-        const event = new Event('input', { bubbles: true });
-        billingInput.dispatchEvent(event);
-      }
+    if (sameAsShipping) {
+      setValue('billing_address', shippingAddress || '', { shouldValidate: Boolean(shippingAddress) });
     }
-  }, [sameAsShipping, shippingAddress]);
+  }, [sameAsShipping, shippingAddress, setValue]);
 
   const createOrder = async (formData: CheckoutFormData): Promise<Order> => {
     const orderData: OrderCreateRequest = {
@@ -209,8 +204,10 @@ export default function CheckoutPage() {
       setStep('success');
       clearCart();
 
-      toast.success('Payment completed. Redirecting to your orders...');
-      router.replace('/account/orders');
+      toast.success('Payment completed successfully!');
+      if (isAuthenticated) {
+        router.replace('/account/orders');
+      }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'Payment processing failed'));
     } finally {
@@ -223,7 +220,7 @@ export default function CheckoutPage() {
     toast.error('Payment failed. Please try again.');
   };
 
-  if (items.length === 0) {
+  if (items.length === 0 && step !== 'success') {
     return null; // Will redirect in useEffect
   }
 
@@ -264,6 +261,15 @@ export default function CheckoutPage() {
               </div>
             </div>
           </div>
+
+          {!isAuthenticated && step === 'form' && (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              <span>Guest checkout is enabled — no account required to complete your order.</span>
+              <Link prefetch={false} href="/login?returnUrl=/checkout" className="font-semibold underline text-blue-700 hover:text-blue-800">
+                Already have an account? Sign in
+              </Link>
+            </div>
+          )}
 
           {step === 'form' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -337,6 +343,9 @@ export default function CheckoutPage() {
                 <OrderSummary
                   items={items}
                   total={currentOrder.subtotal_amount}
+                  shippingFee={Number(currentOrder.shipping_fee || 0)}
+                  shippingCountry={currentOrder.shipping_country || shippingCountry}
+                  freeShippingCountryCodes={freeShippingCountryCodes}
                   appliedCoupon={currentOrder.coupon_code ? {
                     valid: true,
                     code: currentOrder.coupon_code,
@@ -379,12 +388,21 @@ export default function CheckoutPage() {
                 </div>
 
                 <div className="space-y-3">
+                  {isAuthenticated ? (
                   <button
                     onClick={() => router.push('/account/orders')}
                     className="site-primary-action site-buy-action w-full px-4 py-2.5 text-sm"
                   >
                     View My Orders
                   </button>
+                  ) : (
+                  <button
+                    onClick={() => router.push(`/track-order?order=${encodeURIComponent(currentOrder.order_number)}`)}
+                    className="w-full bg-amber-600 text-white py-2 px-4 rounded-md hover:bg-amber-700 transition duration-200"
+                  >
+                    Track This Order
+                  </button>
+                  )}
 
                   <button
                     onClick={() => router.push('/')}

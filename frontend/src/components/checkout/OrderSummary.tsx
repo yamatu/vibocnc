@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { getDefaultProductImageWithSku, getProductImageUrl } from '@/lib/utils';
 import { useState } from 'react';
 import { CartItem } from '@/types';
@@ -185,15 +186,17 @@ export default function OrderSummary({
         <div className="space-y-3">
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Subtotal</span>
-            <span className="text-gray-900">${subtotal.toFixed(2)}</span>
+            <span className="text-gray-900">${subtotal.toFixed(2)} USD</span>
           </div>
 
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Shipping</span>
-            {isFreeShipping ? (
-              <span className="text-green-600 font-medium">Free Shipping</span>
+            {!shippingCountry && !readonly ? (
+              <span className="text-gray-500">Select country to calculate</span>
+            ) : isFreeShipping ? (
+              <span className="text-green-600 font-medium">Free Shipping ($0.00 USD)</span>
             ) : (
-              <span className="text-gray-900">${Number(shippingFee || 0).toFixed(2)}</span>
+              <span className="text-gray-900">${Number(shippingFee || 0).toFixed(2)} USD</span>
             )}
           </div>
 
@@ -208,7 +211,7 @@ export default function OrderSummary({
             <div className="flex justify-between">
               <span className="text-base font-medium text-gray-900">Total</span>
               <span className="text-lg font-bold text-orange-700">
-                ${finalTotal.toFixed(2)}
+                ${finalTotal.toFixed(2)} USD
               </span>
             </div>
           </div>
@@ -232,6 +235,12 @@ export default function OrderSummary({
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500">
+        <Link prefetch={false} href="/shipping-policy" className="underline text-blue-700 hover:text-blue-800">Shipping Policy</Link>
+        <Link prefetch={false} href="/returns" className="underline text-blue-700 hover:text-blue-800">30-Day Returns</Link>
+        <Link prefetch={false} href="/warranty-policy" className="underline text-blue-700 hover:text-blue-800">12-Month Warranty</Link>
       </div>
 
       {/* Items Count */}

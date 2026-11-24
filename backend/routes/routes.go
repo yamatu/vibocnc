@@ -41,6 +41,7 @@ func SetupRoutes(r *gin.Engine) {
 	mediaController := &controllers.MediaController{}
 	watermarkController := &controllers.WatermarkController{}
 	shippingRateController := &controllers.ShippingRateController{}
+	merchantFeedController := &controllers.MerchantFeedController{}
 	backupController := &controllers.BackupController{}
 	cacheController := &controllers.CacheController{}
 	hotlinkController := &controllers.HotlinkController{}
@@ -109,6 +110,8 @@ func SetupRoutes(r *gin.Engine) {
 			public.GET("/shipping/countries", middleware.CachePublicGET(middleware.CacheTTLShipping(), "cache:public:shipping_countries:"), shippingRateController.PublicCountries)
 			public.GET("/shipping/quote", shippingRateController.PublicQuote)
 			public.GET("/shipping/free-countries", middleware.CachePublicGET(middleware.CacheTTLShipping(), "cache:public:shipping_countries:"), shippingRateController.PublicFreeShippingCountries)
+			public.GET("/shipping/merchant-quotes", middleware.CachePublicGET(middleware.CacheTTLShipping(), "cache:public:shipping_countries:"), merchantFeedController.GetMerchantShippingQuotes)
+			public.GET("/merchant/feed.xml", merchantFeedController.GetMerchantFeedXML)
 
 			// Product detail endpoints are also cached (same TTL as product list)
 			public.GET("/products/:id", middleware.CachePublicGET(middleware.CacheTTLProducts(), "cache:public:product:"), productController.GetProduct)

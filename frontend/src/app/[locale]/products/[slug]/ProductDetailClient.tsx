@@ -26,6 +26,7 @@ import { CategoryService } from '@/services/category.service';
 import { ShippingRateService } from '@/services/shipping-rate.service';
 import type { ShippingRatePublic, ShippingQuote } from '@/services/shipping-rate.service';
 import type { PaginationResponse, Product, ProductImage, Category, CommercePolicySetting } from '@/types';
+import type { MerchantShippingQuoteItem } from '@/services/shipping.server';
 import {
   FALLBACK_COMMERCE_POLICY,
   resolveLeadTime,
@@ -60,6 +61,7 @@ interface ProductDetailClientProps {
   initialRelatedProducts?: PaginationResponse<Product>;
   // null = the server looked the category up and it has no nested path.
   initialCategoryPath?: string | null;
+  merchantShippingQuotes?: MerchantShippingQuoteItem[];
 }
 
 function parseTechnicalSpecs(raw?: string): Record<string, string> | null {
@@ -131,6 +133,7 @@ export default function ProductDetailClient({
   initialCategoryBreadcrumb,
   initialRelatedProducts,
   initialCategoryPath,
+  merchantShippingQuotes = [],
 }: ProductDetailClientProps) {
   const { locale, t, href: localizedHref } = usePublicI18n();
   // Every commercial promise shown on the page comes from the admin-editable
@@ -480,6 +483,7 @@ export default function ProductDetailClient({
         categoryBreadcrumb={categoryBreadcrumb}
         contentLocale={contentLocale}
         commercePolicy={commercePolicy}
+        merchantShippingQuotes={merchantShippingQuotes}
       />
 
       <div className="site-page-shell min-h-screen">
@@ -539,7 +543,23 @@ export default function ProductDetailClient({
               <div className="mt-3">
                 <h2 className="sr-only">{t('product.information')}</h2>
                 {canPurchase ? (
-                  <p className="text-2xl font-bold tracking-tight text-[var(--site-primary)] sm:text-3xl">{formatCurrency(product.price)}</p>
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-baseline gap-2.5">
+                      <p className="text-2xl font-bold tracking-tight text-[var(--site-primary)] sm:text-3xl">
+                        {formatCurrency(product.price)} <span className="text-sm font-semibold text-slate-500 sm:text-base">USD</span>
+                      </p>
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium capitalize text-slate-700">
+                        Condition: {product.condition_type || 'new'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Shipping calculated at checkout ({' '}
+                      <Link prefetch={false} href={localizedHref('/shipping-policy')} className="underline hover:text-slate-800">Shipping Policy</Link>
+                      {' · '}
+                      <Link prefetch={false} href={localizedHref('/returns')} className="underline hover:text-slate-800">30-Day Returns</Link>
+                      {' '})
+                    </p>
+                  </div>
                 ) : (
                   <div>
                     <p className="text-xl font-bold text-[var(--site-primary)]">{t('product.contactForQuote')}</p>

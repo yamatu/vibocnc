@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { getProductBySkuCached, searchFirstProduct } from '@/services/product.server';
+import { getMerchantShippingQuotesCached } from '@/services/shipping.server';
 import { getCommercePolicyCached } from '@/services/commerce-policy.server';
 import { getSiteUrl } from '@/lib/url';
 import { withSiteName, withoutSiteNameSuffix } from '@/lib/seo';
@@ -262,7 +263,10 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     redirect(localizePublicPath(`/products/${canonicalId}`, hasRequestedTranslation ? locale : 'en'));
   }
 
-  const context = await loadProductPageContext(initialProduct, locale);
+  const [context, merchantShippingQuotes] = await Promise.all([
+    loadProductPageContext(initialProduct, locale),
+    initialProduct.price > 0 ? getMerchantShippingQuotesCached(initialProduct.weight) : Promise.resolve([]),
+  ]);
 
   return (
     <>
@@ -275,6 +279,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         initialCategoryBreadcrumb={context.breadcrumb}
         initialRelatedProducts={context.related}
         initialCategoryPath={context.categoryPath}
+        merchantShippingQuotes={merchantShippingQuotes}
       />
     </>
   );

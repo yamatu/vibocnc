@@ -6,10 +6,10 @@ import type { CommercePolicySetting } from '@/types';
  * outage never publishes an empty shipping/return promise.
  */
 export const FALLBACK_COMMERCE_POLICY: CommercePolicySetting = {
-  shipping_handling_time_text: '1-2 days',
+  shipping_handling_time_text: '1-2 business days',
   shipping_handling_days_min: 1,
   shipping_handling_days_max: 2,
-  shipping_transit_time_text: '4-5 DAYS',
+  shipping_transit_time_text: '4-5 business days',
   shipping_transit_days_min: 4,
   shipping_transit_days_max: 5,
   shipping_carriers: 'DHL,FedEx,UPS',
@@ -18,9 +18,9 @@ export const FALLBACK_COMMERCE_POLICY: CommercePolicySetting = {
   shipping_currency: 'USD',
   shipping_notes: '',
   default_warranty_period: '12 months',
-  default_lead_time: '4-5 DAYS',
-  return_window_days: 365,
-  return_window_text: '1 year',
+  default_lead_time: '4-5 business days',
+  return_window_days: 30,
+  return_window_text: '30 days',
   return_shipping_payer: 'shared',
   return_policy_country: 'US',
   return_policy_notes: '',

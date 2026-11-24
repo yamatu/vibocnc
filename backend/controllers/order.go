@@ -106,9 +106,11 @@ func (oc *OrderController) CreateOrder(c *gin.Context) {
 
 		itemTotal := unitPrice * float64(item.Quantity)
 		subtotalAmount += itemTotal
-		if product.Weight != nil {
-			totalWeightKg += float64(item.Quantity) * float64(*product.Weight)
+		unitWeightKg := DefaultShippingItemWeightKg
+		if product.Weight != nil && *product.Weight > 0 {
+			unitWeightKg = float64(*product.Weight)
 		}
+		totalWeightKg += float64(item.Quantity) * unitWeightKg
 
 		orderItems = append(orderItems, models.OrderItem{
 			ProductID:  item.ProductID,

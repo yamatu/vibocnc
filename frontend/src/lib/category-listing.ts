@@ -292,6 +292,7 @@ export function toSlimListingProduct(product: Product): Product {
     price: product.price,
     compare_price: product.compare_price,
     stock_quantity: product.stock_quantity,
+    weight: product.weight,
     brand: product.brand,
     model: product.model,
     part_number: product.part_number,
