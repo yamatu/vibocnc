@@ -1,7 +1,8 @@
 {
-  "name": "Vibocnc Industrial Automation Parts",
+  "id": "/",
+  "name": "Vibocnc",
   "short_name": "Vibocnc",
-  "description": "Multi-brand industrial automation parts and repair support since 2007",
+  "description": "Vibocnc is an industrial automation parts and CNC spares supplier across 20+ brands, with model verification, inspection, repair support and worldwide shipping.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

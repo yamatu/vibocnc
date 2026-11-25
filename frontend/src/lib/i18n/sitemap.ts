@@ -3,8 +3,14 @@ import { DEFAULT_PUBLIC_LOCALE, PUBLIC_LOCALES, localizePublicPath, type PublicL
 export interface LocalizedSitemapEntry {
   pathname: string;
   lastModified?: string;
-  changeFrequency: string;
-  priority: string;
+  /**
+   * @deprecated Google ignores <priority>/<changefreq> and Bing treats them as
+   * hints only. The fields stay optional so existing call sites keep compiling,
+   * but they are no longer written to the sitemap.
+   */
+  changeFrequency?: string;
+  /** @deprecated see changeFrequency */
+  priority?: string;
   availableLocales?: readonly PublicLocale[];
   images?: Array<{ url: string; title?: string }>;
 }
@@ -56,9 +62,7 @@ export function renderLocalizedSitemapEntries(baseUrl: string, entry: LocalizedS
     const localizedUrl = absoluteUrl(baseUrl, localizePublicPath(entry.pathname, locale.code));
     return `  <url>
     <loc>${escapeXml(localizedUrl)}</loc>
-${entry.lastModified ? `    <lastmod>${escapeXml(entry.lastModified)}</lastmod>\n` : ''}    <changefreq>${escapeXml(entry.changeFrequency)}</changefreq>
-    <priority>${escapeXml(entry.priority)}</priority>
-${alternateLinks.map((alternate) => `    <xhtml:link rel="alternate" hreflang="${escapeXml(alternate.hreflang)}" href="${escapeXml(alternate.url)}" />\n`).join('')}${renderImages(baseUrl, entry)}  </url>`;
+${entry.lastModified ? `    <lastmod>${escapeXml(entry.lastModified)}</lastmod>\n` : ''}${alternateLinks.map((alternate) => `    <xhtml:link rel="alternate" hreflang="${escapeXml(alternate.hreflang)}" href="${escapeXml(alternate.url)}" />\n`).join('')}${renderImages(baseUrl, entry)}  </url>`;
   }).join('\n');
 }
 

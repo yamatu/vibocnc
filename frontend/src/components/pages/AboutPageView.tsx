@@ -40,39 +40,7 @@ export default function AboutPageView({ locale, data }: { locale: PublicLocale; 
     "name": text('heroTitle'),
     "description": "Learn about Vibocnc, a multi-brand industrial automation parts supplier founded in China in 2007.",
     "url": localizedAboutUrl,
-    "mainEntity": {
-      "@type": "Organization",
-      "@id": `${baseUrl}/#organization`,
-      "name": "Vibocnc",
-      "url": baseUrl,
-      "foundingDate": "2007",
-      "foundingLocation": {
-        "@type": "Place",
-        "name": "Kunshan, Jiangsu, China"
-      },
-      "numberOfEmployees": {
-        "@type": "QuantitativeValue",
-        "value": 37
-      },
-      "description": "A multi-brand industrial automation parts supplier with 100,000+ items regularly stocked, serving maintenance teams worldwide.",
-      "knowsAbout": [
-        "Multi-brand CNC parts",
-        "FANUC automation parts",
-        "Siemens automation parts",
-        "Mitsubishi automation parts",
-        "ABB and Allen-Bradley components",
-        "Industrial automation",
-        "Servo motors",
-        "PCB boards",
-        "I/O modules",
-        "PLC",
-        "HMI",
-        "Inverters",
-        "Encoders",
-        "Amplifiers"
-      ],
-      "slogan": "Your Industrial Automation Parts Partner Since 2007"
-    }
+    "mainEntity": { "@id": `${baseUrl}/#organization` }
   };
 
   const combinedSchema = {

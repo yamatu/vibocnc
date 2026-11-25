@@ -21,6 +21,29 @@ export function generateOrganizationSchema(sameAs: string[] = []) {
     "description": "Vibocnc is an industrial automation parts and CNC spares supplier across 20+ brands, with model verification, inspection, repair support and worldwide shipping.",
     "url": baseUrl,
     "foundingDate": "2007",
+    "foundingLocation": {
+      "@type": "Place",
+      "name": "Kunshan, Jiangsu, China"
+    },
+    "numberOfEmployees": {
+      "@type": "QuantitativeValue",
+      "value": 37
+    },
+    "slogan": "Your Industrial Automation Parts Partner Since 2007",
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "opens": "08:00",
+        "closes": "18:00"
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": "Saturday",
+        "opens": "09:00",
+        "closes": "17:00"
+      }
+    ],
     "areaServed": "Worldwide",
     "knowsAbout": [
       "Industrial automation parts",
@@ -30,7 +53,13 @@ export function generateOrganizationSchema(sameAs: string[] = []) {
       "Servo drives and motors",
       "Industrial electronics inspection",
       "Obsolete automation parts sourcing",
-      "Industrial electronics repair evaluation"
+      "Industrial electronics repair evaluation",
+      "FANUC spare parts",
+      "Siemens automation parts",
+      "Mitsubishi automation parts",
+      "ABB and Allen-Bradley components",
+      "Servo motors and encoders",
+      "Inverters and power supplies"
     ],
     "logo": {
       "@type": "ImageObject",
@@ -67,10 +96,10 @@ export function generateWebsiteSchema() {
     "url": baseUrl,
     "description": "Vibocnc is an industrial automation parts and CNC spares supplier across 20+ brands, with model verification, inspection, repair support and worldwide shipping.",
     "publisher": {
-      "@type": "Organization",
-      "@id": `${baseUrl}/#organization`,
-      "name": SITE_NAME,
-      "url": baseUrl
+      // Pure node reference: the full Organization is emitted once in the
+      // locale layout. Repeating name/url here produced a second, thinner
+      // Organization with the same @id on every page that uses this schema.
+      "@id": `${baseUrl}/#organization`
     },
     // Sitelinks search box: lets Google (and AI answer engines) query the
     // catalogue directly from the brand result instead of guessing a URL.

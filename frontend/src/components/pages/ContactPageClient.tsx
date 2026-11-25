@@ -133,34 +133,7 @@ export default function ContactPageClient({ data }: { data: PageData }) {
     "name": "Contact Vibocnc",
     "description": "Get in touch with Vibocnc for multi-brand industrial automation parts, repair evaluation, technical support and quotes.",
     "url": contactUrl,
-    "mainEntity": {
-      "@type": "Organization",
-      "@id": `${siteUrl}/#organization`,
-      "name": "Vibocnc",
-      "url": siteUrl,
-      "telephone": text('phone'),
-      "email": text('email'),
-      "address": {
-        "@type": "PostalAddress",
-        "addressLocality": "Kunshan",
-        "addressRegion": "Jiangsu",
-        "addressCountry": "CN"
-      },
-      "openingHoursSpecification": [
-        {
-          "@type": "OpeningHoursSpecification",
-          "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-          "opens": "08:00",
-          "closes": "18:00"
-        },
-        {
-          "@type": "OpeningHoursSpecification",
-          "dayOfWeek": ["Saturday"],
-          "opens": "09:00",
-          "closes": "17:00"
-        }
-      ]
-    }
+    "mainEntity": { "@id": `${siteUrl}/#organization` }
   };
 
   const breadcrumbSchema = {

@@ -5,20 +5,45 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 export const revalidate = 3600 // 1 hour
 
-const CONTENT_SITEMAP_PATHS = [
-  '/sitemap-static.xml',
-  '/sitemap-categories.xml',
-  '/sitemap-news.xml',
-  '/sitemap-blog.xml',
-] as const
+// Same baselines the child routes use, so the index never advertises a change
+// the child sitemap does not confirm.
+const STATIC_CONTENT_LAST_MODIFIED = process.env.SITEMAP_STATIC_LAST_MODIFIED || '2026-07-30T00:00:00.000Z'
+const HOME_CONTENT_LAST_MODIFIED = process.env.SITEMAP_HOME_LAST_MODIFIED || '2026-08-08T00:00:00.000Z'
 
-function buildSitemapIndex(baseUrl: string, productSitemapPaths: readonly string[] = []) {
-  const sitemapPaths = [...CONTENT_SITEMAP_PATHS, ...productSitemapPaths]
+interface SitemapIndexEntry {
+  path: string
+  lastModified?: string
+}
+
+function toIso(value: string): string | undefined {
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined
+}
+
+function latestIso(...values: string[]): string | undefined {
+  const timestamps = values.map((value) => Date.parse(value)).filter(Number.isFinite)
+  return timestamps.length > 0 ? new Date(Math.max(...timestamps)).toISOString() : undefined
+}
+
+// <lastmod> is only emitted when the baseline is actually known. Categories,
+// news and blog change with editorial data we cannot price cheaply here, and
+// a guessed timestamp teaches crawlers to distrust the whole index.
+function contentSitemapEntries(): SitemapIndexEntry[] {
+  return [
+    { path: '/sitemap-static.xml', lastModified: latestIso(HOME_CONTENT_LAST_MODIFIED, STATIC_CONTENT_LAST_MODIFIED) },
+    { path: '/sitemap-categories.xml' },
+    { path: '/sitemap-news.xml' },
+    { path: '/sitemap-blog.xml' },
+  ]
+}
+
+function buildSitemapIndex(baseUrl: string, entries: readonly SitemapIndexEntry[]) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemapPaths.map((path) => `  <sitemap>
-    <loc>${baseUrl}${path}</loc>
-  </sitemap>`).join('\n')}
+${entries.map((entry) => {
+    const lastModified = entry.lastModified ? `    <lastmod>${entry.lastModified}</lastmod>\n` : ''
+    return `  <sitemap>\n    <loc>${baseUrl}${entry.path}</loc>\n${lastModified}  </sitemap>`
+  }).join('\n')}
 </sitemapindex>`
 }
 
@@ -36,7 +61,12 @@ export async function GET() {
       headers: { 'Cache-Control': 'no-store', 'Retry-After': '300' },
     })
   }
-  const sitemapIndex = buildSitemapIndex(baseUrl, productSitemapPaths)
+
+  const entries: SitemapIndexEntry[] = [
+    ...contentSitemapEntries(),
+    ...productSitemapPaths.map((path) => ({ path })),
+  ]
+  const sitemapIndex = buildSitemapIndex(baseUrl, entries)
 
   return new NextResponse(sitemapIndex, {
     headers: {
