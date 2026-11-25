@@ -21,6 +21,7 @@ const PUBLIC_SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://vibocnc.co
 
 const GENERIC_BRAND_LABEL = 'industrial automation';
 const GENERIC_MANUFACTURER_LABEL = 'industrial automation parts manufacturer';
+const DEFAULT_MERCHANT_COUNTRIES = ['US', 'CA', 'GB', 'DE', 'FR', 'AU', 'JP'];
 
 type JsonLdValue =
   | string
@@ -209,6 +210,13 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
   const warranty = normalizeText(product.warranty_period) || policy.default_warranty_period;
   const destinationCountries = commercePolicyDestinationCountries(policy);
   const returnCountry = normalizeText(policy.return_policy_country) || 'US';
+  const validShippingQuotes = merchantShippingQuotes.filter((q) => Boolean(q?.country_code));
+  const fallbackCountries = destinationCountries.length > 0
+    ? destinationCountries
+    : DEFAULT_MERCHANT_COUNTRIES;
+  const returnApplicableCountries = validShippingQuotes.length > 0
+    ? validShippingQuotes.map((q) => q.country_code)
+    : Array.from(new Set([returnCountry, ...fallbackCountries]));
   const schemaLocale = contentLocale || locale;
   const localeConfig = typeof Intl !== 'undefined'
     ? new Intl.Locale(schemaLocale === 'zh' ? 'zh-CN' : schemaLocale).toString()
@@ -298,10 +306,6 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
     "datePublished": product.created_at || undefined,
     "dateModified": product.updated_at || undefined,
     "keywords": [product.sku, product.part_number, product.brand, semanticCategory].filter(Boolean).join(', '),
-    "audience": {
-      "@type": "Audience",
-      "audienceType": "CNC maintenance buyers and industrial automation service teams"
-    },
     "offers": hasValidOffer ? {
       "@type": "Offer",
       "url": productUrl,
@@ -321,8 +325,8 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         "url": normalizedBaseUrl
       },
       "priceValidUntil": "2027-12-31",
-      ...(merchantShippingQuotes.length > 0 ? {
-      "shippingDetails": merchantShippingQuotes.map((q) => ({
+      ...(validShippingQuotes.length > 0 ? {
+      "shippingDetails": validShippingQuotes.map((q) => ({
         "@type": "OfferShippingDetails",
         "shippingRate": {
           "@type": "MonetaryAmount",
@@ -354,15 +358,13 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
         "@type": "OfferShippingDetails",
         "shippingRate": {
           "@type": "MonetaryAmount",
-          "value": policy.shipping_rate_amount || 0,
+          "value": Number(policy.shipping_rate_amount || 0).toFixed(2),
           "currency": policy.shipping_currency || "USD"
         },
-        ...(destinationCountries.length > 0 ? {
-          "shippingDestination": destinationCountries.map((country) => ({
-            "@type": "DefinedRegion",
-            "addressCountry": country
-          }))
-        } : {}),
+        "shippingDestination": fallbackCountries.map((country) => ({
+          "@type": "DefinedRegion",
+          "addressCountry": country
+        })),
         "deliveryTime": {
           "@type": "ShippingDeliveryTime",
           "handlingTime": {
@@ -382,9 +384,7 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
       } : {}),
       "hasMerchantReturnPolicy": {
         "@type": "MerchantReturnPolicy",
-        "applicableCountry": merchantShippingQuotes.length > 0
-          ? merchantShippingQuotes.map((q) => q.country_code)
-          : [returnCountry],
+        "applicableCountry": returnApplicableCountries,
         "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
         "merchantReturnDays": policy.return_window_days,
         "returnMethod": "https://schema.org/ReturnByMail",
