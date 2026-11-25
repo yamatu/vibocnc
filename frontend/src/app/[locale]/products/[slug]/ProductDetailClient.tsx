@@ -62,6 +62,7 @@ interface ProductDetailClientProps {
   // null = the server looked the category up and it has no nested path.
   initialCategoryPath?: string | null;
   merchantShippingQuotes?: MerchantShippingQuoteItem[];
+  referenceDate?: string;
 }
 
 function parseTechnicalSpecs(raw?: string): Record<string, string> | null {
@@ -134,6 +135,7 @@ export default function ProductDetailClient({
   initialRelatedProducts,
   initialCategoryPath,
   merchantShippingQuotes = [],
+  referenceDate,
 }: ProductDetailClientProps) {
   const { locale, t, href: localizedHref } = usePublicI18n();
   // Every commercial promise shown on the page comes from the admin-editable
@@ -484,6 +486,7 @@ export default function ProductDetailClient({
         contentLocale={contentLocale}
         commercePolicy={commercePolicy}
         merchantShippingQuotes={merchantShippingQuotes}
+        referenceDate={referenceDate}
       />
 
       <div className="site-page-shell min-h-screen">

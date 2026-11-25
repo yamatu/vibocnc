@@ -280,6 +280,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         initialRelatedProducts={context.related}
         initialCategoryPath={context.categoryPath}
         merchantShippingQuotes={merchantShippingQuotes}
+        referenceDate={new Date().toISOString().slice(0, 10)}
       />
     </>
   );

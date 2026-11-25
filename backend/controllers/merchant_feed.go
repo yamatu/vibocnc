@@ -55,6 +55,8 @@ var (
 	merchantMultiSpaceRe  = regexp.MustCompile(`\s+`)
 	merchantModelNoteRe   = regexp.MustCompile(`(?i)\(\s*(?:model|series|ref)[^)]*\)`)
 	merchantTrailingSepRe = regexp.MustCompile(`[\s|,:;\-–—]+$`)
+	merchantLeadWeekRe    = regexp.MustCompile(`(?i)(\d+)\s*(?:-\s*(\d+))?\s*(?:weeks?|wks?)\b`)
+	merchantLeadDayRe     = regexp.MustCompile(`(?i)(\d+)\s*(?:-\s*(\d+))?\s*(?:days?|d)\b`)
 )
 
 type MerchantFeedController struct{}
@@ -346,7 +348,7 @@ func merchantEscapeXML(s string) string {
 
 const (
 	merchantSitePartition = "vibocnc"
-	merchantFeedVersion   = "v2-b1"
+	merchantFeedVersion   = "v2-b1-avail"
 )
 
 // classifyMerchantFeedSite deterministically assigns every eligible product to
@@ -610,6 +612,42 @@ func buildVibocncMerchantCopy(brand, sku, mpn, rawName, rawMeta, leafCat, condit
 	return title, merchantTrimLen(desc, 4800)
 }
 
+// parseMerchantLeadTimeDays extracts an upper-bound lead time in days from
+// free-form strings like "3-7 days", "4-5 DAYS", or "1 WEEK" for computing
+// Google Merchant Center <g:availability_date> on backorder items.
+func parseMerchantLeadTimeDays(raw string, fallback int) int {
+	text := strings.ToLower(strings.TrimSpace(raw))
+	if text == "" {
+		return fallback
+	}
+	if m := merchantLeadWeekRe.FindStringSubmatch(text); len(m) >= 2 {
+		valStr := m[2]
+		if valStr == "" {
+			valStr = m[1]
+		}
+		if weeks, err := strconv.Atoi(valStr); err == nil && weeks > 0 {
+			days := weeks * 7
+			if days > 90 {
+				days = 90
+			}
+			return days
+		}
+	}
+	if m := merchantLeadDayRe.FindStringSubmatch(text); len(m) >= 2 {
+		valStr := m[2]
+		if valStr == "" {
+			valStr = m[1]
+		}
+		if days, err := strconv.Atoi(valStr); err == nil && days > 0 {
+			if days > 90 {
+				days = 90
+			}
+			return days
+		}
+	}
+	return fallback
+}
+
 type merchantFeedProductRow struct {
 	ID               uint     `gorm:"column:id"`
 	SKU              string   `gorm:"column:sku"`
@@ -619,6 +657,7 @@ type merchantFeedProductRow struct {
 	MetaDescription  string   `gorm:"column:meta_description"`
 	Price            float64  `gorm:"column:price"`
 	StockQuantity    int      `gorm:"column:stock_quantity"`
+	LeadTime         string   `gorm:"column:lead_time"`
 	Weight           *float64 `gorm:"column:weight"`
 	Brand            string   `gorm:"column:brand"`
 	PartNumber       string   `gorm:"column:part_number"`
@@ -682,7 +721,7 @@ func (mc *MerchantFeedController) GetMerchantFeedXML(c *gin.Context) {
 
 	var rows []merchantFeedProductRow
 	if err := db.Table("products").
-		Select("id, sku, name, short_description, description, meta_description, price, stock_quantity, weight, brand, part_number, condition_type, warranty_period, category_id, image_urls").
+		Select("id, sku, name, short_description, description, meta_description, price, stock_quantity, lead_time, weight, brand, part_number, condition_type, warranty_period, category_id, image_urls").
 		Where("is_active = 1 AND seo_noindex = 0 AND price > 0 AND price <= ?", merchantFeedMaxPrice).
 		Where("image_urls IS NOT NULL AND image_urls != '' AND image_urls != '[]'").
 		Where("image_urls NOT LIKE ? AND image_urls NOT LIKE ?", "%"+merchantKnownGenericImg+"%", "%default-image%").
@@ -803,6 +842,7 @@ func (mc *MerchantFeedController) GetMerchantFeedXML(c *gin.Context) {
 	out.WriteString("    <link>" + merchantEscapeXML(baseURL) + "</link>\n")
 	out.WriteString("    <description>" + merchantEscapeXML("Industrial PCB control boards, I/O modules, operator panels, HMIs and automation MRO spare components supplied by Vibocnc with 12-month warranty and tracked international delivery.") + "</description>\n")
 
+	nowUTC := time.Now().UTC()
 	itemCount := 0
 	skippedOtherPartition := 0
 	for i, r := range rows {
@@ -873,6 +913,11 @@ func (mc *MerchantFeedController) GetMerchantFeedXML(c *gin.Context) {
 			out.WriteString("      <g:additional_image_link>" + merchantEscapeXML(validImgs[idx]) + "</g:additional_image_link>\n")
 		}
 		out.WriteString("      <g:availability>" + availability + "</g:availability>\n")
+		if availability == "backorder" {
+			availDays := parseMerchantLeadTimeDays(r.LeadTime, 7)
+			availDate := nowUTC.AddDate(0, 0, availDays).Format("2006-01-02T00:00+0000")
+			out.WriteString("      <g:availability_date>" + availDate + "</g:availability_date>\n")
+		}
 		out.WriteString(fmt.Sprintf("      <g:price>%.2f USD</g:price>\n", r.Price))
 		out.WriteString("      <g:brand>" + merchantEscapeXML(brand) + "</g:brand>\n")
 		out.WriteString("      <g:mpn>" + merchantEscapeXML(mpn) + "</g:mpn>\n")

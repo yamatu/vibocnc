@@ -43,6 +43,7 @@ interface ProductSEOProps {
    */
   commercePolicy?: CommercePolicySetting;
   merchantShippingQuotes?: MerchantShippingQuoteItem[];
+  referenceDate?: string;
 }
 
 function resolvePolicy(policy?: CommercePolicySetting): CommercePolicySetting {
@@ -53,8 +54,63 @@ function resolvePolicy(policy?: CommercePolicySetting): CommercePolicySetting {
 function mapReturnFees(policy: CommercePolicySetting): string {
   return policy.return_shipping_payer === 'merchant'
     ? 'https://schema.org/FreeReturn'
-    : 'https://schema.org/ReturnShippingFees';
+    : 'https://schema.org/ReturnFeesCustomerResponsibility';
 }
+
+/**
+ * Parse a free-form lead time string (e.g. "3-7 days", "4-5 DAYS", "1 WEEK")
+ * into a bounded upper-end day count for computing a BackOrder offer's validFrom.
+ */
+function parseLeadTimeDays(raw?: string, fallbackDays = 7): number {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return fallbackDays;
+
+  const weekMatch = text.match(/(\d+)\s*(?:-\s*(\d+))?\s*(?:weeks?|wks?)\b/);
+  if (weekMatch) {
+    const weeks = Number(weekMatch[2] || weekMatch[1]);
+    if (Number.isFinite(weeks) && weeks > 0) {
+      return Math.min(Math.max(weeks * 7, 1), 90);
+    }
+  }
+
+  const dayMatch = text.match(/(\d+)\s*(?:-\s*(\d+))?\s*(?:days?|d)\b/);
+  if (dayMatch) {
+    const days = Number(dayMatch[2] || dayMatch[1]);
+    if (Number.isFinite(days) && days > 0) {
+      return Math.min(Math.max(days, 1), 90);
+    }
+  }
+
+  return fallbackDays;
+}
+
+/**
+ * Compute an ISO 8601 UTC timestamp when a BackOrder item is expected to ship.
+ * Using a server-supplied referenceDate prevents SSR/client hydration mismatches
+ * across UTC midnight or ISR-cached HTML responses.
+ */
+function computeBackOrderValidFrom(leadTime?: string, referenceDate?: string): string {
+  const days = parseLeadTimeDays(leadTime, 7);
+  let baseYear: number;
+  let baseMonth: number;
+  let baseDay: number;
+
+  const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(referenceDate || '').trim());
+  if (parsed) {
+    baseYear = Number(parsed[1]);
+    baseMonth = Number(parsed[2]) - 1;
+    baseDay = Number(parsed[3]);
+  } else {
+    const now = new Date();
+    baseYear = now.getUTCFullYear();
+    baseMonth = now.getUTCMonth();
+    baseDay = now.getUTCDate();
+  }
+
+  const target = new Date(Date.UTC(baseYear, baseMonth, baseDay + days));
+  return `${target.toISOString().slice(0, 10)}T00:00:00Z`;
+}
+
 
 function mapConditionType(condition?: string): string {
   switch (condition) {
@@ -134,7 +190,7 @@ function toJsonLd(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PUBLIC_SITE_URL, contentLocale, commercePolicy, merchantShippingQuotes = [] }: ProductSEOProps) {
+export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PUBLIC_SITE_URL, contentLocale, commercePolicy, merchantShippingQuotes = [], referenceDate }: ProductSEOProps) {
   const { locale, t, href } = usePublicI18n();
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
   const policy = resolvePolicy(commercePolicy);
@@ -255,6 +311,9 @@ export function ProductSEO({ product, category, categoryBreadcrumb, baseUrl = PU
       "availability": product.stock_quantity > 0
         ? "https://schema.org/InStock"
         : "https://schema.org/BackOrder",
+      ...(product.stock_quantity <= 0
+        ? { "validFrom": computeBackOrderValidFrom(leadTime, referenceDate) }
+        : {}),
       "seller": {
         "@type": "Organization",
         "@id": `${normalizedBaseUrl}/#organization`,
