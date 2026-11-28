@@ -90,7 +90,7 @@ export default function MarkdownContent({ content, className = '', minHeadingLev
       : null,
     ul: ({ children, className: markdownClassName }) => <ul className={`my-5 list-disc space-y-2 pl-6 ${markdownClassName || ''}`}>{children}</ul>,
     ol: ({ children, className: markdownClassName, start }) => <ol start={start} className={`my-5 list-decimal space-y-2 pl-6 ${markdownClassName || ''}`}>{children}</ol>,
-    li: ({ children, className: markdownClassName }) => <li className={`pl-1 ${markdownClassName || ''}`}>{children}</li>,
+    li: ({ children, id, className: markdownClassName }) => <li id={id} className={`pl-1 ${markdownClassName || ''}`}>{children}</li>,
     blockquote: ({ children }) => <blockquote className="my-5 border-l-4 border-blue-600 pl-4 italic text-gray-700">{children}</blockquote>,
     hr: () => <hr className="my-8 border-gray-200" />,
     del: ({ children }) => <del>{children}</del>,
