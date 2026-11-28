@@ -54,6 +54,7 @@ func SetupRoutes(r *gin.Engine) {
 	productOptimizationController := &controllers.ProductOptimizationController{}
 	commercePolicyController := &controllers.CommercePolicyController{}
 	productSpecDraftController := &controllers.ProductSpecDraftController{}
+	datasheetController := &controllers.DatasheetController{}
 	indexNowController := &controllers.IndexNowController{}
 	ebayImportDraftController := &controllers.EbayImportDraftController{}
 	ebayDraftReviewController := controllers.NewEbayDraftReviewController()
@@ -295,6 +296,21 @@ func SetupRoutes(r *gin.Engine) {
 				products.POST("/:id/spec-research", productSpecDraftController.StartProductSpecResearchJob)
 				products.GET("/spec-drafts", productSpecDraftController.ListDrafts)
 				products.GET("/spec-drafts/:id", productSpecDraftController.GetDraft)
+				// Datasheets.com product search API: an administrator looks up one
+				// part number, reads what the provider knows, and optionally turns the
+				// exact match into a spec draft. No bulk enrichment: the account quota
+				// is 5,000 calls a month and the catalogue has hundreds of thousands
+				// of SKUs.
+				products.POST("/datasheet-search", datasheetController.Search)
+				products.POST("/datasheet-draft", datasheetController.ToDraft)
+				products.GET("/datasheet-cache", datasheetController.ListCache)
+				datasheetSettings := products.Group("/datasheet-settings")
+				datasheetSettings.Use(middleware.AdminOnly())
+				{
+					datasheetSettings.GET("", datasheetController.GetSettings)
+					datasheetSettings.PUT("", datasheetController.UpdateSettings)
+					datasheetSettings.POST("/test", datasheetController.TestKey)
+				}
 				products.POST("/spec-drafts/:id/approve", productSpecDraftController.ApproveDraft)
 				products.POST("/spec-drafts/:id/reject", productSpecDraftController.RejectDraft)
 				products.GET("/optimization-status", productOptimizationController.GetOptimizationStatus)

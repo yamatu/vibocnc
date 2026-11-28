@@ -1156,6 +1156,11 @@ func MigratedModels() []interface{} {
 		&models.CommercePolicySetting{},
 		// Model-number spec research review queue (never published directly)
 		&models.ProductSpecDraft{},
+		// Datasheets.com product search API: settings (API key encrypted at rest),
+		// the local quota counters that keep us inside the provider budget, and the
+		// lookup cache that makes a repeated part-number lookup free.
+		&models.DatasheetSetting{},
+		&models.DatasheetLookupCache{},
 		// Legacy flat shipping rate table (kept for compatibility; not used by new flow)
 		&models.ShippingRate{},
 		&models.WatermarkSetting{},

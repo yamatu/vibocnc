@@ -422,6 +422,18 @@ export default function EditProductPage() {
               <ArrowLeftIcon className="h-4 w-4 mr-2" />
               {t('common.back', locale === 'zh' ? '返回' : 'Back')}
             </button>
+            {/* Datasheets.com is a read-only reference source: the button opens
+                the lookup screen scoped to this product. Nothing is written
+                without an approved spec draft. */}
+            <button
+              type="button"
+              onClick={() =>
+                router.push(`/admin/datasheets?product_id=${productId}`)
+              }
+              className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              {locale === 'zh' ? '查 Datasheets.com 参数' : 'Look up on Datasheets.com'}
+            </button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{t('products.edit.title', locale === 'zh' ? '编辑产品' : 'Edit Product')}</h1>
               <p className="mt-1 text-sm text-gray-500">

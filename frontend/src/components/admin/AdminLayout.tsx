@@ -72,6 +72,8 @@ const navigation = [
   { key: 'nav.sitePages', name: 'Site Pages', href: '/admin/site-pages', icon: DocumentTextIcon },
   { key: 'nav.aiAssistant', name: 'AI Assistant', href: '/admin/ai-assistant', icon: SparklesIcon },
   { key: 'nav.aiSeo', name: 'AI SEO Records', href: '/admin/ai-seo', icon: SparklesIcon },
+  { key: 'nav.datasheets', name: 'Datasheets.com Lookup', href: '/admin/datasheets', icon: ClipboardDocumentListIcon },
+  { key: 'nav.specDrafts', name: 'Spec Drafts', href: '/admin/spec-drafts', icon: ClipboardDocumentListIcon },
 ];
 
 interface AdminLayoutProps {
